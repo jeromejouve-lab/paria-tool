@@ -82,9 +82,33 @@
 		<hr>
 		<h4>Résumé (état de travail)</h4>
 		<div id="workSummary">—</div>
-
     <pre id="gh_preview" style="max-height:260px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee;border-radius:8px">—</pre>
   </section>
+
+	<section class="card">
+	  <h3>Éditer l’état de travail — Charter</h3>
+	  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+	    <div>
+	      <label>Objectifs</label><textarea id="ed_obj"></textarea>
+	      <label>Contexte</label><textarea id="ed_ctx"></textarea>
+	      <label>Contraintes strictes</label><textarea id="ed_hard"></textarea>
+	      <label>Périmètre</label><textarea id="ed_scope"></textarea>
+	      <label>Douleurs</label><textarea id="ed_pains"></textarea>
+	    </div>
+	    <div>
+	      <label>KPI</label><textarea id="ed_kpi"></textarea>
+	      <label>Outils</label><textarea id="ed_tools"></textarea>
+	      <label>Rôles & charge</label><textarea id="ed_roles"></textarea>
+	      <label>Budget & fenêtre</label><textarea id="ed_budget"></textarea>
+	      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+	        <button id="btnCharterLoad">Charger depuis l’état</button>
+	        <button id="btnCharterSave">Sauver dans l’état</button>
+	        <span id="charterState" style="color:#2d7"></span>
+	      </div>
+	    </div>
+	  </div>
+	</section>
+
 	
 	<section class="card">
 		<h3>Exports (MVP) — .md & rapport .html</h3>
@@ -103,8 +127,7 @@
 		<div id="frameWrap" class="" style="margin-top:8px">
 			<h4>Aperçu live</h4>
 			<iframe id="previewFrame" style="width:100%;height:520px;border:1px solid #eee;border-radius:8px;background:#fff"></iframe>
-		</div>
-		
+		</div>		
 	</section>
 
   <!-- Onglets -->
@@ -782,6 +805,7 @@
 </script>
 </body>
 </html>
+
 
 
 
