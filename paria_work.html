@@ -111,10 +111,18 @@
     <p>Juste un onglet de test. Quand ceci marche, on remet les fonctionnalités.</p>
   </section>
 
-  <section id="tab-capture" class="card hide">
-    <h3>Capture</h3>
-    <p>Onglet actif : OK ✅</p>
-  </section>
+	<section id="tab-capture" class="card hide">
+	  <h3>Analyse IA (MVP)</h3>
+	  <label>Note à analyser</label>
+	  <textarea id="ia_note" placeholder="Tape ou dicte les infos du service..."></textarea>
+	  <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+	    <button id="btnIaAnalyze">Analyser (IA)</button>
+	    <button id="btnIaAdopt">Ajouter au travail</button>
+	    <span id="iaStatus" style="color:#2d7"></span>
+	  </div>
+	  <h4>Résultat</h4>
+	  <pre id="iaResult" style="max-height:280px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee;border-radius:8px">—</pre>
+	</section>
 
   <section id="tab-client" class="card hide">
     <h3>Client</h3>
@@ -614,9 +622,83 @@
 		window.open(url, "_blank"); // ouvre dans un nouvel onglet
 	});
 
+	  // ====== Étape IA : appel au PROXY_URL ======
+  async function iaAnalyze(){
+    // 1) charter courant (si tu as “adopté” un JSON)
+    var svcKey = (document.getElementById("serviceKeyGit")?.value || "Compta");
+    var charter = {};
+    try {
+      var db = JSON.parse(localStorage.getItem("paria_db")||"{}");
+      if (db.services && db.services[svcKey] && db.services[svcKey].charter) {
+        charter = db.services[svcKey].charter;
+      }
+    } catch(e){}
+
+    // 2) PROXY_URL depuis les réglages (page exécutée)
+    var PROXY_URL = (localStorage.getItem("paria_proxy_url")||"").trim();
+    if(!PROXY_URL){ alert("Renseigne PROXY_URL dans les réglages, puis clique « Sauver réglages »."); return; }
+
+    var payload = {
+      route: "analyze",
+      model: "gpt-4o-mini",
+      service_key: svcKey,
+      charter: charter,
+      note: document.getElementById("ia_note").value || ""
+      // secret: (localStorage.getItem("paria_proxy_secret")||"").trim() || undefined
+    };
+
+    document.getElementById("iaStatus").textContent = "Analyse en cours…";
+
+    try{
+      const r = await fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" }, // anti-preflight CORS
+        body: JSON.stringify(payload)
+      });
+      const j = await r.json();
+      if(!j.ok){
+        document.getElementById("iaStatus").textContent = "Erreur";
+        document.getElementById("iaResult").textContent = JSON.stringify(j, null, 2);
+        alert("Analyse échouée : "+(j.error||""));
+        return;
+      }
+      document.getElementById("iaStatus").textContent = "OK ✔";
+      document.getElementById("iaResult").textContent = JSON.stringify(j.data, null, 2);
+      // garde en tampon pour "Ajouter au travail"
+      localStorage.setItem("paria_last_ai", JSON.stringify(j.data));
+    }catch(err){
+      document.getElementById("iaStatus").textContent = "Erreur réseau";
+      alert("Erreur appel proxy : "+String(err));
+    }
+  }
+
+  document.getElementById("btnIaAnalyze")?.addEventListener("click", iaAnalyze);
+
+  document.getElementById("btnIaAdopt")?.addEventListener("click", function(){
+    var raw = localStorage.getItem("paria_last_ai");
+    if(!raw) return alert("Fais d'abord « Analyser (IA) ».");
+    var obj; try{ obj = JSON.parse(raw); }catch(e){ return alert("Résultat IA invalide."); }
+
+    var svcKey = (document.getElementById("serviceKeyGit")?.value || "Compta");
+    var db = { services:{} };
+    try{ db = JSON.parse(localStorage.getItem("paria_db")||"{}"); }catch(e){}
+    if(!db.services) db.services = {};
+    if(!db.services[svcKey]) db.services[svcKey] = { charter:{}, items:[], decisions:[] };
+
+    // tag de priorité simple (en attendant ta logique)
+    var n = Array.isArray(obj.propositions) ? obj.propositions.length : 0;
+    obj._priority_tag = n>=3 ? "P1" : n===2 ? "P2" : "P3";
+
+    db.services[svcKey].items = db.services[svcKey].items || [];
+    db.services[svcKey].items.push(obj);
+    localStorage.setItem("paria_db", JSON.stringify(db));
+    alert("Ajouté à l'état de travail ✔ (pense à Push .json/.md/.html si besoin)");
+  });
+
 })();
 </script>
 </body>
 </html>
+
 
 
