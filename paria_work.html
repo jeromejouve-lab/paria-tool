@@ -150,8 +150,102 @@
     localStorage.setItem("paria_gh_date", document.getElementById("gh_date").value);
     document.getElementById("saveState").textContent = "Réglages sauvegardés ✔";
   });
+	  // ====== ÉTAPE 2 : Git (MVP) Lister & Importer ======
+  var API = "https://api.github.com";
+
+  function loadGhCfg(){
+    var gh = { owner:"", repo:"", branch:"", root:"", token:"" };
+    try{
+      var raw = localStorage.getItem("paria_github");
+      if(raw) gh = JSON.parse(raw);
+    }catch(e){}
+    return gh;
+  }
+  function ghHeaders(token){
+    return {
+      "Accept":"application/vnd.github+json",
+      "Authorization":"Bearer "+token,
+      "X-GitHub-Api-Version":"2022-11-28"
+    };
+  }
+  function ghUrl(owner, repo, path, ref){
+    return API + "/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) +
+           "/contents/" + encodeURIComponent(path) + (ref? ("?ref="+encodeURIComponent(ref)) : "");
+  }
+  function ymd(d){ var y=d.getFullYear(), m=("0"+(d.getMonth()+1)).slice(-2), dd=("0"+d.getDate()).slice(-2); return y+"-"+m+"-"+dd; }
+  function yyyy(d){ return String(d.getFullYear()); }
+
+  // init date/service par défaut
+  (function initGitMvpFields(){
+    var d = localStorage.getItem("paria_gh_date");
+    document.getElementById("gh_date_git").value = d || new Date().toISOString().slice(0,10);
+    document.getElementById("serviceKeyGit").value = "Compta";
+  })();
+
+  // Rendu de la liste
+  function renderGhList(items, basePath){
+    if(!Array.isArray(items)){ document.getElementById("gh_list").innerHTML = "<em>Rien</em>"; return; }
+    var html = items.map(function(it){
+      var isJson = (it.name||"").toLowerCase().endsWith(".json");
+      return '<div><label><input type="checkbox" class="gh_ck" data-path="'+
+        basePath+'/'+it.name+'" data-json="'+(isJson?'1':'0')+'"> '+it.type+' — '+it.name+'</label></div>';
+    }).join("");
+    document.getElementById("gh_list").innerHTML = html;
+  }
+
+  // Bouton Lister
+  document.getElementById("btnGhList").addEventListener("click", async function(){
+    try{
+      var gh = loadGhCfg();
+      if(!gh.owner||!gh.repo||!gh.root||!gh.branch||!gh.token){ alert("Complète les réglages GitHub (en haut) puis Sauver."); return; }
+      var svc = document.getElementById("serviceKeyGit").value;
+      var dstr = document.getElementById("gh_date_git").value || new Date().toISOString().slice(0,10);
+      var d = new Date(dstr+"T12:00:00");
+      var day = ymd(d), year = yyyy(d);
+      var dir = gh.root.replace(/\/+$/,"") + "/" + svc + "/" + year + "/" + day;
+
+      var url = ghUrl(gh.owner, gh.repo, dir, gh.branch);
+      var r = await fetch(url, { headers: ghHeaders(gh.token) });
+      if(!r.ok){ document.getElementById("gh_list").innerHTML = '<span style="color:#a00">'+r.status+' '+r.statusText+'</span>'; return; }
+      var j = await r.json();
+      renderGhList(j, dir);
+    }catch(e){
+      document.getElementById("gh_list").innerHTML = '<span style="color:#a00">'+String(e)+'</span>';
+    }
+  });
+
+  // GET fichier (helper)
+  async function ghGetFile(path){
+    var gh = loadGhCfg();
+    var r = await fetch( ghUrl(gh.owner, gh.repo, path, gh.branch), { headers: ghHeaders(gh.token) } );
+    if(!r.ok) throw new Error("GET "+path+" "+r.status);
+    var j = await r.json();
+    var b64 = (j.content||"").replace(/\n/g,"");
+    // Décodage base64 (sans dépendance)
+    var txt = atob(b64);
+    return txt;
+  }
+
+  // Bouton Importer
+  document.getElementById("btnGhImport").addEventListener("click", async function(){
+    try{
+      var boxes = Array.prototype.slice.call(document.querySelectorAll(".gh_ck:checked"));
+      if(!boxes.length) return alert("Coche un fichier .json à importer.");
+      var first = boxes.find(function(x){ return x.dataset.json==="1"; }) || boxes[0];
+      var txt = await ghGetFile(first.dataset.path);
+      // On vérifie juste que c'est du JSON et on affiche dans l'aperçu
+      var obj;
+      try{ obj = JSON.parse(txt); }catch(e){ return alert("Le fichier sélectionné n'est pas un JSON valide."); }
+      document.getElementById("gh_preview").textContent = JSON.stringify(obj, null, 2);
+      // Option : le garder en local pour la suite
+      localStorage.setItem("paria_last_import", txt);
+      alert("Import OK.");
+    }catch(e){
+      alert("Erreur import: "+String(e));
+    }
+  });
+
 })();
 </script>
 </body>
 </html>
-
