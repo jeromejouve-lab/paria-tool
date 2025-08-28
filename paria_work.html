@@ -55,6 +55,24 @@
       <span id="saveState" style="margin-left:8px;color:#2d7">—</span>
     </div>
   </section>
+  <section class="card">
+    <h3>Git (MVP) — Lister & Importer</h3>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span>Service</span>
+      <select id="serviceKeyGit">
+        <option>Direction</option><option>RH</option><option selected>Compta</option>
+        <option>IT</option><option>Marketing</option><option>Ventes</option>
+      </select>
+      <span>Date</span>
+      <input id="gh_date_git" type="date">
+      <button id="btnGhList">Lister dossier</button>
+      <button id="btnGhImport">Importer sélection (.json)</button>
+    </div>
+    <div id="gh_list" style="margin-top:8px;font-size:14px"></div>
+    <hr>
+    <h4>Aperçu du fichier importé</h4>
+    <pre id="gh_preview" style="max-height:260px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee;border-radius:8px">—</pre>
+  </section>
 
   <!-- Onglets -->
   <section id="tab-spec" class="card">
@@ -136,3 +154,4 @@
 </script>
 </body>
 </html>
+
