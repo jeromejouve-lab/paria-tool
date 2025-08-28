@@ -90,6 +90,14 @@
 			<button id="btnPreviewMd">Prévisualiser Markdown</button>
 			<button id="btnPushMd">Push .md → GitHub</button>
 			<button id="btnPreviewHtml">Prévisualiser HTML</button>
+			<button id="btnPreviewHtmlLive">Aperçu HTML (live)</button>
+			<button id="btnOpenHtmlTab">Ouvrir dans un onglet</button>
+
+			<div id="frameWrap" class="" style="margin-top:8px">
+				<h4>Aperçu live</h4>
+				<iframe id="previewFrame" style="width:100%;height:520px;border:1px solid #eee;border-radius:8px;background:#fff"></iframe>
+			</div>
+
 			<button id="btnPushHtml">Push rapport .html → GitHub</button>
 			<span id="exportStatus" style="color:#2d7"></span>
 		</div>
@@ -575,6 +583,36 @@
       alert("Erreur push .html: "+String(e));
     }
   });
+
+	document.getElementById("btnPreviewHtmlLive").addEventListener("click", function(){
+		var w = getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
+		var p = computePathsForToday();
+		var html = buildReportHtml({
+			service: w.key,
+			charter: w.s.charter || {},
+			items: w.s.items || [],
+			decisions: w.s.decisions || [],
+			brand: { header:"", logo_self:"", client_name: p.client, logo_client:"" }
+		});
+		var fr = document.getElementById("previewFrame");
+		fr.srcdoc = html; // rendu live
+		// si tu avais "hide" sur le conteneur :
+		// document.getElementById("frameWrap").classList.remove("hide");
+	});
+
+	document.getElementById("btnOpenHtmlTab").addEventListener("click", function(){
+		var w = getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
+		var p = computePathsForToday();
+		var html = buildReportHtml({
+			service: w.key,
+			charter: w.s.charter || {},
+			items: w.s.items || [],
+			decisions: w.s.decisions || [],
+			brand: { header:"", logo_self:"", client_name: p.client, logo_client:"" }
+		});
+		var url = URL.createObjectURL(new Blob([html], {type:"text/html"}));
+		window.open(url, "_blank"); // ouvre dans un nouvel onglet
+	});
 
 })();
 </script>
