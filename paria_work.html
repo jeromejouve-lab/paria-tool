@@ -549,7 +549,9 @@
       decisions: w.s.decisions || [],
       brand: { header:"", logo_self:"", client_name: clientSlugFromRoot(), logo_client:"" }
     });
-    document.getElementById("previewBox").textContent = html;
+    function prettyHtml(h){ return h.replace(/></g, '>\n<'); }
+		document.getElementById("previewBox").textContent = prettyHtml(html);
+
   });
 
   // Push HTML
