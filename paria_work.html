@@ -66,6 +66,7 @@
       <span>Date</span>
       <input id="gh_date_git" type="date">
       <button id="btnGhList">Lister dossier</button>
+			<button id="btnYesterday">Hier</button>
       <button id="btnGhImport">Importer sélection (.json)</button>
     </div>
     <div id="gh_list" style="margin-top:8px;font-size:14px"></div>
@@ -192,6 +193,12 @@
     }).join("");
     document.getElementById("gh_list").innerHTML = html;
   }
+
+	document.getElementById('btnYesterday').addEventListener('click', function(){
+		var d = new Date();
+		d.setDate(d.getDate() - 1);
+		document.getElementById('gh_date_git').value = d.toISOString().slice(0,10);
+	});
 
   // Bouton Lister
   document.getElementById("btnGhList").addEventListener("click", async function(){
