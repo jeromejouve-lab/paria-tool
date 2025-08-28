@@ -72,6 +72,15 @@
     <div id="gh_list" style="margin-top:8px;font-size:14px"></div>
     <hr>
     <h4>Aperçu du fichier importé</h4>
+		<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+			<button id="btnAdopt">Adopter comme état de travail</button>
+			<button id="btnPushJson">Push .json du jour → GitHub</button>
+			<span id="gitStatus" style="color:#2d7"></span>
+		</div>
+		<hr>
+		<h4>Résumé (état de travail)</h4>
+		<div id="workSummary">—</div>
+
     <pre id="gh_preview" style="max-height:260px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee;border-radius:8px">—</pre>
   </section>
 
@@ -251,6 +260,127 @@
       alert("Erreur import: "+String(e));
     }
   });
+	
+	// ====== ÉTAPE 3 : Adopter et Push .json ======
+
+  // Afficher un petit résumé "Charter" de l'état de travail
+  function renderWorkSummary() {
+    var raw = localStorage.getItem("paria_db");
+    if (!raw) { document.getElementById("workSummary").textContent = "—"; return; }
+    var db;
+    try { db = JSON.parse(raw); } catch(e){ document.getElementById("workSummary").textContent = "—"; return; }
+    // On prend le service choisi dans le select en haut de cette carte
+    var svcKey = document.getElementById("serviceKeyGit").value || "Compta";
+    var s = (db.services && db.services[svcKey]) || null;
+    if (!s) { document.getElementById("workSummary").textContent = "Aucun état pour le service « "+svcKey+" »."; return; }
+
+    var ch = s.charter || {};
+    var html = '<ul style="margin:0;padding-left:18px">';
+    html += '<li><b>Objectifs</b> : ' + (ch.objectifs || '—') + '</li>';
+    html += '<li><b>Contexte</b> : ' + (ch.contexte || '—') + '</li>';
+    html += '<li><b>Contraintes strictes</b> : ' + (ch.contraintes || '—') + '</li>';
+    html += '<li><b>Périmètre</b> : ' + (ch.perimetre || '—') + '</li>';
+    html += '<li><b>Douleurs</b> : ' + (ch.douleurs || '—') + '</li>';
+    html += '<li><b>KPI</b> : ' + (ch.kpis || '—') + '</li>';
+    html += '<li><b>Outils</b> : ' + (ch.outils || '—') + '</li>';
+    html += '<li><b>Rôles & charge</b> : ' + (ch.roles || '—') + '</li>';
+    html += '<li><b>Budget & fenêtre</b> : ' + (ch.budget || '—') + '</li>';
+    html += '</ul>';
+
+    // Compteur d'items si présent
+    var nItems = Array.isArray(s.items) ? s.items.length : 0;
+    html += '<p style="margin-top:8px">Items : <b>'+nItems+'</b></p>';
+
+    document.getElementById("workSummary").innerHTML = html;
+  }
+
+  // Bouton "Adopter" → prend le dernier JSON importé et le range comme état de travail
+  document.getElementById("btnAdopt").addEventListener("click", function(){
+    var txt = localStorage.getItem("paria_last_import");
+    if (!txt) return alert("Importe d'abord un .json (bouton « Importer sélection »).");
+    var obj;
+    try { obj = JSON.parse(txt); } catch(e){ return alert("Le JSON importé est invalide."); }
+
+    // Structure de base { services: { [service]: {...} } }
+    var svcKey = document.getElementById("serviceKeyGit").value || "Compta";
+    var db = { services:{} };
+    db.services[svcKey] = obj.services && obj.services[svcKey] ? obj.services[svcKey] : obj;
+    localStorage.setItem("paria_db", JSON.stringify(db));
+    renderWorkSummary();
+    document.getElementById("gitStatus").textContent = "État adopté ✔";
+  });
+
+  // Helpers GitHub (encodage + upsert)
+  function utf8ToB64(str){
+    var enc = new TextEncoder().encode(str), bin='';
+    for (var i=0;i<enc.length;i++) bin += String.fromCharCode(enc[i]);
+    return btoa(bin);
+  }
+  async function ghGetFileWithSha(path){
+    var gh = loadGhCfg();
+    var r = await fetch( ghUrl(gh.owner, gh.repo, path, gh.branch), { headers: ghHeaders(gh.token) } );
+    if(!r.ok) throw new Error("GET "+path+" "+r.status);
+    var j = await r.json();
+    return j.sha || null;
+  }
+  async function ghUpsertJson(path, jsonText, message){
+    var gh = loadGhCfg();
+    // Essaie de récupérer le sha existant (si le fichier existe déjà)
+    var sha = null;
+    try { sha = await ghGetFileWithSha(path); } catch(e) { /* nouveau fichier */ }
+    var body = {
+      message: message || ("update "+path),
+      content: utf8ToB64(jsonText),
+      branch: gh.branch
+    };
+    if (sha) body.sha = sha;
+
+    var r = await fetch( ghUrl(gh.owner, gh.repo, path), {
+      method: "PUT",
+      headers: ghHeaders(gh.token),
+      body: JSON.stringify(body)
+    });
+    if(!r.ok) throw new Error("PUT "+path+" "+r.status);
+    return r.json();
+  }
+
+  // Bouton "Push .json du jour"
+  document.getElementById("btnPushJson").addEventListener("click", async function(){
+    try{
+      // 1) Vérifs
+      var gh = loadGhCfg();
+      if(!gh.owner||!gh.repo||!gh.root||!gh.branch||!gh.token)
+        return alert("Complète les réglages GitHub (en haut) puis Sauver.");
+
+      var raw = localStorage.getItem("paria_db");
+      if (!raw) return alert("Aucun état de travail. Clique d'abord « Adopter » après import.");
+
+      var db; try{ db = JSON.parse(raw); }catch(e){ return alert("État local invalide."); }
+      var svcKey = document.getElementById("serviceKeyGit").value || "Compta";
+      var s = (db.services && db.services[svcKey]) || null;
+      if (!s) return alert("État absent pour le service « "+svcKey+" ».");
+
+      // 2) Construire le path en fonction du Service + Date
+      var dstr = document.getElementById("gh_date_git").value || new Date().toISOString().slice(0,10);
+      var d = new Date(dstr+"T12:00:00");
+      var year = String(d.getFullYear());
+      var day  = d.toISOString().slice(0,10);
+      var base = gh.root.replace(/\/+$/,"") + "/" + svcKey + "/" + year + "/" + day;
+      var path = base + "/audit_" + svcKey + "_" + day + ".json";
+
+      // 3) Upsert (création ou mise à jour)
+      document.getElementById("gitStatus").textContent = "Push en cours…";
+      var res = await ghUpsertJson(path, JSON.stringify(s, null, 2), "feat: audit "+svcKey+" "+day+" (.json)");
+      document.getElementById("gitStatus").textContent = "Push OK ✔ ("+res.content.path+")";
+      alert("Push JSON OK.");
+    }catch(e){
+      document.getElementById("gitStatus").textContent = "Erreur push";
+      alert("Erreur push: "+String(e));
+    }
+  });
+
+  // Au chargement, si un état existe, affiche le résumé
+  renderWorkSummary();
 
 })();
 </script>
