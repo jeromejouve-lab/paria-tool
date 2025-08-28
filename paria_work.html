@@ -730,11 +730,59 @@
       alert("Proxy KO : "+String(e));
     }
   });
+	// ====== Édition Charter ======
+  function getSvcKey(){ return (document.getElementById("serviceKeyGit")?.value || "Compta"); }
+
+  function loadCharterToEditor(){
+    var svc = getSvcKey();
+    var raw = localStorage.getItem("paria_db");
+    var s=null;
+    try{ var db=JSON.parse(raw||"{}"); s=db.services&&db.services[svc]?db.services[svc]:null; }catch(e){}
+    var ch = (s && s.charter) ? s.charter : {};
+    ed_obj.value    = ch.objectifs || "";
+    ed_ctx.value    = ch.contexte  || "";
+    ed_hard.value   = ch.contraintes || "";
+    ed_scope.value  = ch.perimetre || "";
+    ed_pains.value  = ch.douleurs  || "";
+    ed_kpi.value    = ch.kpis      || "";
+    ed_tools.value  = ch.outils    || "";
+    ed_roles.value  = ch.roles     || "";
+    ed_budget.value = ch.budget    || "";
+    charterState.textContent = "Chargé ✔";
+  }
+
+  function saveEditorToCharter(){
+    var svc = getSvcKey();
+    var db={services:{}}; try{ db=JSON.parse(localStorage.getItem("paria_db")||"{}"); }catch(e){}
+    if(!db.services) db.services={};
+    if(!db.services[svc]) db.services[svc]={ charter:{}, items:[], decisions:[] };
+
+    db.services[svc].charter = {
+      objectifs: ed_obj.value.trim(),
+      contexte:  ed_ctx.value.trim(),
+      contraintes: ed_hard.value.trim(),
+      perimetre:  ed_scope.value.trim(),
+      douleurs:   ed_pains.value.trim(),
+      kpis:       ed_kpi.value.trim(),
+      outils:     ed_tools.value.trim(),
+      roles:      ed_roles.value.trim(),
+      budget:     ed_budget.value.trim()
+    };
+    localStorage.setItem("paria_db", JSON.stringify(db));
+    if (typeof renderWorkSummary === 'function') renderWorkSummary();
+    charterState.textContent = "Sauvegardé ✔ (pense à Push .json)";
+  }
+
+  btnCharterLoad.addEventListener("click", loadCharterToEditor);
+  btnCharterSave.addEventListener("click", saveEditorToCharter);
+  // auto-load à l’ouverture
+  loadCharterToEditor();
 
 })();
 </script>
 </body>
 </html>
+
 
 
 
