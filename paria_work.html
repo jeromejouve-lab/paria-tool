@@ -53,6 +53,8 @@
     <div style="margin-top:8px">
       <button id="btnSave">Sauver réglages</button>
       <span id="saveState" style="margin-left:8px;color:#2d7">—</span>
+			<button id="btnProxyTest">Tester le proxy</button>
+			<span id="proxyState" style="margin-left:8px;color:#555"></span>
     </div>
   </section>
   <section class="card">
@@ -694,11 +696,46 @@
     localStorage.setItem("paria_db", JSON.stringify(db));
     alert("Ajouté à l'état de travail ✔ (pense à Push .json/.md/.html si besoin)");
   });
+	// ---- Test du proxy (GET + POST echo) ----
+  document.getElementById("btnProxyTest").addEventListener("click", async function(){
+    var url = (localStorage.getItem("paria_proxy_url")||"").trim();
+    if(!url){ alert("Renseigne PROXY_URL puis Sauver réglages."); return; }
+    var secret = (localStorage.getItem("paria_proxy_secret")||"").trim();
+    var label = document.getElementById("proxyState");
+    label.textContent = "Test…";
+
+    try{
+      // GET ping
+      var r1 = await fetch(url);
+      var j1 = await r1.json();
+      var ok1 = j1 && j1.ok === true;
+
+      // POST echo
+      var body = { route:"echo", hello:"ping" };
+      if (secret) body.secret = secret;
+      var r2 = await fetch(url, { method:"POST", headers:{ "Content-Type":"text/plain" }, body: JSON.stringify(body) });
+      var j2 = await r2.json();
+      var ok2 = j2 && j2.ok === true;
+
+      if (ok1 && ok2) {
+        label.style.color = "#2d7";
+        label.textContent = "Proxy OK ✔";
+      } else {
+        label.style.color = "#a60";
+        label.textContent = "Proxy partiel ("+(ok1?"GET ok":"GET ko")+"/"+(ok2?"POST ok":"POST ko")+")";
+      }
+    }catch(e){
+      label.style.color = "#a00";
+      label.textContent = "Erreur";
+      alert("Proxy KO : "+String(e));
+    }
+  });
 
 })();
 </script>
 </body>
 </html>
+
 
 
 
