@@ -83,6 +83,19 @@
 
     <pre id="gh_preview" style="max-height:260px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee;border-radius:8px">—</pre>
   </section>
+	
+	<section class="card">
+		<h3>Exports (MVP) — .md & rapport .html</h3>
+		<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+			<button id="btnPreviewMd">Prévisualiser Markdown</button>
+			<button id="btnPushMd">Push .md → GitHub</button>
+			<button id="btnPreviewHtml">Prévisualiser HTML</button>
+			<button id="btnPushHtml">Push rapport .html → GitHub</button>
+			<span id="exportStatus" style="color:#2d7"></span>
+		</div>
+		<h4>Preview</h4>
+		<pre id="previewBox" style="max-height:280px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee;border-radius:8px">—</pre>
+	</section>
 
   <!-- Onglets -->
   <section id="tab-spec" class="card">
@@ -381,6 +394,185 @@
 
   // Au chargement, si un état existe, affiche le résumé
   renderWorkSummary();
+
+  // ====== ÉTAPE 4 : Export .md & .html (+ push) ======
+
+  // Helpers déjà présents : loadGhCfg(), utf8ToB64(), ghUrl(), ghHeaders(), ghGetFileWithSha()
+  async function ghUpsertText(path, text, message){
+    var gh = loadGhCfg();
+    var sha = null;
+    try { sha = await ghGetFileWithSha(path); } catch(e) {}
+    var body = { message: message || ("update "+path), content: utf8ToB64(text), branch: gh.branch };
+    if (sha) body.sha = sha;
+    var r = await fetch( ghUrl(gh.owner, gh.repo, path), {
+      method:"PUT", headers: ghHeaders(gh.token), body: JSON.stringify(body)
+    });
+    if(!r.ok) throw new Error("PUT "+path+" "+r.status);
+    return r.json();
+  }
+
+  function getWorkForService(){
+    var svcKey = document.getElementById("serviceKeyGit").value || "Compta";
+    var raw = localStorage.getItem("paria_db"); if(!raw) return { key:svcKey, s:null };
+    var db; try{ db = JSON.parse(raw); }catch(e){ return { key:svcKey, s:null }; }
+    var s = db.services && db.services[svcKey] ? db.services[svcKey] : null;
+    return { key:svcKey, s:s };
+  }
+
+  function clientSlugFromRoot(){
+    var gh = loadGhCfg();
+    var parts = (gh.root||'').split('/').filter(Boolean);
+    return parts.length ? parts[parts.length-1] : 'client';
+    // ex: root="clients/acme" => "acme"
+  }
+
+  function makeMarkdown(svcKey, s){
+    var L = [];
+    L.push("# Audit " + svcKey + " — PARIA");
+    L.push("");
+    L.push("## Service Charter");
+    var ch = s.charter || {};
+    var fields = ["objectifs","contexte","contraintes","perimetre","douleurs","kpis","outils","roles","budget"];
+    for (var i=0;i<fields.length;i++){
+      var k=fields[i], v=ch[k]||"-";
+      L.push("- **"+k+"**: "+v);
+    }
+    L.push("");
+    L.push("## Analyses");
+    (s.items||[]).forEach(function(it, i){
+      L.push("### Item #"+(i+1)+" ("+(it._priority_tag||"P3")+")");
+      if (it.reformulation) L.push("Reformulation: "+it.reformulation);
+      var b = (it.paria||{});
+      ["problemes","ameliorations","reconfigurations","integration_ia","actions"].forEach(function(key){
+        var arr = b[key]||[];
+        if(arr.length){ L.push("- **"+key+"**:"); for(var k=0;k<arr.length;k++) L.push("  - "+arr[k]); }
+      });
+      if (it.questions && it.questions.length){
+        L.push("- **Questions**:"); for (var q=0;q<it.questions.length;q++) L.push("  - "+it.questions[q]);
+      }
+      L.push("");
+    });
+    L.push("## Décisions");
+    (s.decisions||[]).forEach(function(d){
+      L.push("- "+ new Date(d.ts).toLocaleString() +" — **"+d.status+"** — "+(d.item?.reformulation||'')+" ("+(d.tag||'P3')+")");
+    });
+    return L.join("\n");
+  }
+
+  function esc(x){ return (x||"").replace(/[&<>]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])); }
+  function buildReportHtml(ctx){
+    var service=ctx.service, ch=ctx.charter||{}, items=ctx.items||[], decs=ctx.decisions||[], brand=ctx.brand||{};
+    var rows = items.map(function(it,i){
+      var props = (it.propositions||[]).map(p=>"<li>"+esc(p.label||"")+" — "+esc(p.type||"")+"</li>").join("");
+      var qs = (it.questions||[]).map(q=>"<li>"+esc(q)+"</li>").join("");
+      var b = it.paria||{};
+      function block(label, arr){ return (arr&&arr.length)? "<li><b>"+label+"</b><ul><li>"+arr.map(esc).join("</li><li>")+"</li></ul></li>":""; }
+      var paria = "<ul>"+
+        block("Problèmes", b.problemes)+
+        block("Améliorations", b.ameliorations)+
+        block("Reconfigurations", b.reconfigurations)+
+        block("Intégration IA", b.integration_ia)+
+        block("Actions", b.actions)+
+      "</ul>";
+      return '<section style="margin:12px 0"><h3>Item #'+(i+1)+' <span style="border:1px solid #ccc;border-radius:12px;padding:2px 8px">'+esc(it._priority_tag||"P3")+'</span></h3><p>'+esc(it.reformulation||"")+'</p>'+paria+
+        (qs? "<p><b>Questions</b><ul>"+qs+"</ul></p>": "")+
+        (props? "<p><b>Propositions</b><ul>"+props+"</ul></p>": "")+
+        "</section>";
+    }).join("");
+    var decList = decs.map(d=>"<li>"+new Date(d.ts).toLocaleString()+" — <b>"+esc(d.status)+"</b> — "+esc(d.item?.reformulation||"")+" ("+esc(d.tag||"P3")+")</li>").join("");
+    return '<!doctype html><html><head><meta charset="utf-8"><title>Rapport — '+esc(brand.client_name||'Client')+' — '+esc(service)+'</title>'+
+      '<style>body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:24px}header{display:flex;align-items:center;gap:16px;margin-bottom:16px}header img{height:48px}.hdr{margin-left:auto;text-align:right;font-size:12px;color:#666}h1{margin:0 0 4px}</style></head><body>'+
+      '<header>'+ (brand.logo_self? '<img src="'+brand.logo_self+'">': '') +
+      '<div><h1>Rapport d\'audit — '+esc(service)+'</h1><small>'+new Date().toLocaleString()+'</small></div>'+
+      '<div class="hdr">'+esc(brand.header||'')+'</div>'+ (brand.logo_client? '<img src="'+brand.logo_client+'">': '') +'</header>'+
+      '<section><h2>Contexte (Charter)</h2><ul>'+
+      '<li><b>Objectifs</b> : '+esc(ch.objectifs||"-")+'</li>'+
+      '<li><b>Contexte & contraintes</b> : '+esc(ch.contexte||"-")+'</li>'+
+      '<li><b>Contraintes strictes</b> : '+esc(ch.contraintes||"-")+'</li>'+
+      '<li><b>Périmètre</b> : '+esc(ch.perimetre||"-")+'</li>'+
+      '<li><b>Douleurs</b> : '+esc(ch.douleurs||"-")+'</li>'+
+      '<li><b>KPI</b> : '+esc(ch.kpis||"-")+'</li>'+
+      '<li><b>Outils</b> : '+esc(ch.outils||"-")+'</li>'+
+      '<li><b>Rôles & charge</b> : '+esc(ch.roles||"-")+'</li>'+
+      '<li><b>Budget & fenêtre</b> : '+esc(ch.budget||"-")+'</li>'+
+      '</ul></section>'+
+      '<section><h2>Synthèse & stratégie</h2><p>Prioriser <b>P1</b> (quick wins), planifier <b>P2</b>, cadrer <b>P3</b>.</p></section>'+
+      '<section><h2>Analyses</h2>'+ (rows||'<em>Aucun item.</em>') +'</section>'+
+      '<section><h2>Décisions</h2><ul>'+ (decList||'<li>—</li>') +'</ul></section>'+
+      '</body></html>';
+  }
+
+  function computePathsForToday(ext){
+    var gh = loadGhCfg();
+    var svcKey = document.getElementById("serviceKeyGit").value || "Compta";
+    var dstr = document.getElementById("gh_date_git").value || new Date().toISOString().slice(0,10);
+    var d = new Date(dstr+"T12:00:00");
+    var year = String(d.getFullYear());
+    var day = d.toISOString().slice(0,10);
+    var base = gh.root.replace(/\/+$/,"") + "/" + svcKey + "/" + year + "/" + day;
+    var client = clientSlugFromRoot();
+    var mdPath   = base + "/audit_" + svcKey + "_" + day + ".md";
+    var htmlPath = base + "/rapport_" + client + "_" + svcKey + "_" + day + ".html";
+    return { mdPath, htmlPath, svcKey, day, client };
+  }
+
+  // Preview MD
+  document.getElementById("btnPreviewMd").addEventListener("click", function(){
+    var w = getWorkForService(); if(!w.s) return alert("Aucun état de travail (importe puis « Adopter »).");
+    var md = makeMarkdown(w.key, w.s);
+    document.getElementById("previewBox").textContent = md;
+  });
+
+  // Push MD
+  document.getElementById("btnPushMd").addEventListener("click", async function(){
+    try{
+      var w = getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
+      var md = makeMarkdown(w.key, w.s);
+      var p = computePathsForToday();
+      document.getElementById("exportStatus").textContent = "Push .md en cours…";
+      var res = await ghUpsertText(p.mdPath, md, "feat: audit "+w.key+" "+p.day+" (.md)");
+      document.getElementById("exportStatus").textContent = "Push .md OK ✔ ("+res.content.path+")";
+      alert("Push MD OK.");
+    }catch(e){
+      document.getElementById("exportStatus").textContent = "Erreur push .md";
+      alert("Erreur push .md: "+String(e));
+    }
+  });
+
+  // Preview HTML
+  document.getElementById("btnPreviewHtml").addEventListener("click", function(){
+    var w = getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
+    var html = buildReportHtml({
+      service: w.key,
+      charter: w.s.charter || {},
+      items: w.s.items || [],
+      decisions: w.s.decisions || [],
+      brand: { header:"", logo_self:"", client_name: clientSlugFromRoot(), logo_client:"" }
+    });
+    document.getElementById("previewBox").textContent = html;
+  });
+
+  // Push HTML
+  document.getElementById("btnPushHtml").addEventListener("click", async function(){
+    try{
+      var w = getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
+      var p = computePathsForToday();
+      var html = buildReportHtml({
+        service: w.key,
+        charter: w.s.charter || {},
+        items: w.s.items || [],
+        decisions: w.s.decisions || [],
+        brand: { header:"", logo_self:"", client_name: p.client, logo_client:"" }
+      });
+      document.getElementById("exportStatus").textContent = "Push .html en cours…";
+      var res = await ghUpsertText(p.htmlPath, html, "feat: audit "+w.key+" "+p.day+" (rapport .html)");
+      document.getElementById("exportStatus").textContent = "Push .html OK ✔ ("+res.content.path+")";
+      alert("Push HTML OK.");
+    }catch(e){
+      document.getElementById("exportStatus").textContent = "Erreur push .html";
+      alert("Erreur push .html: "+String(e));
+    }
+  });
 
 })();
 </script>
