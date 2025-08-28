@@ -1,36 +1,20 @@
 <!doctype html>
 <html lang="fr">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>PARIA — Work</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PARIA — MVP</title>
 <style>
-  :root{--bg:#f7f7f8;--card:#fff;--b:#e6e6e6;--txt:#222}
-  *{box-sizing:border-box}
-  body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt);margin:0}
-  header{display:flex;gap:10px;align-items:center;padding:10px 12px;background:#fff;border-bottom:1px solid var(--b);position:sticky;top:0;z-index:5}
-  .tabs button{background:#fff;border:1px solid var(--b);padding:8px 12px;border-radius:10px;cursor:pointer}
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;background:#f7f7f8}
+  header{display:flex;gap:8px;align-items:center;padding:10px 12px;background:#fff;border-bottom:1px solid #e6e6e6;position:sticky;top:0;z-index:5}
+  .tabs button{background:#fff;border:1px solid #e6e6e6;padding:8px 12px;border-radius:10px;cursor:pointer}
   .tabs button.active{background:#222;color:#fff;border-color:#222}
   main{padding:12px;display:grid;gap:12px}
+  .card{background:#fff;border:1px solid #e6e6e6;border-radius:12px;padding:12px}
+  label{display:block;font-size:12px;color:#555;margin:6px 0 4px}
+  input,textarea,button{font-size:14px}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .full{grid-template-columns:1fr}
-  .card{background:var(--card);border:1px solid var(--b);border-radius:12px;padding:12px}
-  label{font-size:12px;color:#555;display:block;margin:6px 0 4px}
-  input,textarea,select,button{font-size:14px}
-  textarea{width:100%;min-height:90px}
-  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-  .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--b);background:#fafafa}
-  .tag{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--b);margin-left:6px}
-  .p1{background:#ffeaea;border-color:#ffb3b3}
-  .p2{background:#fff7e6;border-color:#ffd08a}
-  .p3{background:#eaf7ff;border-color:#a5d8ff}
   .hide{display:none}
-  .projector{position:fixed;inset:0;background:#fff;z-index:20;padding:20px;overflow:auto;display:none}
-  .projector.show{display:block}
-  pre{white-space:pre-wrap}
-  .grid2{display:grid;gap:8px;grid-template-columns:1fr 1fr}
-  .grid3{display:grid;gap:8px;grid-template-columns:repeat(3,1fr)}
-  small.warn{color:#a00}
 </style>
 </head>
 <body>
@@ -42,476 +26,113 @@
     <button class="tabbtn" data-tab="client">Client</button>
     <button class="tabbtn" data-tab="scenarios">Scénarios</button>
   </div>
-
-  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-    <span>Service</span>
-    <select id="serviceKey">
-      <option>Direction</option><option>RH</option><option selected>Compta</option>
-      <option>IT</option><option>Marketing</option><option>Ventes</option>
-    </select>
-    <span>Date</span>
-    <input id="gh_date" type="date"/>
-  </div>
 </header>
 
 <main>
-  <!-- SETTINGS (toujours visible) -->
+  <!-- Réglages toujours visibles -->
   <section class="card">
-    <h3>Réglages GitHub & Proxy</h3>
-    <div class="grid3">
-      <div><label>Owner</label><input id="gh_owner" placeholder="jeromejouve-lab"/></div>
-      <div><label>Repo</label><input id="gh_repo" placeholder="paria-audits"/></div>
-      <div><label>Branche</label><input id="gh_branch" value="acme"/></div>
-      <div style="grid-column:span 2"><label>Root</label><input id="gh_root" placeholder="clients/acme"/></div>
-      <div><label>Token (fine-grained)</label><input id="gh_token" type="password" placeholder="ghp_..."/></div>
-    </div>
-    <div class="grid3" style="margin-top:8px">
-      <div><label>Message de commit</label><input id="gh_msg" placeholder="feat: audit …"/></div>
-      <div style="grid-column:span 2"><label>PROXY_URL (optionnel, analyse IA)</label><input id="proxy_url" placeholder="https://.../exec"/></div>
-    </div>
-    <div class="actions">
-      <button id="btnGhSave">Sauver réglages</button>
-      <button id="btnGhList">Lister dossier (date & service)</button>
-      <button id="btnGhImport">Importer sélection (.json)</button>
-      <button id="btnGhPushToday">Pusher fichiers du jour (.json .md .html)</button>
-    </div>
-    <div id="gh_list" style="margin-top:8px;font-size:14px"></div>
-  </section>
-
-  <!-- SPEC -->
-  <section id="tab-spec">
+    <h3>Réglages GitHub & Proxy (MVP)</h3>
     <div class="row">
-      <div class="card">
-        <h3>Service Charter</h3>
-        <label>Objectifs</label><textarea id="ch_obj"></textarea>
-        <label>Contexte & contraintes</label><textarea id="ch_ctx"></textarea>
-        <label>Contraintes strictes (ex: “Pas de recrutements”)</label><textarea id="ch_hard"></textarea>
-        <label>Périmètre</label><textarea id="ch_scope"></textarea>
-        <label>Douleurs prioritaires</label><textarea id="ch_pains"></textarea>
-        <label>KPI</label><textarea id="ch_kpi"></textarea>
-        <label>Outils en place</label><textarea id="ch_tools"></textarea>
-        <label>Rôles & charge</label><textarea id="ch_roles"></textarea>
-        <label>Budget & fenêtre</label><textarea id="ch_budget"></textarea>
-        <div class="actions"><button id="btnSaveCharter">Enregistrer (local)</button></div>
+      <div>
+        <label>Owner</label><input id="gh_owner" placeholder="jeromejouve-lab">
+        <label>Repo</label><input id="gh_repo" placeholder="paria-audits">
+        <label>Branche</label><input id="gh_branch" placeholder="acme">
+        <label>Root</label><input id="gh_root" placeholder="clients/acme">
       </div>
-
-      <div class="card">
-        <h3>Branding & Exports</h3>
-        <div class="grid2">
-          <div>
-            <label>Entête (texte)</label><textarea id="brand_header" placeholder="SenIAr — Adresse — Contact"></textarea>
-            <label>Logo SenIAr (URL ou data:)</label><input id="brand_logo_self" placeholder="https://...png"/>
-          </div>
-          <div>
-            <label>Nom de l’entreprise</label><input id="brand_client_name" placeholder="ACME"/>
-            <label>Logo client (URL ou data:)</label><input id="brand_logo_client" placeholder="https://...png"/>
-          </div>
-        </div>
-        <div class="actions">
-          <button id="btnExportMd">Exporter .md</button>
-          <button id="btnExportJson">Exporter .json</button>
-          <button id="btnExportHtml">Exporter Rapport (HTML)</button>
-        </div>
+      <div>
+        <label>Token GitHub (github_pat_…)</label><input id="gh_token" type="password" placeholder="github_pat_...">
+        <label>PROXY_URL (Apps Script)</label><input id="proxy_url" placeholder="https://script.google.com/macros/s/.../exec">
+        <label>Service</label>
+        <select id="serviceKey">
+          <option>Direction</option><option>RH</option><option selected>Compta</option>
+          <option>IT</option><option>Marketing</option><option>Ventes</option>
+        </select>
+        <label>Date (AAAA-MM-JJ)</label><input id="gh_date" type="date">
       </div>
+    </div>
+    <div style="margin-top:8px">
+      <button id="btnSave">Sauver réglages</button>
+      <span id="saveState" style="margin-left:8px;color:#2d7">—</span>
     </div>
   </section>
 
-  <!-- CAPTURE -->
-  <section id="tab-capture" class="hide">
-    <div class="row">
-      <div class="card">
-        <h3>Prise de notes</h3>
-        <textarea id="note"></textarea>
-        <div class="actions">
-          <button id="btnMic">🎤 Dicter</button>
-          <button id="btnAnalyze">Analyser (IA)</button>
-          <small id="proxyWarn" class="warn" style="display:none">Pas de PROXY_URL configuré → analyse désactivée.</small>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Analyse IA (dernier item)</h3>
-        <pre id="analysis"></pre>
-        <div class="actions">
-          <button data-status="valide" class="status">✅ Valider</button>
-          <button data-status="a_preciser" class="status">❓ À préciser</button>
-          <button data-status="refuse" class="status">❌ Refuser</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="row">
-      <div class="card">
-        <h3>Décisions & Suivi</h3>
-        <div id="decisions"></div>
-      </div>
-      <div class="card">
-        <h3>Projector</h3>
-        <div class="actions"><button id="btnProjector">Ouvrir Projector</button></div>
-      </div>
-    </div>
+  <!-- Onglets -->
+  <section id="tab-spec" class="card">
+    <h3>Spécification</h3>
+    <p>Juste un onglet de test. Quand ceci marche, on remet les fonctionnalités.</p>
   </section>
 
-  <!-- CLIENT -->
-  <section id="tab-client" class="hide">
-    <div class="row">
-      <div class="card">
-        <h3>Génération client</h3>
-        <div class="actions">
-          <button id="btnGenForm">Générer formulaire client (.html)</button>
-          <button id="btnImportClientJson">Importer réponses client (.json)</button>
-          <input id="clientJsonFile" type="file" accept="application/json" class="hide"/>
-        </div>
-        <p>Le client valide/annote dans un HTML autonome (sans GPT). Tu importes ensuite le JSON de réponses pour fusionner les décisions.</p>
-      </div>
-      <div class="card">
-        <h3>Aperçu priorisation</h3>
-        <div id="prioView"></div>
-      </div>
-    </div>
+  <section id="tab-capture" class="card hide">
+    <h3>Capture</h3>
+    <p>Onglet actif : OK ✅</p>
   </section>
 
-  <!-- SCENARIOS -->
-  <section id="tab-scenarios" class="hide">
-    <div class="row full">
-      <div class="card">
-        <h3>Scénarios</h3>
-        <div class="actions">
-          <button id="btnForkScenario">Fork → scenario_S1.md</button>
-          <button id="btnPromote">Promote scénario → approved.md & base J+1</button>
-        </div>
-        <div id="scInfo"></div>
-      </div>
-    </div>
+  <section id="tab-client" class="card hide">
+    <h3>Client</h3>
+    <p>Onglet actif : OK ✅</p>
+  </section>
+
+  <section id="tab-scenarios" class="card hide">
+    <h3>Scénarios</h3>
+    <p>Onglet actif : OK ✅</p>
   </section>
 </main>
 
-<!-- Projector modal -->
-<div id="projector" class="projector">
-  <h2>Propositions & Questions</h2>
-  <div id="p_content"></div>
-  <div class="actions" style="margin-top:12px"><button onclick="toggleProjector()">Fermer</button></div>
-</div>
-
 <script>
-/* ---------------- STATE ---------------- */
-let db = { services: {} };
-function svc(){
-  const key = serviceKey.value;
-  if(!db.services[key]) db.services[key] = { charter:{}, items:[], decisions:[], scenarios:[] };
-  return db.services[key];
-}
-
-/* ---------------- TABS ---------------- */
-document.querySelectorAll('.tabbtn').forEach(b=>{
-  b.onclick = ()=>{
-    document.querySelectorAll('.tabbtn').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    const tab = b.dataset.tab;
-    ['spec','capture','client','scenarios'].forEach(id=>{
-      document.getElementById('tab-'+id).classList.toggle('hide', id!==tab);
-    });
-  };
-});
-
-/* ---------------- GITHUB CONFIG ---------------- */
-const gh = { owner:'', repo:'', root:'', token:'', branch:'acme' };
-const HDR = ()=>({
-  'Accept':'application/vnd.github+json',
-  'Authorization':'Bearer '+gh.token,
-  'X-GitHub-Api-Version':'2022-11-28'
-});
-const API = 'https://api.github.com';
-function ghUrl(path){ return `${API}/repos/${encodeURIComponent(gh.owner)}/${encodeURIComponent(gh.repo)}/contents/${encodeURIComponent(path)}`; }
-function utf8ToB64(str){
-  const enc=new TextEncoder().encode(str); let bin=''; for (let i=0;i<enc.length;i++) bin+=String.fromCharCode(enc[i]); return btoa(bin);
-}
-function ymd(d=new Date()){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),dd=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${dd}`;}
-function yyyy(d=new Date()){return String(d.getFullYear());}
-
-try{
-  const saved = JSON.parse(localStorage.getItem('paria_github')||'{}');
-  Object.assign(gh,saved);
-  gh_owner.value=gh.owner||'jeromejouve-lab';
-  gh_repo.value=gh.repo||'paria-audits';
-  gh_branch.value=gh.branch||'acme';
-  gh_root.value=gh.root||'clients/acme';
-  gh_token.value=gh.token||'';
-}catch(e){}
-gh_date.value = new Date().toISOString().slice(0,10);
-proxy_url.value = localStorage.getItem('paria_proxy_url')||'';
-
-btnGhSave.onclick = ()=>{
-  gh.owner = gh_owner.value.trim();
-  gh.repo = gh_repo.value.trim();
-  gh.branch = gh_branch.value.trim();
-  gh.root = gh_root.value.trim().replace(/\/+$/,'');
-  gh.token = gh_token.value.trim();
-  localStorage.setItem('paria_github', JSON.stringify(gh));
-  localStorage.setItem('paria_proxy_url', proxy_url.value.trim());
-  alert('Réglages sauvegardés (local).');
-};
-
-/* List / Import / Push */
-function renderGhList(items, basePath){
-  const html = Array.isArray(items) ? items.map(it=>{
-    const isJson = (it.name||'').toLowerCase().endsWith('.json');
-    return `<div><label><input type="checkbox" class="gh_ck" data-path="${basePath}/${it.name}" data-json="${isJson?'1':'0'}"> ${it.type} — ${it.name}</label></div>`;
-  }).join('') : '<em>Rien</em>';
-  gh_list.innerHTML = html;
-}
-btnGhList.onclick = async ()=>{
-  try{
-    if(!gh.owner||!gh.repo||!gh.root||!gh.token||!gh.branch) return alert('Complète Owner/Repo/Root/Branch/Token.');
-    const d = gh_date.value? new Date(gh_date.value+'T12:00:00') : new Date();
-    const day = ymd(d), year=yyyy(d), key=serviceKey.value;
-    const dir = `${gh.root}/${key}/${year}/${day}`;
-    const r = await fetch(`${ghUrl(dir)}?ref=${encodeURIComponent(gh.branch)}`, { headers: HDR() });
-    if(!r.ok){ gh_list.innerHTML = `<span style="color:#a00">${r.status} ${r.statusText}</span>`; return; }
-    const j = await r.json();
-    renderGhList(j, dir);
-  }catch(e){ gh_list.innerHTML = `<span style="color:#a00">${e}</span>`; }
-};
-async function ghGetFile(path){
-  const r = await fetch(`${ghUrl(path)}?ref=${encodeURIComponent(gh.branch)}`, { headers: HDR() });
-  if(!r.ok) throw new Error('GET '+path+' '+r.status);
-  const j = await r.json();
-  const content = atob((j.content||'').replace(/\n/g,''));
-  return { content, sha:j.sha };
-}
-btnGhImport.onclick = async ()=>{
-  try{
-    const sel = Array.from(document.querySelectorAll('.gh_ck:checked'));
-    if(!sel.length) return alert('Coche un .json à importer.');
-    const first = sel.find(x=>x.dataset.json==='1')||sel[0];
-    const { content } = await ghGetFile(first.dataset.path);
-    const obj = JSON.parse(content);
-    db.services[serviceKey.value] = obj.services?.[serviceKey.value] || obj;
-    localStorage.setItem('paria_db', JSON.stringify(db));
-    hydrate(); alert('Import OK.');
-  }catch(e){ alert('Erreur import: '+e); }
-};
-async function ghUpsert(path, text, msg){
-  let sha=null;
-  try{ const cur = await ghGetFile(path); sha = cur.sha; }catch(e){}
-  const r = await fetch(ghUrl(path), {
-    method:'PUT', headers: HDR(),
-    body: JSON.stringify({ message: msg||('update '+path), content: utf8ToB64(text), branch: gh.branch, sha: sha||undefined })
-  });
-  if(!r.ok) throw new Error('PUT '+path+' '+r.status);
-  return await r.json();
-}
-btnGhPushToday.onclick = async ()=>{
-  try{
-    const s = svc(); if(!s || !Object.keys(s.charter||{}).length) return alert('Charter vide.');
-    const d = gh_date.value? new Date(gh_date.value+'T12:00:00'):new Date();
-    const day = ymd(d), year = yyyy(d), key = serviceKey.value, msg = gh_msg.value.trim()||`feat: audit ${key} ${day}`;
-    const base = `${gh.root}/${key}/${year}/${day}`;
-    const md = makeMarkdown(key, s);
-    const html = buildReportHtml({ service:key, charter:s.charter, items:s.items, decisions:s.decisions, brand:{
-      header: brand_header.value.trim(), logo_self: brand_logo_self.value.trim(), client_name: brand_client_name.value.trim(), logo_client: brand_logo_client.value.trim()
-    }});
-    await ghUpsert(`${base}/audit_${key}_${day}.json`, JSON.stringify(s,null,2), msg);
-    await ghUpsert(`${base}/audit_${key}_${day}.md`, md, msg);
-    await ghUpsert(`${base}/rapport_${(brand_client_name.value||'client')}_${key}_${day}.html`, html, msg);
-    alert('Push GitHub OK.');
-  }catch(e){ alert('Erreur push: '+e); }
-};
-
-/* ---------------- CHARTER ---------------- */
-btnSaveCharter.onclick = ()=>{
-  const s = svc();
-  s.charter = {
-    objectifs: ch_obj.value.trim(), contexte: ch_ctx.value.trim(),
-    contraintes: ch_hard.value.trim(), perimetre: ch_scope.value.trim(),
-    douleurs: ch_pains.value.trim(), kpis: ch_kpi.value.trim(),
-    outils: ch_tools.value.trim(), roles: ch_roles.value.trim(),
-    budget: ch_budget.value.trim()
-  };
-  localStorage.setItem('paria_db', JSON.stringify(db));
-  alert('Charter enregistré (local).');
-};
-function hydrate(){
-  const s = svc();
-  ch_obj.value = s.charter.objectifs||''; ch_ctx.value=s.charter.contexte||'';
-  ch_hard.value = s.charter.contraintes||''; ch_scope.value=s.charter.perimetre||'';
-  ch_pains.value = s.charter.douleurs||''; ch_kpi.value=s.charter.kpis||'';
-  ch_tools.value = s.charter.outils||''; ch_roles.value=s.charter.roles||'';
-  ch_budget.value = s.charter.budget||'';
-  renderDecisions(); renderPrio();
-}
-try{ const raw = localStorage.getItem('paria_db'); if(raw) db = JSON.parse(raw); hydrate(); }catch(e){}
-
-/* ---------------- DICTÉE ---------------- */
-let rec; const micStatus = document.createElement('span'); micStatus.className='pill'; micStatus.textContent='Écoute…'; micStatus.style.display='none';
-document.querySelector('.actions')?.appendChild(micStatus);
-btnMic.onclick = ()=>{
-  if(!('webkitSpeechRecognition' in window)){ alert('Dictée non supportée.'); return; }
-  if(!rec){ rec=new webkitSpeechRecognition(); rec.lang='fr-FR'; rec.continuous=false; rec.interimResults=false;
-    rec.onresult=(e)=>{ note.value=(note.value+' '+e.results[0][0].transcript).trim(); micStatus.style.display='none'; };
-    rec.onend=()=> micStatus.style.display='none';
-  }
-  micStatus.style.display='inline-block'; rec.start();
-};
-
-/* ---------------- ANALYSE IA ---------------- */
-function score(v){ if(!v) return 2; const x=(v+'').toLowerCase(); return x.includes('low')||x==='faible'?1 : x.includes('high')||x==='eleve'?3 : 2; }
-function formCost(v){ if(!v) return 1; const x=(v+'').toLowerCase(); if(x.includes('none')) return 0; if(x.includes('short')) return 1; return 2; }
-function addPriority(item){
-  const props=item.propositions||[]; let sum=0,n=0;
-  props.forEach(p=>{ const ind=p.indicateurs||{}; const effort = score(ind.cout)+score(ind.complexite)+formCost(ind.formation)+(String(ind.embauche).toLowerCase()==='yes'?1:0);
-    const value=3; const prio=value*3-effort; p._prio=prio; sum+=prio; n++; });
-  item._priority_tag = n ? (sum/n>=3?'P1': sum/n>=1?'P2':'P3') : 'P3';
-  return item;
-}
-if(!proxy_url.value) proxyWarn.style.display='inline';
-btnAnalyze.onclick = async ()=>{
-  const PROXY_URL = proxy_url.value.trim();
-  if(!PROXY_URL){ alert('Pas de PROXY_URL configuré.'); return; }
-  const s = svc();
-  const payload = { route:'analyze', model:'gpt-4o-mini', service_key: serviceKey.value, charter: s.charter, note: note.value };
-  const r = await fetch(PROXY_URL, { method:'POST', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload) });
-  const j = await r.json();
-  if(!j.ok){ analysis.textContent='Erreur analyse.'; return; }
-  const item = addPriority(j.data);
-  s.items.push(item);
-  analysis.textContent = JSON.stringify(item,null,2);
-  localStorage.setItem('paria_db', JSON.stringify(db));
-  renderDecisions(); renderPrio();
-};
-
-/* ---------------- DÉCISIONS / PROJECTOR ---------------- */
-document.querySelectorAll('.status').forEach(btn=>{
-  btn.onclick=()=>{
-    const s=svc(); const last=s.items[s.items.length-1]; if(!last) return;
-    s.decisions.push({ ts: Date.now(), status: btn.dataset.status, tag: last._priority_tag, item:last });
-    localStorage.setItem('paria_db', JSON.stringify(db)); renderDecisions();
-  };
-});
-function renderDecisions(){
-  const el = document.getElementById('decisions'); const s=svc();
-  if(!s.decisions?.length){ el.innerHTML='<em>Aucune décision.</em>'; return; }
-  el.innerHTML = s.decisions.slice().reverse().map(d=>{
-    const cls = d.tag==='P1'?'tag p1': d.tag==='P2'?'tag p2':'tag p3';
-    return `<div class="pill">${new Date(d.ts).toLocaleString()} — <b>${d.status}</b> — ${d.item?.reformulation||''} <span class="${cls}">${d.tag}</span></div>`;
-  }).join('');
-}
-function toggleProjector(){
-  const el=document.getElementById('projector'); if(!el.classList.contains('show')){
-    const s=svc(); const it=(s.items||[]).slice(-1)[0];
-    if(!it){ p_content.innerHTML='<em>Pas de contenu.</em>'; }
-    else{
-      const tag=it._priority_tag||'P3'; const props=(it.propositions||[]).map(p=>`• ${p.label} — ${p.type}`).join('<br/>');
-      const qs=(it.questions||[]).map(q=>`? ${q}`).join('<br/>');
-      const tcls=tag==='P1'?'tag p1':tag==='P2'?'tag p2':'tag p3';
-      p_content.innerHTML = `<h3>${new Date().toLocaleString()} <span class="${tcls}">${tag}</span></h3>
-      <div><b>Propositions</b><br/>${props||'—'}</div><div style="margin-top:8px"><b>Questions</b><br/>${qs||'—'}</div>`;
+(function(){
+  // 1) Tabs
+  function showTab(tab){
+    var ids = ["spec","capture","client","scenarios"];
+    for(var i=0;i<ids.length;i++){
+      var id = ids[i];
+      var el = document.getElementById("tab-"+id);
+      if(el){ el.classList.toggle("hide", id!==tab); }
     }
   }
-  el.classList.toggle('show');
-}
-btnProjector.onclick = toggleProjector;
-
-/* ---------------- CLIENT: FORM + IMPORT ---------------- */
-function esc(x){return (x||'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
-function buildReportHtml(ctx){
-  const {service, charter, items, decisions, brand}=ctx;
-  const secParia=(it)=>{const b=it.paria||{}; const line=k=>(b[k]&&b[k].length)? `<li><b>${k}</b><ul><li>${b[k].map(esc).join('</li><li>')}</li></ul></li>`:''; return `<ul>${line('problemes')}${line('ameliorations')}${line('reconfigurations')}${line('integration_ia')}${line('actions')}</ul>`;}
-  const rows=(items||[]).map((it,i)=>`<section style="margin:12px 0"><h3>Item #${i+1} <span style="border:1px solid #ccc;border-radius:12px;padding:2px 8px">${esc(it._priority_tag||'P3')}</span></h3><p>${esc(it.reformulation||'')}</p>${secParia(it)}${(it.questions||[]).length? `<p><b>Questions</b><br/>${it.questions.map(esc).join('<br/>')}</p>`:''}</section>`).join('');
-  const decs=(decisions||[]).map(d=>`<li>${new Date(d.ts).toLocaleString()} — <b>${esc(d.status)}</b> — ${esc(d.item?.reformulation||'')} (${esc(d.tag||'P3')})</li>`).join('');
-  return `<!doctype html><html><head><meta charset="utf-8"/><title>Rapport — ${esc(brand.client_name||'Client')} — ${esc(service)}</title>
-  <style>body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:24px}header{display:flex;align-items:center;gap:16px;margin-bottom:16px}header img{height:48px}.hdr{margin-left:auto;text-align:right;font-size:12px;color:#666}h1{margin:0 0 4px}</style></head><body>
-  <header>${brand.logo_self? `<img src="${brand.logo_self}"/>`:''}<div><h1>Rapport d'audit — ${esc(service)}</h1><small>${new Date().toLocaleString()}</small></div><div class="hdr">${esc(brand.header||'')}</div>${brand.logo_client? `<img src="${brand.logo_client}"/>`:''}</header>
-  <section><h2>Contexte (Charter)</h2><ul>
-    <li><b>Objectifs</b> : ${esc(charter.objectifs||'-')}</li>
-    <li><b>Contexte & contraintes</b> : ${esc(charter.contexte||'-')}</li>
-    <li><b>Contraintes strictes</b> : ${esc(charter.contraintes||'-')}</li>
-    <li><b>Périmètre</b> : ${esc(charter.perimetre||'-')}</li>
-    <li><b>Douleurs</b> : ${esc(charter.douleurs||'-')}</li>
-    <li><b>KPI</b> : ${esc(charter.kpis||'-')}</li>
-    <li><b>Outils</b> : ${esc(charter.outils||'-')}</li>
-    <li><b>Rôles & charge</b> : ${esc(charter.roles||'-')}</li>
-    <li><b>Budget & fenêtre</b> : ${esc(charter.budget||'-')}</li>
-  </ul></section>
-  <section><h2>Synthèse & stratégie</h2><p>Résumé à compléter : prioriser <b>P1</b> (quick wins), planifier <b>P2</b>, cadrer <b>P3</b>.</p></section>
-  <section><h2>Analyses</h2>${rows||'<em>Aucun item.</em>'}</section>
-  <section><h2>Décisions</h2><ul>${decs||'<li>—</li>'}</ul></section>
-  </body></html>`;
-}
-function makeMarkdown(key, s){
-  const L=[]; L.push(`# Audit ${key} — PARIA`);
-  L.push('## Service Charter'); for(const [k,v] of Object.entries(s.charter||{})) L.push(`- **${k}**: ${v||'-'}`);
-  L.push('\n## Analyses'); (s.items||[]).forEach((it,i)=>{L.push(`### Item #${i+1} (${it._priority_tag||'P3'})`); L.push(`Reformulation: ${it.reformulation}`); ['problemes','ameliorations','reconfigurations','integration_ia','actions'].forEach(b=>{const arr=it.paria?.[b]||[]; if(arr.length) L.push(`- **${b}**:\n  - ${arr.join('\n  - ')}`);}); if(it.questions?.length) L.push(`- **Questions**:\n  - ${it.questions.join('\n  - ')}`);});
-  L.push('\n## Décisions'); (s.decisions||[]).forEach(d=>{L.push(`- ${new Date(d.ts).toLocaleString()} — **${d.status}** — ${d.item?.reformulation||''} (${d.tag||'P3'})`);});
-  return L.join('\n');
-}
-function download(name, content, mime){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([content],{type:mime})); a.download=name; a.click(); }
-btnExportMd.onclick = ()=>{ const key=serviceKey.value, s=svc(); download(`audit_${key}_${new Date().toISOString().slice(0,10)}.md`, makeMarkdown(key,s),'text/markdown'); };
-btnExportJson.onclick = ()=>{ const key=serviceKey.value, s=svc(); download(`audit_${key}_${Date.now()}.json`, JSON.stringify(s,null,2),'application/json'); };
-btnExportHtml.onclick = ()=>{ const key=serviceKey.value, s=svc(); const html=buildReportHtml({service:key,charter:s.charter,items:s.items,decisions:s.decisions,brand:{header:brand_header.value.trim(),logo_self:brand_logo_self.value.trim(),client_name:brand_client_name.value.trim(),logo_client:brand_logo_client.value.trim()}}); download(`rapport_${(brand_client_name.value||'client')}_${key}_${new Date().toISOString().slice(0,10)}.html`, html, 'text/html'); };
-
-btnGenForm.onclick = ()=>{
-  const key=serviceKey.value, s=svc();
-  const pend=(s.decisions||[]).filter(d=>d.status!=='refuse');
-  const blocks = pend.map((d,i)=>{ const it=d.item||{}; const props=(it.propositions||[]).map(p=>`<li>${esc(p.label)} — ${esc(p.type)}</li>`).join(''); const qs=(it.questions||[]).map(q=>`<li>${esc(q)}</li>`).join(''); return `
-    <fieldset style="margin-bottom:16px"><legend>Point #${i+1} — ${d.tag}</legend>
-      <p><strong>${esc(it.reformulation||'')}</strong></p>
-      <p><u>Propositions</u>:<ul>${props||'<li>—</li>'}</ul></p>
-      <p><u>Questions</u>:<ul>${qs||'<li>—</li>'}</ul></p>
-      <p>Décision:
-        <label><input type="radio" name="dec_${i}" value="valider"> Valider</label>
-        <label><input type="radio" name="dec_${i}" value="preciser"> À préciser</label>
-        <label><input type="radio" name="dec_${i}" value="refuser"> Refuser</label>
-      </p>
-      <textarea name="com_${i}" placeholder="Commentaires du client" style="width:100%;min-height:70px"></textarea>
-    </fieldset>`; }).join('');
-  const html = `<!doctype html><html><head><meta charset="utf-8"/><title>Formulaire client — ${esc(brand_client_name.value||'Client')} — ${esc(key)}</title></head>
-  <body style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif">
-  <h2>Validation — ${esc(key)}</h2>
-  <form id="f">${blocks||'<em>Rien à valider.</em>'}
-  <button type="button" onclick="export()">Exporter réponses</button></form>
-  <script>
-  function export(){
-    const o={decisions:[]}; const f=document.getElementById('f'); const fs=f.querySelectorAll('fieldset');
-    fs.forEach((fs,i)=>{ const d={idx:i, decision:(f['dec_'+i]?.value)||'', comment:(f['com_'+i]?.value)||''}; o.decisions.push(d); });
-    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(o,null,2)],{type:'application/json'})); a.download='reponses_client.json'; a.click();
+  var btns = document.querySelectorAll(".tabbtn");
+  for(var i=0;i<btns.length;i++){
+    btns[i].addEventListener("click", function(){
+      for(var j=0;j<btns.length;j++){ btns[j].classList.remove("active"); }
+      this.classList.add("active");
+      showTab(this.getAttribute("data-tab"));
+    });
   }
-  </script></body></html>`;
-  download(`form_client_${key}.html`, html, 'text/html');
-};
-btnImportClientJson.onclick=()=> clientJsonFile.click();
-clientJsonFile.onchange = async (e)=>{
-  const f=e.target.files?.[0]; if(!f) return;
-  const text = await f.text(); let obj; try{ obj=JSON.parse(text); }catch(err){ return alert('JSON invalide.'); }
-  const s=svc(); const pend=(s.decisions||[]).filter(d=>d.status!=='refuse');
-  (obj.decisions||[]).forEach((resp,i)=>{ const d=pend[i]; if(!d) return; const map={valider:'valide',preciser:'a_preciser',refuser:'refuse'}; if(resp.decision && map[resp.decision]) d.status=map[resp.decision]; d.comment=resp.comment||d.comment; });
-  localStorage.setItem('paria_db', JSON.stringify(db)); renderDecisions(); alert('Réponses client intégrées.');
-};
-function renderPrio(){
-  const s=svc(); const counts={P1:0,P2:0,P3:0}; (s.items||[]).forEach(it=>counts[it._priority_tag||'P3']++); prioView.innerHTML=`P1: ${counts.P1} · P2: ${counts.P2} · P3: ${counts.P3}`;
-}
 
-/* ---------------- SCENARIOS ---------------- */
-btnForkScenario.onclick=()=>{
-  const s=svc(); const base={...s}; const idx=(s.scenarios?.length||0)+1;
-  const md = `---\ndoc_type: scenario\nscenario_id: S${idx}\nparent_id: work-${new Date().toISOString().slice(0,10)}\nstatus: draft\n---\n\n# Hypothèses\n- \n\n# Plan\n- \n`;
-  s.scenarios.push({ id:`S${idx}`, md, created: Date.now() }); localStorage.setItem('paria_db', JSON.stringify(db)); renderScInfo(); alert(`Scenario S${idx} créé (local).`);
-};
-btnPromote.onclick=()=>{
-  const s=svc(); if(!s.scenarios?.length) return alert('Aucun scénario.');
-  const chosen = s.scenarios[s.scenarios.length-1];
-  s.approved = { md: chosen.md, ts: Date.now() };
-  // Optionnel : préparer un work J+1 (laisse pour l’instant côté flux Git)
-  localStorage.setItem('paria_db', JSON.stringify(db)); renderScInfo(); alert('Scénario promu (approved.md prêt à pousser via .md export).');
-};
-function renderScInfo(){
-  const s=svc(); scInfo.innerHTML = `
-    <p><b>Scénarios:</b> ${(s.scenarios||[]).map(sc=>sc.id).join(', ')||'—'}</p>
-    <p><b>Approved:</b> ${s.approved? new Date(s.approved.ts).toLocaleString():'—'}</p>`;
-}
+  // 2) Charger réglages depuis localStorage
+  function loadCfg(){
+    try{
+      var saved = localStorage.getItem("paria_github");
+      if(saved){
+        var gh = JSON.parse(saved);
+        document.getElementById("gh_owner").value  = gh.owner||"";
+        document.getElementById("gh_repo").value   = gh.repo||"";
+        document.getElementById("gh_branch").value = gh.branch||"";
+        document.getElementById("gh_root").value   = gh.root||"";
+        document.getElementById("gh_token").value  = gh.token||"";
+      }
+      var purl = localStorage.getItem("paria_proxy_url")||"";
+      document.getElementById("proxy_url").value = purl;
+      var d = localStorage.getItem("paria_gh_date");
+      document.getElementById("gh_date").value = d || new Date().toISOString().slice(0,10);
+    }catch(e){}
+  }
+  loadCfg();
 
-/* ---------------- INIT ---------------- */
-gh_msg.value = gh_msg.value || `feat: audit ${serviceKey.value} ${new Date().toLocaleDateString()}`;
+  // 3) Sauver réglages
+  document.getElementById("btnSave").addEventListener("click", function(){
+    var gh = {
+      owner:  document.getElementById("gh_owner").value.trim(),
+      repo:   document.getElementById("gh_repo").value.trim(),
+      branch: document.getElementById("gh_branch").value.trim(),
+      root:   document.getElementById("gh_root").value.trim().replace(/\/+$/,""),
+      token:  document.getElementById("gh_token").value.trim()
+    };
+    localStorage.setItem("paria_github", JSON.stringify(gh));
+    localStorage.setItem("paria_proxy_url", document.getElementById("proxy_url").value.trim());
+    localStorage.setItem("paria_gh_date", document.getElementById("gh_date").value);
+    document.getElementById("saveState").textContent = "Réglages sauvegardés ✔";
+  });
+})();
 </script>
 </body>
 </html>
