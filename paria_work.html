@@ -11,18 +11,19 @@
   body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink)}
   header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
 
+  /* Statuts propositions */
   .status-pill{display:inline-flex;align-items:center;gap:6px;border:1px solid #ddd;border-radius:999px;padding:2px 8px;font-size:12px}
   .dot{width:8px;height:8px;border-radius:50%}
   .dot.pending{background:#9aa3af}
   .dot.a_preciser{background:#f59e0b}
   .dot.valide{background:#10b981}
   .dot.refuse{background:#ef4444}
-
-  .gridProj{display:grid;grid-template-columns:280px 1fr;gap:16px}
-  .gridProj.no-agenda{grid-template-columns:1fr}
-
   .pact{cursor:pointer}
   .pact.active{background:#222;color:#fff;border-color:#222}
+
+  /* Grille Projecteur standalone */
+  .gridProj{display:grid;grid-template-columns:280px 1fr;gap:16px}
+  .gridProj.no-agenda{grid-template-columns:1fr}
 
   .tabs{display:flex;gap:8px;flex-wrap:wrap}
   .tabs button{background:#fff;border:1px solid var(--line);padding:8px 12px;border-radius:10px;cursor:pointer}
@@ -39,11 +40,13 @@
   .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .pill{padding:4px 8px;border-radius:999px;border:1px solid #ddd;background:#fafafa}
   .hide{display:none}
-  /* Projecteur dans l’onglet */
+
+  /* Projecteur (onglet) */
   #projAgenda{border:1px solid #ddd;border-radius:10px;padding:10px;max-height:70vh;overflow:auto}
   #projCard{border:1px solid #ddd;border-radius:10px;padding:16px;min-height:60vh;background:#fff}
-  /* Projecteur en standalone */
-  .full{max-width:1100px;margin:0 auto;padding:16px}
+
+  /* Projecteur standalone */
+  .full{max-width:1200px;margin:0 auto;padding:16px}
 </style>
 </head>
 <body>
@@ -57,7 +60,7 @@
     <button class="tabbtn" data-tab="scenarios">Scénarios</button>
   </div>
   <div class="spacer"></div>
-  <div class="ctx">Service: 
+  <div class="ctx">Service:
     <select id="serviceKey">
       <option>Direction</option><option>RH</option><option selected>Compta</option>
       <option>IT</option><option>Marketing</option><option>Ventes</option>
@@ -74,7 +77,7 @@
       <div class="card">
         <h4>Google Apps Script (proxy)</h4>
         <label>DEPLOY URL</label>
-        <input id="GAS_URL" placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+        <input id="GAS_URL" placeholder="https://script.google.com/macros/s/AKfycb.../exec" value="<<TON_APPS_SCRIPT_DEPLOY_URL>>">
         <div class="actions">
           <button id="btnSaveCfg">Sauver</button>
           <button id="btnTestProxy">Tester</button>
@@ -82,6 +85,7 @@
         </div>
         <small>Le proxy gère : <code>route=analyze|save|load|echo</code>.</small>
       </div>
+
       <div class="card">
         <h4>Work ID (Client · Service · Date)</h4>
         <label>Client</label><input id="workClient" placeholder="ACME">
@@ -103,6 +107,25 @@
           <span id="gsState" class="pill">—</span>
         </div>
       </div>
+
+      <div class="card">
+        <h4>GitHub (versionning)</h4>
+        <label>Owner</label><input id="gh_owner" placeholder="jeromejouve-lab">
+        <label>Repo</label><input id="gh_repo" placeholder="paria-audits">
+        <label>Branch</label><input id="gh_branch" placeholder="main">
+        <label>Base path</label><input id="gh_base" placeholder="clients">
+        <label>Token PAT</label><input id="gh_token" type="password" placeholder="ghp_...">
+        <label>Message de commit</label><input id="gh_msg" placeholder="feat: audit Compta 2025-08-28">
+        <div class="actions">
+          <button id="btnSaveGh">Sauver</button>
+          <button id="btnPushGh">Pousser snapshot (.json + .md)</button>
+          <span id="ghState" class="pill">—</span>
+        </div>
+        <small>Le snapshot pousse l’état du service courant + un Markdown de synthèse.</small>
+      </div>
+    </div>
+
+    <div class="row">
       <div class="card">
         <h4>État local</h4>
         <div class="actions">
@@ -171,11 +194,11 @@
         <div id="decisions"></div>
         <div class="actions" style="margin-top:8px">
           <button id="btnExportMd">Exporter Markdown</button>
+          <button id="btnExportClientHtml">Exporter HTML client</button>
+          <button id="btnImportClientJson">Importer réponses client (JSON)</button>
+          <input id="clientJsonFile" type="file" accept="application/json" style="display:none">
           <span id="expState" class="pill">—</span>
         </div>
-        <button id="btnExportClientHtml">Exporter HTML client</button>
-        <button id="btnImportClientJson">Importer réponses client (JSON)</button>
-        <input id="clientJsonFile" type="file" accept="application/json" style="display:none">
       </div>
     </div>
   </section>
@@ -183,17 +206,13 @@
   <!-- PROJECTEUR (dans la page) -->
   <section id="tab-projecteur" class="card hide">
     <div class="actions" style="justify-content:space-between">
-      <div>
-        <strong>Projecteur (prévisualisation)</strong>
-      </div>
-      <div class="actions">
-        <button id="btnOpenProjector">Ouvrir le Projecteur (nouvel onglet)</button>
-      </div>
+      <div><strong>Projecteur (prévisualisation)</strong></div>
+      <div class="actions"><button id="btnOpenProjector">Ouvrir le Projecteur (nouvel onglet)</button></div>
     </div>
 
     <div class="row">
       <aside id="projAgenda" class="card">
-        <h4>Agenda (simpliﬁé : dernier item)</h4>
+        <h4>Agenda (simplifié)</h4>
         <ol id="projAgendaList"></ol>
       </aside>
 
@@ -202,7 +221,8 @@
       </div>
     </div>
   </section>
-  
+
+  <!-- SCÉNARIOS -->
   <section id="tab-scenarios" class="card hide">
     <div class="actions">
       <button id="btnForkScenario">Dupliquer depuis l’état courant</button>
@@ -210,25 +230,29 @@
     </div>
     <div id="scList" style="margin-top:10px"></div>
   </section>
-
 </main>
 
 <script>
 /* ====== CONFIG ====== */
-const MODEL = 'gpt-4o-mini';
+const MODEL   = 'gpt-4o-mini';
 const GAS_KEY = 'paria_gas_url';
 const DB_KEY  = 'paria_db';
-const WORK_KEY = 'paria_work_id'; // "ACME|Compta|2025-08-28"
+const WORK_KEY= 'paria_work_id'; // "ACME|Compta|2025-08-28"
+
+/* ====== GitHub cfg ====== */
+const GH_OWNER='paria_gh_owner', GH_REPO='paria_gh_repo', GH_BRANCH='paria_gh_branch',
+      GH_BASE='paria_gh_base', GH_TOKEN='paria_gh_token';
+const GH_API = 'https://api.github.com';
 
 function gasUrl(){ return (localStorage.getItem(GAS_KEY)||'').trim(); }
 function setGasUrl(u){ localStorage.setItem(GAS_KEY,u.trim()); }
 
 /* ====== ÉTAT LOCAL ====== */
-let db = { services:{} }; // services[key]={ charter:{}, items:[], decisions:[] }
+let db = { services:{} }; // services[key]={ charter:{}, items:[], decisions:[], scenarios:[] }
 function currentService(){ return document.getElementById('serviceKey').value; }
 function svc(){
   const k=currentService();
-  if(!db.services[k]) db.services[k]={ charter:{}, items:[], decisions:[] };
+  if(!db.services[k]) db.services[k]={ charter:{}, items:[], decisions:[], scenarios:[] };
   return db.services[k];
 }
 function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
@@ -241,9 +265,9 @@ function showTab(id){
     document.getElementById('tab-'+t).classList.toggle('hide', t!==id);
   });
   document.querySelectorAll('.tabbtn').forEach(b=>b.classList.toggle('active', b.dataset.tab===id));
-  // Render hooks
   if(id==='analyse') renderLastItem();
   if(id==='projecteur') renderProjectorInline();
+  if(id==='scenarios') renderScList();
 }
 document.querySelectorAll('.tabbtn').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 
@@ -254,6 +278,11 @@ function currentWorkId(){
   const d = (document.getElementById('workDate').value||'').trim() || new Date().toISOString().slice(0,10);
   return `${c}|${s}|${d}`;
 }
+function parseWorkId(){
+  const wid = localStorage.getItem(WORK_KEY)||'CLIENT|'+currentService()+'|'+new Date().toISOString().slice(0,10);
+  const [client, service, date] = wid.split('|');
+  return {client, service, date};
+}
 function bindWork(){
   const id = currentWorkId();
   localStorage.setItem(WORK_KEY, id);
@@ -261,84 +290,103 @@ function bindWork(){
   document.getElementById('workBindState').textContent = 'lié ✔';
 }
 
-/* ====== RÉGLAGES UI ====== */
+/* ====== BOOT RÉGLAGES ====== */
 (function bootCfg(){
   document.getElementById('GAS_URL').value = gasUrl();
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('workDate').value = today;
   const wid = localStorage.getItem(WORK_KEY)||'—';
   document.getElementById('workIdHdr').textContent = wid;
+
+  // GH cfg
+  gh_owner.value  = localStorage.getItem(GH_OWNER)||'';
+  gh_repo.value   = localStorage.getItem(GH_REPO)||'';
+  gh_branch.value = localStorage.getItem(GH_BRANCH)||'main';
+  gh_base.value   = localStorage.getItem(GH_BASE)||'clients';
+  gh_token.value  = localStorage.getItem(GH_TOKEN)||'';
+  gh_msg.value    = gh_msg.value || `feat: audit ${currentService()} ${today}`;
 })();
-document.getElementById('btnSaveCfg').onclick = ()=>{
-  setGasUrl(document.getElementById('GAS_URL').value);
-  alert('Réglages sauvegardés.');
-};
-document.getElementById('btnTestProxy').onclick = async ()=>{
+btnSaveCfg.onclick = ()=>{ setGasUrl(document.getElementById('GAS_URL').value); alert('Réglages sauvegardés.'); };
+btnTestProxy.onclick = async ()=>{
   const u=gasUrl(); if(!u) return alert('Renseigne le DEPLOY URL.');
   try{
     const r1=await fetch(u+'?route=echo'); const j1=await r1.json();
     const r2=await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({route:'echo',hello:'world'})}); const j2=await r2.json();
-    document.getElementById('proxyState').textContent = (j1.ok&&j2.ok)?'OK ✔':'Partiel';
-  }catch(e){ document.getElementById('proxyState').textContent='Erreur'; }
+    proxyState.textContent = (j1.ok&&j2.ok)?'OK ✔':'Partiel';
+  }catch(e){ proxyState.textContent='Erreur'; }
 };
-document.getElementById('btnBindWork').onclick = bindWork;
+btnBindWork.onclick = bindWork;
 
-  
-document.getElementById('btnForkScenario').onclick = ()=>{
-  const s=svc();
-  (s.scenarios||(s.scenarios=[]));
-  const id = 'S'+((s.scenarios.length||0)+1);
-  s.scenarios.push({ id, snapshot: JSON.parse(JSON.stringify(s)) , ts: Date.now() });
-  saveDB(); renderScList();
-  alert(`Scénario ${id} créé.`);
+/* ====== GH helpers ====== */
+btnSaveGh.onclick = ()=>{
+  localStorage.setItem(GH_OWNER, gh_owner.value.trim());
+  localStorage.setItem(GH_REPO, gh_repo.value.trim());
+  localStorage.setItem(GH_BRANCH, gh_branch.value.trim()||'main');
+  localStorage.setItem(GH_BASE, gh_base.value.trim()||'clients');
+  localStorage.setItem(GH_TOKEN, gh_token.value.trim());
+  ghState.textContent='Sauvé ✔';
 };
-document.getElementById('btnPromoteScenario').onclick = ()=>{
-  const s=svc(); if(!s.scenarios?.length) return alert('Aucun scénario.');
-  // on promeut le dernier pour faire simple
-  const chosen = s.scenarios[s.scenarios.length-1];
-  // remplace l’état courant par le snapshot du scénario
-  const snap = chosen.snapshot || {};
-  // garde le charter mais remplace items/decisions
-  s.items     = snap.items||s.items||[];
-  s.decisions = snap.decisions||s.decisions||[];
-  saveDB(); renderScList();
-  alert('Scénario promu.');
-};
-function renderScList(){
-  const s=svc(); const el=document.getElementById('scList');
-  if(!s.scenarios?.length){ el.innerHTML='<em>Aucun scénario.</em>'; return; }
-  el.innerHTML = s.scenarios.map(sc=>`<div class="pill">${sc.id} — ${new Date(sc.ts).toLocaleString()}</div>`).join(' ');
+function utf8ToBase64(str){ return btoa(unescape(encodeURIComponent(str))); }
+async function ghGetSHA(path){
+  const u = `${GH_API}/repos/${gh_owner.value}/${gh_repo.value}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(gh_branch.value)}`;
+  const r = await fetch(u,{headers:{'Accept':'application/vnd.github+json','Authorization':`Bearer ${gh_token.value}` }});
+  if(r.status===200){ const j=await r.json(); return j.sha||null; }
+  return null;
 }
-  
+async function ghPutFile(path, content, message){
+  const sha = await ghGetSHA(path);
+  const u = `${GH_API}/repos/${gh_owner.value}/${gh_repo.value}/contents/${encodeURIComponent(path)}`;
+  const body = {
+    message: message||'update',
+    content: utf8ToBase64(content),
+    branch: gh_branch.value
+  };
+  if(sha) body.sha = sha;
+  const r = await fetch(u,{
+    method:'PUT',
+    headers:{'Accept':'application/vnd.github+json','Authorization':`Bearer ${gh_token.value}`,'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  if(!r.ok){ const t=await r.text(); throw new Error(`GitHub ${r.status}: ${t}`); }
+  return r.json();
+}
+btnPushGh.onclick = async ()=>{
+  try{
+    ghState.textContent='Push…';
+    const {client, service, date} = parseWorkId();
+    const base = `${gh_base.value}/${client}/${service}/${date}`;
+    const s = svc();
+    // JSON snapshot
+    const json = JSON.stringify(s,null,2);
+    const md   = makeMarkdown(service, s);
+    await ghPutFile(`${base}/state.json`, json, gh_msg.value||`feat: ${service} ${date} snapshot`);
+    await ghPutFile(`${base}/audit_${service}_${date}.md`, md, gh_msg.value||`feat: ${service} ${date} md`);
+    ghState.textContent='OK ✔';
+  }catch(e){ ghState.textContent='Erreur'; alert(e.message); }
+};
+
 /* ====== LOAD / SAVE (Apps Script) ====== */
-document.getElementById('btnLoad').onclick = async ()=>{
+btnLoad.onclick = async ()=>{
   const u=gasUrl(); if(!u) return alert('Proxy non configuré.');
   const service=currentService();
   const r = await fetch(`${u}?route=load&service=${encodeURIComponent(service)}`);
   const j = await r.json();
   if(j?.ok && j.data){
     db.services[service]=j.data;
-    saveDB();
-    hydrateCharter();
-    document.getElementById('gsState').textContent='Chargé ✔';
+    saveDB(); hydrateCharter(); gsState.textContent='Chargé ✔';
   }else alert('Rien à charger.');
 };
-document.getElementById('btnSave').onclick = async ()=>{
+btnSave.onclick = async ()=>{
   const u=gasUrl(); if(!u) return alert('Proxy non configuré.');
   const service=currentService();
-  const body={route:'save', service, data: db.services[service]||{charter:{},items:[],decisions:[]}};
+  const body={route:'save', service, data: db.services[service]||{charter:{},items:[],decisions:[],scenarios:[]} };
   const r=await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)});
-  const j=await r.json();
-  document.getElementById('gsState').textContent = j.ok ? 'Sauvé ✔' : 'Erreur';
+  const j=await r.json(); gsState.textContent = j.ok ? 'Sauvé ✔' : 'Erreur';
 };
 
 /* ====== DUMP / CLEAR ====== */
-document.getElementById('btnDump').onclick = ()=>{
-  document.getElementById('dump').textContent = JSON.stringify(db,null,2);
-};
-document.getElementById('btnClear').onclick = ()=>{
-  if(confirm('Effacer l’état local ?')){ localStorage.removeItem(DB_KEY); loadDB(); document.getElementById('dump').textContent='—'; alert('Réinitialisé.'); }
-};
+btnDump.onclick = ()=>{ dump.textContent = JSON.stringify(db,null,2); };
+btnClear.onclick = ()=>{ if(confirm('Effacer l’état local ?')){ localStorage.removeItem(DB_KEY); loadDB(); dump.textContent='—'; alert('Réinitialisé.'); } };
 
 /* ====== CHARTER ====== */
 function hydrateCharter(){
@@ -346,67 +394,60 @@ function hydrateCharter(){
   ch_obj.value = ch.objectifs||''; ch_ctx.value=ch.contexte||''; ch_scope.value=ch.perimetre||'';
   ch_hard.value = ch.contraintes||''; ch_pains.value=ch.douleurs||''; ch_kpi.value=ch.kpis||'';
   ch_tools.value=ch.outils||''; ch_roles.value=ch.roles||''; ch_budget.value=ch.budget||'';
-  document.getElementById('charterState').textContent='Chargé ✔';
+  charterState.textContent='Chargé ✔';
 }
-document.getElementById('btnCharterFromState').onclick = hydrateCharter;
-document.getElementById('btnCharterToState').onclick = ()=>{
+btnCharterFromState.onclick = hydrateCharter;
+btnCharterToState.onclick = ()=>{
   const s=svc();
   s.charter = {
     objectifs: ch_obj.value.trim(), contexte: ch_ctx.value.trim(), perimetre: ch_scope.value.trim(),
     contraintes: ch_hard.value.trim(), douleurs: ch_pains.value.trim(), kpis: ch_kpi.value.trim(),
     outils: ch_tools.value.trim(), roles: ch_roles.value.trim(), budget: ch_budget.value.trim()
   };
-  saveDB();
-  document.getElementById('charterState').textContent='Sauvé ✔';
+  saveDB(); charterState.textContent='Sauvé ✔';
 };
 
 /* ====== DICTÉE ====== */
 (function setupMic(){
-  const btn = document.getElementById('btnMic');
-  const st  = document.getElementById('micStatus');
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){ st.textContent='(non supportée)'; return; }
+  if(!SR){ micStatus.textContent='(non supportée)'; return; }
   const rec=new SR(); rec.lang='fr-FR'; rec.interimResults=true; rec.continuous=true;
   let on=false;
-  btn.onclick=()=>{
-    if(!on){ rec.start(); on=true; st.textContent='Écoute…'; btn.textContent='■ Stop'; }
-    else { rec.stop(); on=false; st.textContent='—'; btn.textContent='🎙️ Dicter'; }
-  };
+  btnMic.onclick=()=>{ if(!on){ rec.start(); on=true; micStatus.textContent='Écoute…'; btnMic.textContent='■ Stop'; }
+                       else { rec.stop();  on=false; micStatus.textContent='—';       btnMic.textContent='🎙️ Dicter'; } };
   rec.onresult=(e)=>{ let txt=''; for(let i=e.resultIndex;i<e.results.length;i++){ txt+=e.results[i][0].transcript; } note.value=(note.value+' '+txt).trim(); };
-  rec.onend=()=>{ if(on) rec.start(); else { st.textContent='—'; btn.textContent='🎙️ Dicter'; } };
+  rec.onend=()=>{ if(on) rec.start(); else { micStatus.textContent='—'; btnMic.textContent='🎙️ Dicter'; } };
 })();
 
 /* ====== ANALYSE (Apps Script -> OpenAI) ====== */
-document.getElementById('btnAnalyze').onclick = async ()=>{
+btnAnalyze.onclick = async ()=>{
   const u=gasUrl(); if(!u) return alert('Proxy non configuré.');
   const s=svc();
   const payload={ route:'analyze', model:MODEL, service_key: currentService(), charter: s.charter, note: note.value||'' };
-  document.getElementById('aiState').textContent='Analyse…';
+  aiState.textContent='Analyse…';
   try{
     const r=await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
     const j=await r.json();
     if(!j.ok) throw new Error(j.error||'analyse KO');
     const item=j.data;
-    const s=svc();
+
+    // normalisation
     item.id = item.id || ('I'+((s.items?.length||0)+1));
     item.title = item.title || (item.reformulation ? item.reformulation.slice(0,80) : 'Sujet à préciser');
     (item.propositions||[]).forEach((p,i)=>{
       p.pid = p.pid || ('P'+(i+1));
       p.decision = p.decision || { status:'a_preciser', comment:'' };
     });
-    item.pipeline = item.pipeline || 'pret_projecteur'; // prêt à projeter direct
+    item.pipeline = item.pipeline || 'pret_projecteur';
     item.priority = item.priority || 'P2';
-    
-    // 2) push + save
+
     s.items.push(item);
     saveDB();
-    
-    // 3) UI
     analysis.textContent = JSON.stringify(item,null,2);
     aiState.textContent='OK ✔';
     localStorage.setItem('paria_touch', String(Date.now()));
   }catch(e){
-    document.getElementById('aiState').textContent='Erreur';
+    aiState.textContent='Erreur';
     alert('Analyse échouée: '+e.message);
   }
 };
@@ -415,9 +456,8 @@ document.getElementById('btnAnalyze').onclick = async ()=>{
 function renderLastItem(){
   const s=svc();
   const it = (s.items||[])[(s.items||[]).length-1];
-  const el=document.getElementById('lastItem');
-  if(!it){ el.textContent='—'; return; }
-  el.textContent = JSON.stringify({
+  if(!it){ lastItem.textContent='—'; return; }
+  lastItem.textContent = JSON.stringify({
     id: it.id, title: it.title||it.reformulation||'', paria: it.paria||{}, propositions: it.propositions||[], questions: it.questions||[]
   },null,2);
 }
@@ -425,7 +465,7 @@ document.querySelectorAll('.decide').forEach(b=>{
   b.onclick=()=>{
     const s=svc(); const it=(s.items||[])[(s.items||[]).length-1]; if(!it) return;
     (s.decisions||(s.decisions=[])).push({ ts:Date.now(), status:b.dataset.status, item:{ id:it.id, reformulation: it.reformulation||it.title||'' }});
-    saveDB(); renderDecisions(); document.getElementById('decState').textContent='Noté ✔';
+    saveDB(); renderDecisions(); decState.textContent='Noté ✔';
     localStorage.setItem('paria_touch', String(Date.now()));
   };
 });
@@ -433,17 +473,20 @@ function renderDecisions(){
   const s=svc(), el=document.getElementById('decisions');
   if(!s.decisions?.length){ el.innerHTML='<em>Aucune décision.</em>'; return; }
   el.innerHTML = s.decisions.slice().reverse().map(d=>{
-    const label = (it?.title || it?.reformulation || '—');
-    return `<li style="margin:6px 0"><a href="#" data-i="${i}" style="${cur}">${label}</a></li>`;
+    const txt = d.item?.reformulation || d.note || '';
+    const st  = d.status || d.type || '';
+    return `<div class="pill">${new Date(d.ts).toLocaleString()} — <b>${st}</b> — ${txt}</div>`;
   }).join('');
 }
-document.getElementById('btnExportMd').onclick=()=>{
+
+/* ====== EXPORTS ====== */
+btnExportMd.onclick=()=>{
   const key=currentService(); const s=svc();
   const md = makeMarkdown(key,s);
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([md],{type:'text/markdown'}));
   a.download=`audit_${key}_${new Date().toISOString().slice(0,10)}.md`; a.click();
-  document.getElementById('expState').textContent='Exporté ✔';
+  expState.textContent='Exporté ✔';
 };
 function makeMarkdown(key,s){
   const L=[]; L.push(`# Audit ${key} — PARIA`,'','## Service Charter');
@@ -463,76 +506,12 @@ function makeMarkdown(key,s){
     L.push('');
   });
   L.push('## Décisions');
-  (s.decisions||[]).forEach(d=>L.push(`- ${new Date(d.ts).toLocaleString()} — **${d.status}** — ${d.item?.reformulation||''}`));
+  (s.decisions||[]).forEach(d=>L.push(`- ${new Date(d.ts).toLocaleString()} — **${d.status||d.type||''}** — ${d.item?.reformulation||d.note||''}`));
   return L.join('\n');
 }
 
-/* ====== PROJECTEUR : inline + nouvel onglet ====== */
-function chip(t){ return `<span style="border:1px solid #ddd;border-radius:999px;padding:2px 8px;margin-right:6px">${t}</span>`; }
-function stateBadge(p){ const map={discovery:'#A8B0B9',pret_projecteur:'#2463EB',en_validation:'#F59E0B',bouclee:'#10B981'}; const c=map[p]||'#A8B0B9'; return `<span style="background:${c};color:#fff;border-radius:6px;padding:2px 8px">${p||'—'}</span>`; }
-
-function renderProjectorInline(){
-  const s=svc();
-  const it=(s.items||[])[(s.items||[]).length-1];
-  const list=document.getElementById('projAgendaList');
-  const card=document.getElementById('projCard');
-  list.innerHTML = it ? `<li><a href="#" onclick="return false;">${it.id} · ${it.title||it.reformulation||''}</a></li>` : '<li>—</li>';
-  if(!it){ card.innerHTML='<em>Aucun item.</em>'; return; }
-  const chips = (s.charter?.contraintes||'').split(/[;,•\n]/).map(x=>x.trim()).filter(Boolean).slice(0,4).map(chip).join(' ') || chip('—');
-  function pill(dec){ const st=(dec?.status)||'pending';
-    return `<span class="status-pill"><span class="dot ${st}"></span>${st.replace('_',' ')}</span>`;
-  }
-  
-  const props = (it.propositions||[]).map((p,i)=>`
-    <div style="border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div><strong>${p.pid||('P'+(i+1))}</strong> · ${p.label||''} &nbsp; ${pill(p.decision)}</div>
-        <div>
-          <button class="pact" data-act="valide" data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}" style="margin-right:6px">Valider</button>
-          <button class="pact" data-act="a_preciser" data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}" style="margin-right:6px">À préciser</button>
-          <button class="pact" data-act="refuse" data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}">Refuser</button>
-        </div>
-      </div>
-      <div style="opacity:.8;margin:4px 0">coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · embauche:${p.indicateurs?.embauche||'—'}</div>
-      <label style="font-size:.9em;opacity:.8">Commentaire</label>
-      <input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}" value="${p.decision?.comment||''}" style="width:100%">
-    </div>`).join('');
-  
-  // Listeners
-  card.querySelectorAll('.pact').forEach(b=>{
-    b.onclick=()=>{
-      const act=b.dataset.act, c=b.dataset.c, p=b.dataset.p;
-      const s=svc(); const it=s.items.find(x=>x.id===c); if(!it) return;
-      const prop=(it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
-      prop.decision = prop.decision || {status:'a_preciser',comment:''};
-      prop.decision.status=act;
-      const all=(it.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
-      it.pipeline = all ? 'bouclee' : 'en_validation';
-      saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
-      renderProjectorInline();
-    };
-  });
-  card.querySelectorAll('.pcmt').forEach(inp=>{
-    inp.onchange=()=>{
-      const c=inp.dataset.c, p=inp.dataset.p;
-      const s=svc(); const it=s.items.find(x=>x.id===c); if(!it) return;
-      const prop=(it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
-      prop.decision = prop.decision || {status:'a_preciser',comment:''};
-      prop.decision.comment = inp.value;
-      saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
-    };
-  });
-
-  function block(label,arr){ if(!Array.isArray(arr)||!arr.length) return ''; return `<div><strong>${label}</strong><ul style="margin:6px 0 12px 20px">${arr.slice(0,4).map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
-}
-
-document.getElementById('btnOpenProjector').onclick = ()=>{
-  const url = new URL(location.href);
-  url.searchParams.set('projecteur','1');
-  window.open(url.toString(),'projecteur_'+(localStorage.getItem(WORK_KEY)||''), 'noopener');
-};
-
-document.getElementById('btnExportClientHtml').onclick = ()=>{
+/* ====== Export HTML client + Import JSON ====== */
+btnExportClientHtml.onclick = ()=>{
   const s = svc();
   const pack = { service: currentService(), charter: s.charter, items: s.items };
   const html = makeClientHtml(pack);
@@ -541,23 +520,22 @@ document.getElementById('btnExportClientHtml').onclick = ()=>{
   a.download = `form_client_${currentService()}_${new Date().toISOString().slice(0,10)}.html`;
   a.click();
 };
-
-document.getElementById('btnImportClientJson').onclick = ()=> clientJsonFile.click();
-document.getElementById('clientJsonFile').onchange = async (e)=>{
+btnImportClientJson.onclick = ()=> clientJsonFile.click();
+clientJsonFile.onchange = async (e)=>{
   const f=e.target.files?.[0]; if(!f) return;
   let obj; try{ obj=JSON.parse(await f.text()); }catch{ return alert('JSON invalide'); }
-  // Fusion basique par pid
-  const s=svc();
+  const s=svc(); let n=0;
   (obj?.responses||[]).forEach(r=>{
     const it = (s.items||[]).find(x=>x.id===r.card_id); if(!it) return;
     const p  = (it.propositions||[]).find(y=>y.pid===r.pid); if(!p) return;
-    p.decision = { status:r.decision, comment:r.comment||'' };
+    p.decision = { status:r.decision, comment:r.comment||'' }; n++;
+    (s.decisions||(s.decisions=[])).push({ ts:Date.now(), type:'client_import', status:r.decision, item:{ id:it.id, reformulation: it.reformulation||it.title||'' }, note:`${r.pid} ${r.decision}${r.comment? ' ('+r.comment+')':''}` });
   });
   saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
-  alert('Réponses client intégrées.');
+  renderDecisions();
+  alert(`Réponses client intégrées (${n}).`);
 };
-
-// Génère une page autonome pour le client :
+// Génère une page autonome que le client peut remplir (puis Télécharger JSON)
 function makeClientHtml(pack){
   const safe = x=> String(x||'').replace(/[&<>]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;'})[s]);
   const rows = (pack.items||[]).map(it=>{
@@ -585,9 +563,10 @@ function makeClientHtml(pack){
   }).join('');
   return `<!doctype html><meta charset="utf-8"><title>Formulaire client — ${safe(pack.service)}</title>
   <h2>Validation — ${safe(pack.service)}</h2>
-  <p>Choisissez une décision pour chaque proposition, ajoutez un commentaire si besoin, puis <b>Télécharger les réponses</b>.</p>
+  <p>Choisissez une décision pour chaque proposition, ajoutez un commentaire si besoin, puis <b>Télécharger les réponses</b> (ou Fichier → Imprimer → PDF).</p>
   ${rows}
   <button id="dl">Télécharger les réponses (JSON)</button>
+  <button onclick="window.print()">Imprimer/PDF</button>
   <script>
     document.getElementById('dl').onclick = ()=>{
       const picks = [];
@@ -607,51 +586,148 @@ function makeClientHtml(pack){
   </script>`;
 }
 
-  
+/* ====== PROJECTEUR : inline ====== */
+function chip(t){ return `<span style="border:1px solid #ddd;border-radius:999px;padding:2px 8px;margin-right:6px">${t}</span>`; }
+function stateBadge(p){ const map={discovery:'#A8B0B9',pret_projecteur:'#2463EB',en_validation:'#F59E0B',bouclee:'#10B981'}; const c=map[p]||'#A8B0B9'; return `<span style="background:${c};color:#fff;border-radius:6px;padding:2px 8px">${p||'—'}</span>`; }
+
+function renderProjectorInline(){
+  const s=svc();
+  const it=(s.items||[])[(s.items||[]).length-1];
+  const list=document.getElementById('projAgendaList');
+  const card=document.getElementById('projCard');
+  if(!it){
+    list.innerHTML = '<li>—</li>';
+    card.innerHTML='<em>Aucun item.</em>'; return;
+  }
+  const chips = (s.charter?.contraintes||'').split(/[;,•\n]/).map(x=>x.trim()).filter(Boolean).slice(0,4).map(chip).join(' ') || chip('—');
+  function pill(dec){ const st=(dec?.status)||'a_preciser';
+    return `<span class="status-pill"><span class="dot ${st}"></span>${st.replace('_',' ')}</span>`;
+  }
+  list.innerHTML = `<li><a href="#" onclick="return false;">${it.title||it.reformulation||''}</a></li>`;
+  const props = (it.propositions||[]).map((p,i)=>{
+    const st = (p.decision?.status)||'a_preciser';
+    const is = s=> (st===s ? 'class="pact active"' : 'class="pact"');
+    return `
+    <div style="border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><strong>${p.pid||('P'+(i+1))}</strong> · ${p.label||''} &nbsp; ${pill(p.decision)}</div>
+        <div>
+          <button ${is('valide')}     data-act="valide"     data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}" style="margin-right:6px">Valider</button>
+          <button ${is('a_preciser')} data-act="a_preciser" data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}" style="margin-right:6px">À préciser</button>
+          <button ${is('refuse')}     data-act="refuse"     data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}">Refuser</button>
+        </div>
+      </div>
+      <div style="opacity:.8;margin:4px 0">coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · embauche:${p.indicateurs?.embauche||'—'}</div>
+      <label style="font-size:.9em;opacity:.8">Commentaire</label>
+      <input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}" value="${p.decision?.comment||''}" style="width:100%">
+    </div>`;
+  }).join('');
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div>
+        <div style="font-size:18px;font-weight:700">${it.title||it.reformulation||'(sujet à nommer)'}</div>
+        <div style="opacity:.8">${chip('Objectif: '+(it.objectif||'—'))} ${chip('Question: '+(it.question||'—'))}</div>
+      </div>
+      <div>${stateBadge(it.pipeline||'discovery')}</div>
+    </div>
+    <div style="margin:6px 0">${chips}</div>
+    <div style="margin-top:10px;border-top:1px dashed #ddd;padding-top:8px">
+      ${block('Problèmes', it.paria?.problemes)}
+      ${block('Améliorations', it.paria?.ameliorations)}
+      ${block('Reconfigurations', it.paria?.reconfigurations)}
+      ${block('Intégration IA', it.paria?.integration_ia)}
+      ${block('Actions (brouillon)', it.paria?.actions)}
+    </div>
+    <h4 style="margin-top:10px">Propositions</h4>
+    ${props}`;
+  function block(label,arr){ if(!Array.isArray(arr)||!arr.length) return ''; return `<div><strong>${label}</strong><ul style="margin:6px 0 12px 20px">${arr.slice(0,4).map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
+
+  // Listeners
+  card.querySelectorAll('.pact').forEach(b=>{
+    b.onclick=()=>{
+      const act=b.dataset.act, c=b.dataset.c, p=b.dataset.p;
+      const s=svc(); const it=s.items.find(x=>x.id===c); if(!it) return;
+      const prop=(it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
+      prop.decision = prop.decision || {status:'a_preciser',comment:''};
+      prop.decision.status=act;
+      const all=(it.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
+      it.pipeline = all ? 'bouclee' : 'en_validation';
+      saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
+      renderProjectorInline();
+    };
+  });
+  card.querySelectorAll('.pcmt').forEach(inp=>{
+    inp.onchange=()=>{
+      const c=inp.dataset.c, p=inp.dataset.p;
+      const s=svc(); const it=s.items.find(x=>x.id===c); if(!it) return;
+      const prop=(it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
+      prop.decision = prop.decision || {status:'a_preciser',comment:''};
+      prop.decision.comment = inp.value;
+      saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
+    };
+  });
+}
+btnOpenProjector.onclick = ()=>{
+  const url = new URL(location.href);
+  url.searchParams.set('projecteur','1');
+  window.open(url.toString(),'projecteur_'+(localStorage.getItem(WORK_KEY)||''), 'noopener');
+};
+
+/* ====== SCÉNARIOS ====== */
+btnForkScenario.onclick = ()=>{
+  const s=svc();
+  (s.scenarios||(s.scenarios=[]));
+  const id = 'S'+((s.scenarios.length||0)+1);
+  s.scenarios.push({ id, snapshot: JSON.parse(JSON.stringify(s)) , ts: Date.now() });
+  saveDB(); renderScList(); alert(`Scénario ${id} créé.`);
+};
+btnPromoteScenario.onclick = ()=>{
+  const s=svc(); if(!s.scenarios?.length) return alert('Aucun scénario.');
+  const chosen = s.scenarios[s.scenarios.length-1];
+  const snap = chosen.snapshot || {};
+  s.items     = snap.items||s.items||[];
+  s.decisions = snap.decisions||s.decisions||[];
+  saveDB(); renderScList(); alert('Scénario promu.');
+};
+function renderScList(){
+  const s=svc(); const el=document.getElementById('scList');
+  if(!s.scenarios?.length){ el.innerHTML='<em>Aucun scénario.</em>'; return; }
+  el.innerHTML = s.scenarios.map(sc=>`<div class="pill">${sc.id} — ${new Date(sc.ts).toLocaleString()}</div>`).join(' ');
+}
+
 /* ====== BOOT ====== */
-loadDB();
-hydrateCharter();
-renderDecisions();
-renderLastItem();
+loadDB(); hydrateCharter(); renderDecisions(); renderLastItem();
 
-/* ====== ROUTAGE : Projecteur en nouvel onglet ======
-   Si on ouvre la page avec ?projecteur=1, on affiche uniquement le projecteur (plein écran),
-   on lit le même localStorage et on écoute les événements 'storage' pour rafraîchir. */
-
-/* ====== Projecteur standalone interactif ====== */
+/* ====== Projecteur standalone interactif (plein écran) ====== */
 (function maybeStandaloneProjector(){
   const params = new URL(location.href).searchParams;
   if(params.get('projecteur')!=='1') return;
 
-  const DB_KEY   = 'paria_db';
-  const WORK_KEY = 'paria_work_id';
+  function loadLocal(){ try{ return JSON.parse(localStorage.getItem(DB_KEY)||'{"services":{}}'); }catch(e){ return {services:{}}; } }
+  function saveLocal(x){ localStorage.setItem(DB_KEY, JSON.stringify(x)); localStorage.setItem('paria_touch', String(Date.now())); }
 
-  // Helpers localStorage
-  function loadDB(){ try{ return JSON.parse(localStorage.getItem(DB_KEY)||'{"services":{}}'); }catch(e){ return {services:{}}; } }
-  function saveDB(db){ localStorage.setItem(DB_KEY, JSON.stringify(db)); localStorage.setItem('paria_touch', String(Date.now())); }
-
-  // UI minimal plein écran
   document.body.innerHTML = `
-    <div class="full" style="max-width:1200px;margin:0 auto;padding:16px;font-size:16px">
+    <div class="full" style="font-size:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div><strong>Projecteur</strong> — <span id="p_hdr">—</span></div>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <button id="p_prev">◀</button>
           <button id="p_next">▶</button>
           <button id="p_big">A+</button>
           <button id="p_small">A−</button>
           <button id="p_toggle_agenda">Afficher/Masquer Agenda</button>
-          <small style="opacity:.7">Astuce: F11 plein écran · ←/→ navigate · 1/2/3 décider</small>
+          <small style="opacity:.7">F11 plein écran · ←/→ naviguer · 1/2/3 décider</small>
         </div>
       </div>
       <div id="p_grid" class="gridProj">
-        <aside id="p_agenda" ...></aside>
-        <main id="p_card" ...></main>
+        <aside id="p_agenda" style="border:1px solid #ddd;border-radius:10px;padding:10px;max-height:74vh;overflow:auto"></aside>
+        <main id="p_card" style="border:1px solid #ddd;border-radius:10px;padding:16px;min-height:70vh;background:#fff"></main>
       </div>
     </div>
   `;
 
   const hdr   = document.getElementById('p_hdr');
+  const grid  = document.getElementById('p_grid');
   const agenda= document.getElementById('p_agenda');
   const card  = document.getElementById('p_card');
   const btnPrev = document.getElementById('p_prev');
@@ -664,85 +740,69 @@ renderLastItem();
   function stateBadge(p){ const map={discovery:'#A8B0B9',pret_projecteur:'#2463EB',en_validation:'#F59E0B',bouclee:'#10B981'}; const c=map[p]||'#A8B0B9'; return `<span style="background:${c};color:#fff;border-radius:6px;padding:2px 8px">${p||'—'}</span>`; }
   function block(label,arr){ if(!Array.isArray(arr)||!arr.length) return ''; return `<div><strong>${label}</strong><ul style="margin:6px 0 12px 22px">${arr.slice(0,6).map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
 
-  let state = { db: loadDB(), svcKey: null, svc: null, agendaIds: [], idx: 0 };
+  let state = { db: loadLocal(), svcKey: null, svc: null, agendaIds: [], idx: 0 };
 
-  function deriveServiceFromWorkId(){
+  function deriveService(){
     const wid = localStorage.getItem(WORK_KEY)||'';
     const parts = wid.split('|');
     return parts[1] || Object.keys(state.db.services||{})[0] || 'Compta';
   }
-
   function computeAgenda(){
     const items = state.svc.items||[];
     const ag = Array.isArray(state.svc.agenda)&&state.svc.agenda.length ? state.svc.agenda.slice() : items.map(x=>x.id);
     return ag.filter(id => items.some(x=>x.id===id));
   }
-
   function renderAgenda(){
     const items = state.svc.items||[];
-    agenda.innerHTML = `<h4 style="margin:0 0 8px 0">Agenda</h4>` +
-      `<ol style="margin:0;padding-left:18px">` +
-      state.agendaIds.map((cid,i)=>{
-        const it = items.find(x=>x.id===cid);
-        const cur = (i===state.idx) ? 'font-weight:700;text-decoration:underline;' : '';
-        return `<li style="margin:6px 0"><a href="#" data-i="${i}" style="${cur}">const label = (it?.title || it?.reformulation || '—');</a></li>`;
-      }).join('') + `</ol>`;
+    const html = state.agendaIds.map((cid,i)=>{
+      const it = items.find(x=>x.id===cid);
+      const cur = (i===state.idx) ? 'font-weight:700;text-decoration:underline;' : '';
+      const label = (it?.title || it?.reformulation || '—'); /* fix label */ 
+      return `<li style="margin:6px 0"><a href="#" data-i="${i}" style="${cur}">${label}</a></li>`;
+    }).join('');
+    agenda.innerHTML = `<h4 style="margin:0 0 8px 0">Agenda</h4><ol style="margin:0;padding-left:18px">${html||'<li>—</li>'}</ol>`;
     agenda.querySelectorAll('a[data-i]').forEach(a=>{
-      a.onclick = (e)=>{ e.preventDefault(); state.idx = parseInt(a.dataset.i,10)||0; renderCard(); };
+      a.onclick=(e)=>{ e.preventDefault(); state.idx=parseInt(a.dataset.i,10)||0; renderCard(); };
     });
   }
-
   function decide(cardId, pid, status, comment){
     const items = state.svc.items||[];
     const it = items.find(x=>x.id===cardId); if(!it) return;
     const p  = (it.propositions||[]).find(pp=>pp.pid===pid); if(!p) return;
-    p.decision = p.decision || {status:'pending', comment:''};
+    p.decision = p.decision || {status:'a_preciser', comment:''};
     if(status) p.decision.status = status;
     if(comment!==undefined) p.decision.comment = comment;
     const all = (it.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
     it.pipeline = all ? 'bouclee' : 'en_validation';
-    // historisation light (facultatif)
     (it.history||(it.history=[])).push({ts:Date.now(), who:'client', what:`${pid}=${p.decision.status}${p.decision.comment?' ('+p.decision.comment+')':''}`});
-    saveDB(state.db);
-    renderCard(); // refresh local
+    saveLocal(state.db); renderCard();
   }
-
   function renderCard(){
     const items = state.svc.items||[];
     if(!state.agendaIds.length){ card.innerHTML = '<em>Aucun item.</em>'; return; }
-    if(state.idx<0) state.idx=0;
-    if(state.idx>=state.agendaIds.length) state.idx = state.agendaIds.length-1;
-
+    if(state.idx<0) state.idx=0; if(state.idx>=state.agendaIds.length) state.idx = state.agendaIds.length-1;
     const cid = state.agendaIds[state.idx];
     const it  = items.find(x=>x.id===cid);
-    const st = (p.decision?.status)||'a_preciser';
-    const is = s=> (st===s ? 'class="pact active"' : 'class="pact"');
-    
     if(!it){ card.innerHTML='<em>Item introuvable.</em>'; return; }
-
     const chips = (state.svc.charter?.contraintes||'').split(/[;,•\n]/).map(x=>x.trim()).filter(Boolean).slice(0,4).map(chip).join(' ') || chip('—');
-
-    const props = (it.propositions||[]).map((p,i)=>`
+    const props = (it.propositions||[]).map((p,i)=>{
+      const st=(p.decision?.status)||'a_preciser';
+      const is = s=> (st===s ? 'class="pact active"' : 'class="pact"');
+      return `
       <div style="border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div><strong>${p.pid||('P'+(i+1))}</strong> · ${p.label||''}</div>
           <div>
-            <button class="pact" data-c="${it.id}" data-p="${p.pid}" data-act="valide" style="margin-right:6px">Valider</button>
-            <button class="pact" data-c="${it.id}" data-p="${p.pid}" data-act="a_preciser" style="margin-right:6px">À préciser</button>
-            <button class="pact" data-c="${it.id}" data-p="${p.pid}" data-act="refuse">Refuser</button>
-
             <button ${is('valide')}      data-c="${it.id}" data-p="${p.pid}" data-act="valide" style="margin-right:6px">Valider</button>
             <button ${is('a_preciser')}  data-c="${it.id}" data-p="${p.pid}" data-act="a_preciser" style="margin-right:6px">À préciser</button>
             <button ${is('refuse')}      data-c="${it.id}" data-p="${p.pid}" data-act="refuse">Refuser</button>
-
           </div>
         </div>
         <div style="opacity:.8;margin:4px 0">coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · embauche:${p.indicateurs?.embauche||'—'} · données:${p.indicateurs?.donnees||'—'}</div>
         <label style="font-size:.9em;opacity:.8">Commentaire</label>
         <input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid}" value="${p.decision?.comment||''}" style="width:100%">
-      </div>
-    `).join('');
-
+      </div>`;
+    }).join('');
     card.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div>
@@ -765,70 +825,41 @@ renderLastItem();
         <button id="p_prev2">◀ Précédent</button>
         <div>${state.idx+1}/${state.agendaIds.length}</div>
         <button id="p_next2">Suivant ▶</button>
-      </div>
-    `;
-
-    // Actions
-    card.querySelectorAll('.pact').forEach(b=>{
-      b.onclick = ()=> decide(b.dataset.c, b.dataset.p, b.dataset.act);
-    });
-    card.querySelectorAll('.pcmt').forEach(inp=>{
-      inp.onchange = ()=> decide(inp.dataset.c, inp.dataset.p, null, inp.value);
-    });
+      </div>`;
+    card.querySelectorAll('.pact').forEach(b=>{ b.onclick = ()=> decide(b.dataset.c, b.dataset.p, b.dataset.act); });
+    card.querySelectorAll('.pcmt').forEach(inp=>{ inp.onchange = ()=> decide(inp.dataset.c, inp.dataset.p, null, inp.value); });
     document.getElementById('p_prev2').onclick = ()=> { state.idx=Math.max(0,state.idx-1); renderCard(); };
     document.getElementById('p_next2').onclick = ()=> { state.idx=Math.min(state.agendaIds.length-1,state.idx+1); renderCard(); };
   }
-
   function renderAll(){
-    state.db = loadDB();
-    state.svcKey = deriveServiceFromWorkId();
+    state.db = loadLocal();
+    state.svcKey = deriveService();
     state.svc    = state.db.services[state.svcKey] || {charter:{},items:[],agenda:[]};
     state.agendaIds = computeAgenda();
     if(state.idx>=state.agendaIds.length) state.idx = 0;
-    const wid = localStorage.getItem(WORK_KEY)||('— | '+state.svcKey+' | —');
+    const wid = localStorage.getItem(WORK_KEY)||(`— | ${state.svcKey} | —`);
     hdr.textContent = wid;
-    renderAgenda();
-    renderCard();
+    renderAgenda(); renderCard();
   }
-
-  // Boot + refresh quand l’autre onglet modifie le storage
   renderAll();
-  window.addEventListener('storage', (e)=>{
-    if(e.key===DB_KEY || e.key==='paria_touch' || e.key===WORK_KEY) renderAll();
-  });
 
-  // Boutons barre du haut
+  // sync via storage et contrôles
+  window.addEventListener('storage', (e)=>{ if(e.key===DB_KEY || e.key==='paria_touch' || e.key===WORK_KEY) renderAll(); });
   btnPrev.onclick = ()=>{ state.idx=Math.max(0,state.idx-1); renderCard(); };
   btnNext.onclick = ()=>{ state.idx=Math.min(state.agendaIds.length-1,state.idx+1); renderCard(); };
   btnBig.onclick  = ()=>{ document.querySelector('.full').style.fontSize='18px'; };
   btnSmall.onclick= ()=>{ document.querySelector('.full').style.fontSize='15px'; };
-  const grid = document.getElementById('p_grid');
-  btnTogA.onclick = ()=>{
-    const hidden = agenda.style.display === 'none';
-    agenda.style.display = hidden ? 'block' : 'none';
-    grid.classList.toggle('no-agenda', !hidden);
-  };
-
-
-  // Raccourcis clavier (←/→ pour naviguer ; 1/2/3 pour décider sur la 1ᵉ proposition visible)
+  btnTogA.onclick = ()=>{ const hidden = agenda.style.display === 'none'; agenda.style.display = hidden ? 'block' : 'none'; grid.classList.toggle('no-agenda', !hidden); };
   window.addEventListener('keydown', (ev)=>{
     if(ev.key==='ArrowLeft'){ btnPrev.click(); ev.preventDefault(); }
     if(ev.key==='ArrowRight'){ btnNext.click(); ev.preventDefault(); }
     if(['1','2','3'].includes(ev.key)){
-      // applique sur la 1ère proposition visible
-      const first = card.querySelector('.pact[data-act]');
-      if(!first) return;
-      const c = first.getAttribute('data-c');
-      const p = first.getAttribute('data-p');
-      const map = { '1':'valide', '2':'a_preciser', '3':'refuse' };
-      decide(c,p,map[ev.key]);
-      ev.preventDefault();
+      const first = card.querySelector('.pact[data-act]'); if(!first) return;
+      const c = first.getAttribute('data-c'); const p = first.getAttribute('data-p'); const map = { '1':'valide', '2':'a_preciser', '3':'refuse' };
+      decide(c,p,map[ev.key]); ev.preventDefault();
     }
   });
 })();
 </script>
 </body>
 </html>
-
-
-
