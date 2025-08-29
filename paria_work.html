@@ -18,6 +18,12 @@
   .dot.valide{background:#10b981}
   .dot.refuse{background:#ef4444}
 
+  .gridProj{display:grid;grid-template-columns:280px 1fr;gap:16px}
+  .gridProj.no-agenda{grid-template-columns:1fr}
+
+  .pact{cursor:pointer}
+  .pact.active{background:#222;color:#fff;border-color:#222}
+
   .tabs{display:flex;gap:8px;flex-wrap:wrap}
   .tabs button{background:#fff;border:1px solid var(--line);padding:8px 12px;border-radius:10px;cursor:pointer}
   .tabs button.active{background:#222;color:#fff;border-color:#222}
@@ -48,6 +54,7 @@
     <button class="tabbtn" data-tab="capture">Capture</button>
     <button class="tabbtn" data-tab="analyse">Analyse</button>
     <button class="tabbtn" data-tab="projecteur">Projecteur</button>
+    <button class="tabbtn" data-tab="scenarios">Scénarios</button>
   </div>
   <div class="spacer"></div>
   <div class="ctx">Service: 
@@ -166,6 +173,9 @@
           <button id="btnExportMd">Exporter Markdown</button>
           <span id="expState" class="pill">—</span>
         </div>
+        <button id="btnExportClientHtml">Exporter HTML client</button>
+        <button id="btnImportClientJson">Importer réponses client (JSON)</button>
+        <input id="clientJsonFile" type="file" accept="application/json" style="display:none">
       </div>
     </div>
   </section>
@@ -192,6 +202,15 @@
       </div>
     </div>
   </section>
+  
+  <section id="tab-scenarios" class="card hide">
+    <div class="actions">
+      <button id="btnForkScenario">Dupliquer depuis l’état courant</button>
+      <button id="btnPromoteScenario">Promouvoir comme version de travail</button>
+    </div>
+    <div id="scList" style="margin-top:10px"></div>
+  </section>
+
 </main>
 
 <script>
@@ -216,7 +235,7 @@ function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
 function loadDB(){ try{ db = JSON.parse(localStorage.getItem(DB_KEY)||'{"services":{}}'); }catch(e){ db={services:{}}; } }
 
 /* ====== ONGLETING ====== */
-const tabs = ['reglages','capture','analyse','projecteur'];
+const tabs = ['reglages','capture','analyse','projecteur','scenarios'];
 function showTab(id){
   tabs.forEach(t=>{
     document.getElementById('tab-'+t).classList.toggle('hide', t!==id);
@@ -264,6 +283,33 @@ document.getElementById('btnTestProxy').onclick = async ()=>{
 };
 document.getElementById('btnBindWork').onclick = bindWork;
 
+  
+document.getElementById('btnForkScenario').onclick = ()=>{
+  const s=svc();
+  (s.scenarios||(s.scenarios=[]));
+  const id = 'S'+((s.scenarios.length||0)+1);
+  s.scenarios.push({ id, snapshot: JSON.parse(JSON.stringify(s)) , ts: Date.now() });
+  saveDB(); renderScList();
+  alert(`Scénario ${id} créé.`);
+};
+document.getElementById('btnPromoteScenario').onclick = ()=>{
+  const s=svc(); if(!s.scenarios?.length) return alert('Aucun scénario.');
+  // on promeut le dernier pour faire simple
+  const chosen = s.scenarios[s.scenarios.length-1];
+  // remplace l’état courant par le snapshot du scénario
+  const snap = chosen.snapshot || {};
+  // garde le charter mais remplace items/decisions
+  s.items     = snap.items||s.items||[];
+  s.decisions = snap.decisions||s.decisions||[];
+  saveDB(); renderScList();
+  alert('Scénario promu.');
+};
+function renderScList(){
+  const s=svc(); const el=document.getElementById('scList');
+  if(!s.scenarios?.length){ el.innerHTML='<em>Aucun scénario.</em>'; return; }
+  el.innerHTML = s.scenarios.map(sc=>`<div class="pill">${sc.id} — ${new Date(sc.ts).toLocaleString()}</div>`).join(' ');
+}
+  
 /* ====== LOAD / SAVE (Apps Script) ====== */
 document.getElementById('btnLoad').onclick = async ()=>{
   const u=gasUrl(); if(!u) return alert('Proxy non configuré.');
@@ -387,7 +433,8 @@ function renderDecisions(){
   const s=svc(), el=document.getElementById('decisions');
   if(!s.decisions?.length){ el.innerHTML='<em>Aucune décision.</em>'; return; }
   el.innerHTML = s.decisions.slice().reverse().map(d=>{
-    return `<div class="pill">${new Date(d.ts).toLocaleString()} — <b>${d.status}</b> — ${d.item?.reformulation||''}</div>`;
+    const label = (it?.title || it?.reformulation || '—');
+    return `<li style="margin:6px 0"><a href="#" data-i="${i}" style="${cur}">${label}</a></li>`;
   }).join('');
 }
 document.getElementById('btnExportMd').onclick=()=>{
@@ -485,6 +532,82 @@ document.getElementById('btnOpenProjector').onclick = ()=>{
   window.open(url.toString(),'projecteur_'+(localStorage.getItem(WORK_KEY)||''), 'noopener');
 };
 
+document.getElementById('btnExportClientHtml').onclick = ()=>{
+  const s = svc();
+  const pack = { service: currentService(), charter: s.charter, items: s.items };
+  const html = makeClientHtml(pack);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+  a.download = `form_client_${currentService()}_${new Date().toISOString().slice(0,10)}.html`;
+  a.click();
+};
+
+document.getElementById('btnImportClientJson').onclick = ()=> clientJsonFile.click();
+document.getElementById('clientJsonFile').onchange = async (e)=>{
+  const f=e.target.files?.[0]; if(!f) return;
+  let obj; try{ obj=JSON.parse(await f.text()); }catch{ return alert('JSON invalide'); }
+  // Fusion basique par pid
+  const s=svc();
+  (obj?.responses||[]).forEach(r=>{
+    const it = (s.items||[]).find(x=>x.id===r.card_id); if(!it) return;
+    const p  = (it.propositions||[]).find(y=>y.pid===r.pid); if(!p) return;
+    p.decision = { status:r.decision, comment:r.comment||'' };
+  });
+  saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
+  alert('Réponses client intégrées.');
+};
+
+// Génère une page autonome pour le client :
+function makeClientHtml(pack){
+  const safe = x=> String(x||'').replace(/[&<>]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;'})[s]);
+  const rows = (pack.items||[]).map(it=>{
+    const props = (it.propositions||[]).map(p=>`
+      <tr>
+        <td>${safe(p.pid)}</td>
+        <td>${safe(p.label)}</td>
+        <td>
+          <select data-pid="${safe(p.pid)}" data-card="${safe(it.id)}">
+            <option value="valide">Valider</option>
+            <option value="a_preciser" selected>À préciser</option>
+            <option value="refuse">Refuser</option>
+          </select>
+        </td>
+        <td><input type="text" data-cmt="1" data-pid="${safe(p.pid)}" data-card="${safe(it.id)}" placeholder="Commentaire"></td>
+      </tr>`).join('');
+    return `
+      <section style="margin:12px 0;padding:10px;border:1px solid #eee;border-radius:8px">
+        <h3>${safe(it.title||it.reformulation||'(sujet)')}</h3>
+        <table border="1" cellpadding="6" style="border-collapse:collapse;width:100%">
+          <thead><tr><th>PID</th><th>Proposition</th><th>Décision</th><th>Commentaire</th></tr></thead>
+          <tbody>${props}</tbody>
+        </table>
+      </section>`;
+  }).join('');
+  return `<!doctype html><meta charset="utf-8"><title>Formulaire client — ${safe(pack.service)}</title>
+  <h2>Validation — ${safe(pack.service)}</h2>
+  <p>Choisissez une décision pour chaque proposition, ajoutez un commentaire si besoin, puis <b>Télécharger les réponses</b>.</p>
+  ${rows}
+  <button id="dl">Télécharger les réponses (JSON)</button>
+  <script>
+    document.getElementById('dl').onclick = ()=>{
+      const picks = [];
+      document.querySelectorAll('select[data-pid]').forEach(sel=>{
+        const pid=sel.getAttribute('data-pid');
+        const cid=sel.getAttribute('data-card');
+        const decision=sel.value;
+        const cmt = (document.querySelector('input[data-cmt][data-pid="'+pid+'"][data-card="'+cid+'"]')||{}).value||'';
+        picks.push({card_id:cid,pid,decision,comment:cmt});
+      });
+      const blob = new Blob([JSON.stringify({ responses:picks },null,2)],{type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'reponses_client.json';
+      a.click();
+    };
+  </script>`;
+}
+
+  
 /* ====== BOOT ====== */
 loadDB();
 hydrateCharter();
@@ -521,10 +644,9 @@ renderLastItem();
           <small style="opacity:.7">Astuce: F11 plein écran · ←/→ navigate · 1/2/3 décider</small>
         </div>
       </div>
-
-      <div style="display:grid;grid-template-columns:280px 1fr;gap:16px">
-        <aside id="p_agenda" style="border:1px solid #ddd;border-radius:10px;padding:10px;max-height:74vh;overflow:auto"></aside>
-        <main id="p_card" style="border:1px solid #ddd;border-radius:10px;padding:16px;min-height:70vh;background:#fff"></main>
+      <div id="p_grid" class="gridProj">
+        <aside id="p_agenda" ...></aside>
+        <main id="p_card" ...></main>
       </div>
     </div>
   `;
@@ -593,6 +715,9 @@ renderLastItem();
 
     const cid = state.agendaIds[state.idx];
     const it  = items.find(x=>x.id===cid);
+    const st = (p.decision?.status)||'a_preciser';
+    const is = s=> (st===s ? 'class="pact active"' : 'class="pact"');
+    
     if(!it){ card.innerHTML='<em>Item introuvable.</em>'; return; }
 
     const chips = (state.svc.charter?.contraintes||'').split(/[;,•\n]/).map(x=>x.trim()).filter(Boolean).slice(0,4).map(chip).join(' ') || chip('—');
@@ -605,6 +730,11 @@ renderLastItem();
             <button class="pact" data-c="${it.id}" data-p="${p.pid}" data-act="valide" style="margin-right:6px">Valider</button>
             <button class="pact" data-c="${it.id}" data-p="${p.pid}" data-act="a_preciser" style="margin-right:6px">À préciser</button>
             <button class="pact" data-c="${it.id}" data-p="${p.pid}" data-act="refuse">Refuser</button>
+
+            <button ${is('valide')}      data-c="${it.id}" data-p="${p.pid}" data-act="valide" style="margin-right:6px">Valider</button>
+            <button ${is('a_preciser')}  data-c="${it.id}" data-p="${p.pid}" data-act="a_preciser" style="margin-right:6px">À préciser</button>
+            <button ${is('refuse')}      data-c="${it.id}" data-p="${p.pid}" data-act="refuse">Refuser</button>
+
           </div>
         </div>
         <div style="opacity:.8;margin:4px 0">coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · embauche:${p.indicateurs?.embauche||'—'} · données:${p.indicateurs?.donnees||'—'}</div>
@@ -672,7 +802,13 @@ renderLastItem();
   btnNext.onclick = ()=>{ state.idx=Math.min(state.agendaIds.length-1,state.idx+1); renderCard(); };
   btnBig.onclick  = ()=>{ document.querySelector('.full').style.fontSize='18px'; };
   btnSmall.onclick= ()=>{ document.querySelector('.full').style.fontSize='15px'; };
-  btnTogA.onclick = ()=>{ agenda.style.display = (agenda.style.display==='none'?'block':'none'); };
+  const grid = document.getElementById('p_grid');
+  btnTogA.onclick = ()=>{
+    const hidden = agenda.style.display === 'none';
+    agenda.style.display = hidden ? 'block' : 'none';
+    grid.classList.toggle('no-agenda', !hidden);
+  };
+
 
   // Raccourcis clavier (←/→ pour naviguer ; 1/2/3 pour décider sur la 1ᵉ proposition visible)
   window.addEventListener('keydown', (ev)=>{
@@ -693,5 +829,6 @@ renderLastItem();
 </script>
 </body>
 </html>
+
 
 
