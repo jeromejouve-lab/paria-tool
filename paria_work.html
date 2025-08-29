@@ -3,35 +3,51 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PARIA — MVP</title>
+<title>PARIA — Workbench</title>
 <style>
-  body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;background:#f7f7f8}
-  header{display:flex;gap:8px;align-items:center;padding:10px 12px;background:#fff;border-bottom:1px solid #e6e6e6;position:sticky;top:0;z-index:5}
-  .tabs button{background:#fff;border:1px solid #e6e6e6;padding:8px 12px;border-radius:10px;cursor:pointer}
+  :root{--line:#e6e6e6;--bg:#f7f7f8;--ink:#222}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;background:var(--bg);color:var(--ink)}
+  header{display:flex;align-items:center;gap:12px;padding:10px 12px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap}
+  .tabs button{background:#fff;border:1px solid var(--line);padding:8px 12px;border-radius:10px;cursor:pointer}
   .tabs button.active{background:#222;color:#fff;border-color:#222}
+  .spacer{flex:1}
+  .ctx{font-size:12px;opacity:.8}
   main{padding:12px;display:grid;gap:12px}
-  .card{background:#fff;border:1px solid #e6e6e6;border-radius:12px;padding:12px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
   label{display:block;font-size:12px;color:#555;margin:6px 0 4px}
-  input,textarea,button{font-size:14px}
+  input,textarea,button,select{font-size:14px}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .hide{display:none}
+  /* petits blocs */
+  #projAgenda{border:1px solid #ddd;border-radius:10px;padding:10px;max-height:70vh;overflow:auto}
+  #projCard{border:1px solid #ddd;border-radius:10px;padding:16px;min-height:60vh}
+  #previewFrame{width:100%;height:520px;border:1px solid #eee;border-radius:8px;background:#fff}
 </style>
 </head>
 <body>
 
 <header>
-  <div class="tabs">
-    <button class="tabbtn active" data-tab="spec">Spécification</button>
+  <div class="tabs" id="tabbar">
+    <button class="tabbtn active" data-tab="reglages">Réglages</button>
     <button class="tabbtn" data-tab="capture">Capture</button>
-    <button class="tabbtn" data-tab="client">Client</button>
+    <button class="tabbtn" data-tab="board">Board</button>
+    <button class="tabbtn" data-tab="projecteur">Projecteur</button>
+    <button class="tabbtn" data-tab="exports">Exports</button>
     <button class="tabbtn" data-tab="scenarios">Scénarios</button>
+  </div>
+  <div class="spacer"></div>
+  <div class="ctx">
+    Work ID: <span id="projWorkIdHdr">—</span>
   </div>
 </header>
 
 <main>
-  <!-- Réglages toujours visibles -->
-  <section class="card">
-    <h3>Réglages GitHub & Proxy (MVP)</h3>
+
+  <!-- RÉGLAGES -->
+  <section id="tab-reglages" class="card">
+    <h3>Réglages GitHub & Proxy</h3>
     <div class="row">
       <div>
         <label>Owner</label><input id="gh_owner" placeholder="jeromejouve-lab">
@@ -42,773 +58,382 @@
       <div>
         <label>Token GitHub (github_pat_…)</label><input id="gh_token" type="password" placeholder="github_pat_...">
         <label>PROXY_URL (Apps Script)</label><input id="proxy_url" placeholder="https://script.google.com/macros/s/.../exec">
-        <label>Service</label>
-        <select id="serviceKey">
+        <label>Service courant</label>
+        <select id="serviceKeyGit">
           <option>Direction</option><option>RH</option><option selected>Compta</option>
           <option>IT</option><option>Marketing</option><option>Ventes</option>
         </select>
-        <label>Date (AAAA-MM-JJ)</label><input id="gh_date" type="date">
+        <label>Date (AAAA-MM-JJ)</label><input id="gh_date_git" type="date">
       </div>
     </div>
-    <div style="margin-top:8px">
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
       <button id="btnSave">Sauver réglages</button>
-      <span id="saveState" style="margin-left:8px;color:#2d7">—</span>
-			<button id="btnProxyTest">Tester le proxy</button>
-			<span id="proxyState" style="margin-left:8px;color:#555"></span>
+      <span id="saveState" style="color:#2d7">—</span>
+      <button id="btnProxyTest">Tester le proxy</button>
+      <span id="proxyState" style="color:#555"></span>
+      <button id="btnYesterday">Hier</button>
     </div>
-  </section>
-  <section class="card">
-    <h3>Git (MVP) — Lister & Importer</h3>
+
+    <hr style="margin:16px 0">
+    <h3>Git — Lister & Importer</h3>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <span>Service</span>
-      <select id="serviceKeyGit">
-        <option>Direction</option><option>RH</option><option selected>Compta</option>
-        <option>IT</option><option>Marketing</option><option>Ventes</option>
-      </select>
-      <span>Date</span>
-      <input id="gh_date_git" type="date">
-			<button id="btnYesterday">Hier</button>
       <button id="btnGhList">Lister dossier</button>
       <button id="btnGhImport">Importer sélection (.json)</button>
     </div>
     <div id="gh_list" style="margin-top:8px;font-size:14px"></div>
-    <hr>
-    <h4>Aperçu du fichier importé</h4>
-		<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
-			<button id="btnAdopt">Adopter comme état de travail</button>
-			<button id="btnPushJson">Push .json du jour → GitHub</button>
-			<span id="gitStatus" style="color:#2d7"></span>
-		</div>
-		<hr>
-		<h4>Résumé (état de travail)</h4>
-		<div id="workSummary">—</div>
+
+    <h4 style="margin-top:12px">Aperçu du fichier importé</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
+      <button id="btnAdopt">Adopter comme état de travail</button>
+      <button id="btnPushJson">Push .json du jour → GitHub</button>
+      <span id="gitStatus" style="color:#2d7"></span>
+    </div>
     <pre id="gh_preview" style="max-height:260px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee;border-radius:8px">—</pre>
+
+    <h4>Résumé (état de travail)</h4>
+    <div id="workSummary">—</div>
   </section>
 
-	<section class="card">
-	  <h3>Éditer l’état de travail — Charter</h3>
-	  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-	    <div>
-	      <label>Objectifs</label><textarea id="ed_obj"></textarea>
-	      <label>Contexte</label><textarea id="ed_ctx"></textarea>
-	      <label>Contraintes strictes</label><textarea id="ed_hard"></textarea>
-	      <label>Périmètre</label><textarea id="ed_scope"></textarea>
-	      <label>Douleurs</label><textarea id="ed_pains"></textarea>
-	    </div>
-	    <div>
-	      <label>KPI</label><textarea id="ed_kpi"></textarea>
-	      <label>Outils</label><textarea id="ed_tools"></textarea>
-	      <label>Rôles & charge</label><textarea id="ed_roles"></textarea>
-	      <label>Budget & fenêtre</label><textarea id="ed_budget"></textarea>
-	      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-	        <button id="btnCharterLoad">Charger depuis l’état</button>
-	        <button id="btnCharterSave">Sauver dans l’état</button>
-	        <span id="charterState" style="color:#2d7"></span>
-	      </div>
-	    </div>
-	  </div>
-	</section>
+  <!-- CAPTURE -->
+  <section id="tab-capture" class="card hide">
+    <h3>Charter (Service)</h3>
+    <div class="row">
+      <div>
+        <label>Objectifs</label><textarea id="ed_obj"></textarea>
+        <label>Contexte</label><textarea id="ed_ctx"></textarea>
+        <label>Contraintes strictes</label><textarea id="ed_hard"></textarea>
+        <label>Périmètre</label><textarea id="ed_scope"></textarea>
+        <label>Douleurs</label><textarea id="ed_pains"></textarea>
+      </div>
+      <div>
+        <label>KPI</label><textarea id="ed_kpi"></textarea>
+        <label>Outils</label><textarea id="ed_tools"></textarea>
+        <label>Rôles & charge</label><textarea id="ed_roles"></textarea>
+        <label>Budget & fenêtre</label><textarea id="ed_budget"></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+          <button id="btnCharterLoad">Charger depuis l’état</button>
+          <button id="btnCharterSave">Sauver dans l’état</button>
+          <span id="charterState" style="color:#2d7"></span>
+        </div>
+      </div>
+    </div>
 
-	
-	<section class="card">
-		<h3>Exports (MVP) — .md & rapport .html</h3>
-		<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-			<button id="btnPreviewMd">Prévisualiser Markdown</button>
-			<button id="btnPushMd">Push .md → GitHub</button>
-			<button id="btnPreviewHtml">Prévisualiser HTML</button>
-			<button id="btnPushHtml">Push rapport .html → GitHub</button>
-			<button id="btnPreviewHtmlLive">Aperçu HTML (live)</button>
-			<button id="btnOpenHtmlTab">Ouvrir dans un onglet</button>
-			<span id="exportStatus" style="color:#2d7"></span>
-		</div>
-		<h4>Preview</h4>
-		<pre id="previewBox" style="max-height:280px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee;border-radius:8px">—</pre>
-
-		<div id="frameWrap" class="" style="margin-top:8px">
-			<h4>Aperçu live</h4>
-			<iframe id="previewFrame" style="width:100%;height:520px;border:1px solid #eee;border-radius:8px;background:#fff"></iframe>
-		</div>		
-	</section>
-
-  <!-- Onglets -->
-  <section id="tab-spec" class="card">
-    <h3>Spécification</h3>
-    <p>Juste un onglet de test. Quand ceci marche, on remet les fonctionnalités.</p>
+    <hr style="margin:16px 0">
+    <h3>Analyse IA (note → card)</h3>
+    <div style="display:flex;gap:8px;align-items:center">
+      <label for="noteInput"><strong>Note à analyser</strong></label>
+      <button id="btnMic">🎙️ Dicter</button>
+      <span id="micState" style="opacity:.7"></span>
+    </div>
+    <textarea id="noteInput" rows="6" placeholder="Parle ou tape ici…"></textarea>
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+      <button id="btnIaAnalyze">Analyser (IA)</button>
+      <button id="btnIaAdopt">Ajouter au Board</button>
+      <span id="iaStatus" style="color:#2d7"></span>
+    </div>
+    <h4>Résultat</h4>
+    <pre id="iaResult" style="max-height:280px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee;border-radius:8px">—</pre>
   </section>
 
-	<section id="tab-capture" class="card hide">
-	  <h3>Analyse IA (MVP)</h3>
-	  <label>Note à analyser</label>
-	  <textarea id="ia_note" placeholder="Tape ou dicte les infos du service..."></textarea>
-	  <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-	    <button id="btnIaAnalyze">Analyser (IA)</button>
-	    <button id="btnIaAdopt">Ajouter au travail</button>
-	    <span id="iaStatus" style="color:#2d7"></span>
-	  </div>
-	  <h4>Résultat</h4>
-	  <pre id="iaResult" style="max-height:280px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee;border-radius:8px">—</pre>
-	</section>
-
-  <section id="tab-client" class="card hide">
-    <h3>Client</h3>
-    <p>Onglet actif : OK ✅</p>
+  <!-- BOARD -->
+  <section id="tab-board" class="card hide">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div><strong>Board —</strong> Service: <span id="boardService">—</span></div>
+      <div style="display:flex;gap:8px">
+        <button id="boardRefresh">Rafraîchir</button>
+        <button id="boardAddToAgenda">Ajouter à l’Agenda (sélection)</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
+      <div><h4>Discovery</h4><div id="col_discovery"></div></div>
+      <div><h4>Prêt projecteur</h4><div id="col_pret"></div></div>
+      <div><h4>En validation</h4><div id="col_valid"></div></div>
+      <div><h4>Bouclée</h4><div id="col_done"></div></div>
+    </div>
   </section>
 
+  <!-- PROJECTEUR -->
+  <section id="tab-projecteur" class="card hide">
+    <div style="display:flex;align-items:center;gap:12px;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <strong>Projecteur — Service:</strong>
+        <span id="projServiceBadge">—</span>
+        <span id="projWorkId" style="opacity:.7"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label><input type="checkbox" id="projMode"> Mode Présentation</label>
+        <button id="projSync">Sync</button>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;margin-top:12px">
+      <aside id="projAgenda">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <strong>Agenda</strong>
+          <button id="projAgendaRefresh" title="Recharger agenda">↻</button>
+        </div>
+        <ol id="projAgendaList" style="margin:0;padding-left:18px"></ol>
+      </aside>
+
+      <div id="projCard"><em>Ajoute des cards à l’Agenda dans le Board.</em></div>
+    </div>
+  </section>
+
+  <!-- EXPORTS -->
+  <section id="tab-exports" class="card hide">
+    <h3>Exports — .md & rapport .html</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <button id="btnPreviewMd">Prévisualiser Markdown</button>
+      <button id="btnPushMd">Push .md → GitHub</button>
+      <button id="btnPreviewHtml">Prévisualiser HTML</button>
+      <button id="btnPushHtml">Push rapport .html → GitHub</button>
+      <button id="btnPreviewHtmlLive">Aperçu HTML (live)</button>
+      <button id="btnOpenHtmlTab">Ouvrir dans un onglet</button>
+      <span id="exportStatus" style="color:#2d7"></span>
+    </div>
+    <h4>Preview</h4>
+    <pre id="previewBox" style="max-height:280px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee;border-radius:8px">—</pre>
+
+    <div id="frameWrap" style="margin-top:8px">
+      <h4>Aperçu live</h4>
+      <iframe id="previewFrame"></iframe>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3>Formulaire client (HTML autonome)</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="btnGenClientForm">Générer Formulaire (Agenda)</button>
+        <button id="btnImportClientJSON">Importer réponses client (JSON)</button>
+        <input type="file" id="fileClientJSON" accept="application/json" style="display:none">
+        <span id="clientFormState"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCÉNARIOS -->
   <section id="tab-scenarios" class="card hide">
-    <h3>Scénarios</h3>
-    <p>Onglet actif : OK ✅</p>
+    <h3>Scénarios (MVP)</h3>
+    <p>À venir : créer S1/S2, inclure/exclure des cards, contraintes (no-hire, budget), Promote.</p>
   </section>
+
 </main>
 
 <script>
 (function(){
-  // 1) Tabs
+  /* ------------------ TABS ------------------ */
+  const tabs = ["reglages","capture","board","projecteur","exports","scenarios"];
   function showTab(tab){
-    var ids = ["spec","capture","client","scenarios"];
-    for(var i=0;i<ids.length;i++){
-      var id = ids[i];
-      var el = document.getElementById("tab-"+id);
-      if(el){ el.classList.toggle("hide", id!==tab); }
-    }
-  }
-  var btns = document.querySelectorAll(".tabbtn");
-  for(var i=0;i<btns.length;i++){
-    btns[i].addEventListener("click", function(){
-      for(var j=0;j<btns.length;j++){ btns[j].classList.remove("active"); }
-      this.classList.add("active");
-      showTab(this.getAttribute("data-tab"));
+    tabs.forEach(id=>{
+      const el = document.getElementById("tab-"+id);
+      if(el) el.classList.toggle("hide", id!==tab);
     });
+    // onTabEnter
+    if(tab==="board") renderBoard();
+    if(tab==="projecteur") renderProjector();
+    if(tab==="capture")  loadCharterToEditor();
+    // header context
+    document.getElementById("projWorkIdHdr").textContent = (localStorage.getItem("paria_work_id")||"—");
   }
+  document.querySelectorAll(".tabbtn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelectorAll(".tabbtn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      showTab(btn.getAttribute("data-tab"));
+    });
+  });
 
-  // 2) Charger réglages depuis localStorage
+  /* ------------------ CFG ------------------ */
   function loadCfg(){
     try{
-      var saved = localStorage.getItem("paria_github");
+      const saved = localStorage.getItem("paria_github");
       if(saved){
-        var gh = JSON.parse(saved);
-        document.getElementById("gh_owner").value  = gh.owner||"";
-        document.getElementById("gh_repo").value   = gh.repo||"";
-        document.getElementById("gh_branch").value = gh.branch||"";
-        document.getElementById("gh_root").value   = gh.root||"";
-        document.getElementById("gh_token").value  = gh.token||"";
+        const gh = JSON.parse(saved);
+        gh_owner.value  = gh.owner||"";
+        gh_repo.value   = gh.repo||"";
+        gh_branch.value = gh.branch||"";
+        gh_root.value   = gh.root||"";
+        gh_token.value  = gh.token||"";
       }
-      var purl = localStorage.getItem("paria_proxy_url")||"";
-      document.getElementById("proxy_url").value = purl;
-      var d = localStorage.getItem("paria_gh_date");
-      document.getElementById("gh_date").value = d || new Date().toISOString().slice(0,10);
+      proxy_url.value = localStorage.getItem("paria_proxy_url")||"";
+      gh_date_git.value = localStorage.getItem("paria_gh_date") || new Date().toISOString().slice(0,10);
+      serviceKeyGit.value = "Compta";
     }catch(e){}
   }
   loadCfg();
 
-  // 3) Sauver réglages
-  document.getElementById("btnSave").addEventListener("click", function(){
-    var gh = {
-      owner:  document.getElementById("gh_owner").value.trim(),
-      repo:   document.getElementById("gh_repo").value.trim(),
-      branch: document.getElementById("gh_branch").value.trim(),
-      root:   document.getElementById("gh_root").value.trim().replace(/\/+$/,""),
-      token:  document.getElementById("gh_token").value.trim()
+  btnSave.addEventListener("click", ()=>{
+    const gh = {
+      owner:  gh_owner.value.trim(),
+      repo:   gh_repo.value.trim(),
+      branch: gh_branch.value.trim(),
+      root:   gh_root.value.trim().replace(/\/+$/,""),
+      token:  gh_token.value.trim()
     };
     localStorage.setItem("paria_github", JSON.stringify(gh));
-    localStorage.setItem("paria_proxy_url", document.getElementById("proxy_url").value.trim());
-    localStorage.setItem("paria_gh_date", document.getElementById("gh_date").value);
-    document.getElementById("saveState").textContent = "Réglages sauvegardés ✔";
+    localStorage.setItem("paria_proxy_url", proxy_url.value.trim());
+    localStorage.setItem("paria_gh_date", gh_date_git.value);
+    saveState.textContent = "Réglages sauvegardés ✔";
   });
-	  // ====== ÉTAPE 2 : Git (MVP) Lister & Importer ======
-  var API = "https://api.github.com";
 
-  function loadGhCfg(){
-    var gh = { owner:"", repo:"", branch:"", root:"", token:"" };
-    try{
-      var raw = localStorage.getItem("paria_github");
-      if(raw) gh = JSON.parse(raw);
-    }catch(e){}
-    return gh;
-  }
-  function ghHeaders(token){
-    return {
-      "Accept":"application/vnd.github+json",
-      "Authorization":"Bearer "+token,
-      "X-GitHub-Api-Version":"2022-11-28"
-    };
-  }
-  function ghUrl(owner, repo, path, ref){
-    return API + "/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) +
-           "/contents/" + encodeURIComponent(path) + (ref? ("?ref="+encodeURIComponent(ref)) : "");
-  }
-  function ymd(d){ var y=d.getFullYear(), m=("0"+(d.getMonth()+1)).slice(-2), dd=("0"+d.getDate()).slice(-2); return y+"-"+m+"-"+dd; }
+  btnYesterday.addEventListener("click", ()=>{
+    const d = new Date(); d.setDate(d.getDate()-1);
+    gh_date_git.value = d.toISOString().slice(0,10);
+  });
+
+  /* ------------------ GITHUB LISTER/IMPORT ------------------ */
+  const API = "https://api.github.com";
+  function loadGhCfg(){ try{ return JSON.parse(localStorage.getItem("paria_github")||"{}"); }catch(e){ return {}; } }
+  function ghHeaders(token){ return {"Accept":"application/vnd.github+json","Authorization":"Bearer "+token,"X-GitHub-Api-Version":"2022-11-28"}; }
+  function ghUrl(owner,repo,path,ref){ return API+"/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/"+encodeURIComponent(path)+(ref?("?ref="+encodeURIComponent(ref)):""); }
+  function ymd(d){ const y=d.getFullYear(), m=("0"+(d.getMonth()+1)).slice(-2), dd=("0"+d.getDate()).slice(-2); return y+"-"+m+"-"+dd; }
   function yyyy(d){ return String(d.getFullYear()); }
 
-  // init date/service par défaut
-  (function initGitMvpFields(){
-    var d = localStorage.getItem("paria_gh_date");
-    document.getElementById("gh_date_git").value = d || new Date().toISOString().slice(0,10);
-    document.getElementById("serviceKeyGit").value = "Compta";
-  })();
-
-  // Rendu de la liste
   function renderGhList(items, basePath){
-    if(!Array.isArray(items)){ document.getElementById("gh_list").innerHTML = "<em>Rien</em>"; return; }
-    var html = items.map(function(it){
-      var isJson = (it.name||"").toLowerCase().endsWith(".json");
-      return '<div><label><input type="checkbox" class="gh_ck" data-path="'+
-        basePath+'/'+it.name+'" data-json="'+(isJson?'1':'0')+'"> '+it.type+' — '+it.name+'</label></div>';
+    if(!Array.isArray(items)){ gh_list.innerHTML = "<em>Rien</em>"; return; }
+    gh_list.innerHTML = items.map(it=>{
+      const isJson = (it.name||"").toLowerCase().endsWith(".json");
+      return `<div><label><input type="checkbox" class="gh_ck" data-path="${basePath+'/'+it.name}" data-json="${isJson?'1':'0'}"> ${it.type} — ${it.name}</label></div>`;
     }).join("");
-    document.getElementById("gh_list").innerHTML = html;
   }
 
-	document.getElementById('btnYesterday').addEventListener('click', function(){
-		var d = new Date();
-		d.setDate(d.getDate() - 1);
-		document.getElementById('gh_date_git').value = d.toISOString().slice(0,10);
-	});
-
-  // Bouton Lister
-  document.getElementById("btnGhList").addEventListener("click", async function(){
+  btnGhList.addEventListener("click", async ()=>{
     try{
-      var gh = loadGhCfg();
-      if(!gh.owner||!gh.repo||!gh.root||!gh.branch||!gh.token){ alert("Complète les réglages GitHub (en haut) puis Sauver."); return; }
-      var svc = document.getElementById("serviceKeyGit").value;
-      var dstr = document.getElementById("gh_date_git").value || new Date().toISOString().slice(0,10);
-      var d = new Date(dstr+"T12:00:00");
-      var day = ymd(d), year = yyyy(d);
-      var dir = gh.root.replace(/\/+$/,"") + "/" + svc + "/" + year + "/" + day;
-
-      var url = ghUrl(gh.owner, gh.repo, dir, gh.branch);
-      var r = await fetch(url, { headers: ghHeaders(gh.token) });
-      if(!r.ok){ document.getElementById("gh_list").innerHTML = '<span style="color:#a00">'+r.status+' '+r.statusText+'</span>'; return; }
-      var j = await r.json();
-      renderGhList(j, dir);
-    }catch(e){
-      document.getElementById("gh_list").innerHTML = '<span style="color:#a00">'+String(e)+'</span>';
-    }
+      const gh = loadGhCfg();
+      if(!gh.owner||!gh.repo||!gh.root||!gh.branch||!gh.token){ alert("Complète les réglages GitHub puis Sauver."); return; }
+      const svc = serviceKeyGit.value;
+      const dstr = gh_date_git.value || new Date().toISOString().slice(0,10);
+      const d=new Date(dstr+"T12:00:00"), day=ymd(d), year=yyyy(d);
+      const dir = gh.root.replace(/\/+$/,"")+"/"+svc+"/"+year+"/"+day;
+      const r = await fetch(ghUrl(gh.owner,gh.repo,dir,gh.branch), {headers:ghHeaders(gh.token)});
+      if(!r.ok){ gh_list.innerHTML = `<span style="color:#a00">${r.status} ${r.statusText}</span>`; return; }
+      renderGhList(await r.json(), dir);
+    }catch(e){ gh_list.innerHTML = `<span style="color:#a00">${String(e)}</span>`; }
   });
 
-  // GET fichier (helper)
   async function ghGetFile(path){
-    var gh = loadGhCfg();
-    var r = await fetch( ghUrl(gh.owner, gh.repo, path, gh.branch), { headers: ghHeaders(gh.token) } );
+    const gh = loadGhCfg();
+    const r = await fetch(ghUrl(gh.owner,gh.repo,path,gh.branch),{headers:ghHeaders(gh.token)});
     if(!r.ok) throw new Error("GET "+path+" "+r.status);
-    var j = await r.json();
-    var b64 = (j.content||"").replace(/\n/g,"");
-    // Décodage base64 (sans dépendance)
-    var txt = atob(b64);
-    return txt;
+    const j = await r.json(); return atob((j.content||"").replace(/\n/g,""));
   }
 
-  // Bouton Importer
-  document.getElementById("btnGhImport").addEventListener("click", async function(){
+  btnGhImport.addEventListener("click", async ()=>{
     try{
-      var boxes = Array.prototype.slice.call(document.querySelectorAll(".gh_ck:checked"));
-      if(!boxes.length) return alert("Coche un fichier .json à importer.");
-      var first = boxes.find(function(x){ return x.dataset.json==="1"; }) || boxes[0];
-      var txt = await ghGetFile(first.dataset.path);
-      // On vérifie juste que c'est du JSON et on affiche dans l'aperçu
-      var obj;
-      try{ obj = JSON.parse(txt); }catch(e){ return alert("Le fichier sélectionné n'est pas un JSON valide."); }
-      document.getElementById("gh_preview").textContent = JSON.stringify(obj, null, 2);
-      // Option : le garder en local pour la suite
+      const boxes = [...document.querySelectorAll(".gh_ck:checked")];
+      if(!boxes.length) return alert("Coche un .json à importer.");
+      const first = boxes.find(x=>x.dataset.json==="1")||boxes[0];
+      const txt = await ghGetFile(first.dataset.path);
+      let obj; try{ obj=JSON.parse(txt); }catch(e){ return alert("JSON invalide"); }
+      gh_preview.textContent = JSON.stringify(obj,null,2);
       localStorage.setItem("paria_last_import", txt);
       alert("Import OK.");
-    }catch(e){
-      alert("Erreur import: "+String(e));
-    }
+    }catch(e){ alert("Erreur import: "+String(e)); }
   });
-	
-	// ====== ÉTAPE 3 : Adopter et Push .json ======
 
-  // Afficher un petit résumé "Charter" de l'état de travail
-  function renderWorkSummary() {
-    var raw = localStorage.getItem("paria_db");
-    if (!raw) { document.getElementById("workSummary").textContent = "—"; return; }
-    var db;
-    try { db = JSON.parse(raw); } catch(e){ document.getElementById("workSummary").textContent = "—"; return; }
-    // On prend le service choisi dans le select en haut de cette carte
-    var svcKey = document.getElementById("serviceKeyGit").value || "Compta";
-    var s = (db.services && db.services[svcKey]) || null;
-    if (!s) { document.getElementById("workSummary").textContent = "Aucun état pour le service « "+svcKey+" »."; return; }
-
-    var ch = s.charter || {};
-    var html = '<ul style="margin:0;padding-left:18px">';
-    html += '<li><b>Objectifs</b> : ' + (ch.objectifs || '—') + '</li>';
-    html += '<li><b>Contexte</b> : ' + (ch.contexte || '—') + '</li>';
-    html += '<li><b>Contraintes strictes</b> : ' + (ch.contraintes || '—') + '</li>';
-    html += '<li><b>Périmètre</b> : ' + (ch.perimetre || '—') + '</li>';
-    html += '<li><b>Douleurs</b> : ' + (ch.douleurs || '—') + '</li>';
-    html += '<li><b>KPI</b> : ' + (ch.kpis || '—') + '</li>';
-    html += '<li><b>Outils</b> : ' + (ch.outils || '—') + '</li>';
-    html += '<li><b>Rôles & charge</b> : ' + (ch.roles || '—') + '</li>';
-    html += '<li><b>Budget & fenêtre</b> : ' + (ch.budget || '—') + '</li>';
+  // adopt & push json
+  function renderWorkSummary(){
+    const raw = localStorage.getItem("paria_db"); if(!raw){ workSummary.textContent="—"; return; }
+    let db; try{ db=JSON.parse(raw); }catch(e){ workSummary.textContent="—"; return; }
+    const svcKey = serviceKeyGit.value || "Compta";
+    const s = db.services && db.services[svcKey] || null;
+    if(!s){ workSummary.textContent = `Aucun état pour « ${svcKey} ».`; return; }
+    const ch = s.charter || {};
+    let html = '<ul style="margin:0;padding-left:18px">';
+    html += `<li><b>Objectifs</b> : ${ch.objectifs||'—'}</li>`;
+    html += `<li><b>Contexte</b> : ${ch.contexte||'—'}</li>`;
+    html += `<li><b>Contraintes strictes</b> : ${ch.contraintes||'—'}</li>`;
+    html += `<li><b>Périmètre</b> : ${ch.perimetre||'—'}</li>`;
+    html += `<li><b>Douleurs</b> : ${ch.douleurs||'—'}</li>`;
+    html += `<li><b>KPI</b> : ${ch.kpis||'—'}</li>`;
+    html += `<li><b>Outils</b> : ${ch.outils||'—'}</li>`;
+    html += `<li><b>Rôles & charge</b> : ${ch.roles||'—'}</li>`;
+    html += `<li><b>Budget & fenêtre</b> : ${ch.budget||'—'}</li>`;
     html += '</ul>';
-
-    // Compteur d'items si présent
-    var nItems = Array.isArray(s.items) ? s.items.length : 0;
-    html += '<p style="margin-top:8px">Items : <b>'+nItems+'</b></p>';
-
-    document.getElementById("workSummary").innerHTML = html;
+    const nItems = Array.isArray(s.items)? s.items.length : 0;
+    html += `<p style="margin-top:8px">Items : <b>${nItems}</b></p>`;
+    workSummary.innerHTML = html;
   }
 
-  // Bouton "Adopter" → prend le dernier JSON importé et le range comme état de travail
-  document.getElementById("btnAdopt").addEventListener("click", function(){
-    var txt = localStorage.getItem("paria_last_import");
-    if (!txt) return alert("Importe d'abord un .json (bouton « Importer sélection »).");
-    var obj;
-    try { obj = JSON.parse(txt); } catch(e){ return alert("Le JSON importé est invalide."); }
-
-    // Structure de base { services: { [service]: {...} } }
-    var svcKey = document.getElementById("serviceKeyGit").value || "Compta";
-    var db = { services:{} };
+  btnAdopt.addEventListener("click", ()=>{
+    const txt = localStorage.getItem("paria_last_import");
+    if(!txt) return alert("Importe d'abord un .json.");
+    let obj; try{ obj=JSON.parse(txt); }catch(e){ return alert("JSON invalide."); }
+    const svcKey = serviceKeyGit.value || "Compta";
+    let db={services:{}}; try{ db=JSON.parse(localStorage.getItem("paria_db")||"{}"); }catch(e){}
+    if(!db.services) db.services={};
     db.services[svcKey] = obj.services && obj.services[svcKey] ? obj.services[svcKey] : obj;
     localStorage.setItem("paria_db", JSON.stringify(db));
     renderWorkSummary();
-    document.getElementById("gitStatus").textContent = "État adopté ✔";
+    gitStatus.textContent = "État adopté ✔";
   });
 
-  // Helpers GitHub (encodage + upsert)
-  function utf8ToB64(str){
-    var enc = new TextEncoder().encode(str), bin='';
-    for (var i=0;i<enc.length;i++) bin += String.fromCharCode(enc[i]);
-    return btoa(bin);
-  }
+  function utf8ToB64(str){ const enc=new TextEncoder().encode(str); let bin=''; for(let b of enc) bin+=String.fromCharCode(b); return btoa(bin); }
   async function ghGetFileWithSha(path){
-    var gh = loadGhCfg();
-    var r = await fetch( ghUrl(gh.owner, gh.repo, path, gh.branch), { headers: ghHeaders(gh.token) } );
+    const gh = loadGhCfg();
+    const r = await fetch(ghUrl(gh.owner,gh.repo,path,gh.branch),{headers:ghHeaders(gh.token)});
     if(!r.ok) throw new Error("GET "+path+" "+r.status);
-    var j = await r.json();
-    return j.sha || null;
+    const j = await r.json(); return j.sha||null;
   }
-  async function ghUpsertJson(path, jsonText, message){
-    var gh = loadGhCfg();
-    // Essaie de récupérer le sha existant (si le fichier existe déjà)
-    var sha = null;
-    try { sha = await ghGetFileWithSha(path); } catch(e) { /* nouveau fichier */ }
-    var body = {
-      message: message || ("update "+path),
-      content: utf8ToB64(jsonText),
-      branch: gh.branch
-    };
-    if (sha) body.sha = sha;
-
-    var r = await fetch( ghUrl(gh.owner, gh.repo, path), {
-      method: "PUT",
-      headers: ghHeaders(gh.token),
-      body: JSON.stringify(body)
-    });
+  async function ghUpsertJson(path,jsonText,message){
+    const gh = loadGhCfg();
+    let sha=null; try{ sha=await ghGetFileWithSha(path); }catch(e){}
+    const body={message:message||("update "+path),content:utf8ToB64(jsonText),branch:gh.branch};
+    if(sha) body.sha=sha;
+    const r = await fetch(ghUrl(gh.owner,gh.repo,path),{method:"PUT",headers:ghHeaders(gh.token),body:JSON.stringify(body)});
     if(!r.ok) throw new Error("PUT "+path+" "+r.status);
     return r.json();
   }
 
-  // Bouton "Push .json du jour"
-  document.getElementById("btnPushJson").addEventListener("click", async function(){
+  btnPushJson.addEventListener("click", async ()=>{
     try{
-      // 1) Vérifs
-      var gh = loadGhCfg();
-      if(!gh.owner||!gh.repo||!gh.root||!gh.branch||!gh.token)
-        return alert("Complète les réglages GitHub (en haut) puis Sauver.");
-
-      var raw = localStorage.getItem("paria_db");
-      if (!raw) return alert("Aucun état de travail. Clique d'abord « Adopter » après import.");
-
-      var db; try{ db = JSON.parse(raw); }catch(e){ return alert("État local invalide."); }
-      var svcKey = document.getElementById("serviceKeyGit").value || "Compta";
-      var s = (db.services && db.services[svcKey]) || null;
-      if (!s) return alert("État absent pour le service « "+svcKey+" ».");
-
-      // 2) Construire le path en fonction du Service + Date
-      var dstr = document.getElementById("gh_date_git").value || new Date().toISOString().slice(0,10);
-      var d = new Date(dstr+"T12:00:00");
-      var year = String(d.getFullYear());
-      var day  = d.toISOString().slice(0,10);
-      var base = gh.root.replace(/\/+$/,"") + "/" + svcKey + "/" + year + "/" + day;
-      var path = base + "/audit_" + svcKey + "_" + day + ".json";
-
-      // 3) Upsert (création ou mise à jour)
-      document.getElementById("gitStatus").textContent = "Push en cours…";
-      var res = await ghUpsertJson(path, JSON.stringify(s, null, 2), "feat: audit "+svcKey+" "+day+" (.json)");
-      document.getElementById("gitStatus").textContent = "Push OK ✔ ("+res.content.path+")";
+      const gh = loadGhCfg(); if(!gh.owner||!gh.repo||!gh.root||!gh.branch||!gh.token) return alert("Réglages GitHub incomplets.");
+      const raw = localStorage.getItem("paria_db"); if(!raw) return alert("Aucun état de travail.");
+      let db; try{ db=JSON.parse(raw); }catch(e){ return alert("État local invalide."); }
+      const svcKey = serviceKeyGit.value || "Compta";
+      const s = db.services && db.services[svcKey]; if(!s) return alert("État absent pour « "+svcKey+" ».");
+      const dstr = gh_date_git.value || new Date().toISOString().slice(0,10);
+      const d = new Date(dstr+"T12:00:00"); const year=String(d.getFullYear()); const day=d.toISOString().slice(0,10);
+      const base = gh.root.replace(/\/+$/,"")+"/"+svcKey+"/"+year+"/"+day;
+      const path = base+"/audit_"+svcKey+"_"+day+".json";
+      gitStatus.textContent = "Push en cours…";
+      const res = await ghUpsertJson(path, JSON.stringify(s,null,2), "feat: audit "+svcKey+" "+day+" (.json)");
+      gitStatus.textContent = "Push OK ✔ ("+res.content.path+")";
       alert("Push JSON OK.");
-    }catch(e){
-      document.getElementById("gitStatus").textContent = "Erreur push";
-      alert("Erreur push: "+String(e));
-    }
+    }catch(e){ gitStatus.textContent="Erreur push"; alert("Erreur push: "+String(e)); }
   });
 
-  // Au chargement, si un état existe, affiche le résumé
   renderWorkSummary();
 
-  // ====== ÉTAPE 4 : Export .md & .html (+ push) ======
-
-  // Helpers déjà présents : loadGhCfg(), utf8ToB64(), ghUrl(), ghHeaders(), ghGetFileWithSha()
-  async function ghUpsertText(path, text, message){
-    var gh = loadGhCfg();
-    var sha = null;
-    try { sha = await ghGetFileWithSha(path); } catch(e) {}
-    var body = { message: message || ("update "+path), content: utf8ToB64(text), branch: gh.branch };
-    if (sha) body.sha = sha;
-    var r = await fetch( ghUrl(gh.owner, gh.repo, path), {
-      method:"PUT", headers: ghHeaders(gh.token), body: JSON.stringify(body)
-    });
+  /* ------------------ EXPORTS ------------------ */
+  async function ghUpsertText(path,text,message){
+    const gh = loadGhCfg(); let sha=null; try{ sha=await ghGetFileWithSha(path);}catch(e){}
+    const body={message:message||("update "+path),content:utf8ToB64(text),branch:gh.branch};
+    if(sha) body.sha=sha;
+    const r=await fetch(ghUrl(gh.owner,gh.repo,path),{method:"PUT",headers:ghHeaders(gh.token),body:JSON.stringify(body)});
     if(!r.ok) throw new Error("PUT "+path+" "+r.status);
     return r.json();
   }
-
   function getWorkForService(){
-    var svcKey = document.getElementById("serviceKeyGit").value || "Compta";
-    var raw = localStorage.getItem("paria_db"); if(!raw) return { key:svcKey, s:null };
-    var db; try{ db = JSON.parse(raw); }catch(e){ return { key:svcKey, s:null }; }
-    var s = db.services && db.services[svcKey] ? db.services[svcKey] : null;
-    return { key:svcKey, s:s };
+    const svcKey = serviceKeyGit.value || "Compta";
+    const raw = localStorage.getItem("paria_db"); if(!raw) return {key:svcKey, s:null};
+    let db; try{ db=JSON.parse(raw); }catch(e){ return {key:svcKey, s:null}; }
+    const s = db.services && db.services[svcKey] || null;
+    return {key:svcKey, s};
   }
-
-  function clientSlugFromRoot(){
-    var gh = loadGhCfg();
-    var parts = (gh.root||'').split('/').filter(Boolean);
-    return parts.length ? parts[parts.length-1] : 'client';
-    // ex: root="clients/acme" => "acme"
-  }
-
-  function makeMarkdown(svcKey, s){
-    var L = [];
-    L.push("# Audit " + svcKey + " — PARIA");
-    L.push("");
-    L.push("## Service Charter");
-    var ch = s.charter || {};
-    var fields = ["objectifs","contexte","contraintes","perimetre","douleurs","kpis","outils","roles","budget"];
-    for (var i=0;i<fields.length;i++){
-      var k=fields[i], v=ch[k]||"-";
-      L.push("- **"+k+"**: "+v);
-    }
-    L.push("");
-    L.push("## Analyses");
-    (s.items||[]).forEach(function(it, i){
+  function clientSlugFromRoot(){ const gh=loadGhCfg(); const parts=(gh.root||'').split('/').filter(Boolean); return parts.length? parts[parts.length-1]:'client'; }
+  function makeMarkdown(svcKey,s){
+    const L=[]; L.push("# Audit "+svcKey+" — PARIA","", "## Service Charter");
+    const ch=s.charter||{}; ["objectifs","contexte","contraintes","perimetre","douleurs","kpis","outils","roles","budget"].forEach(k=>L.push("- **"+k+"**: "+(ch[k]||"-")));
+    L.push("", "## Analyses");
+    (s.items||[]).forEach((it,i)=>{
       L.push("### Item #"+(i+1)+" ("+(it._priority_tag||"P3")+")");
-      if (it.reformulation) L.push("Reformulation: "+it.reformulation);
-      var b = (it.paria||{});
-      ["problemes","ameliorations","reconfigurations","integration_ia","actions"].forEach(function(key){
-        var arr = b[key]||[];
-        if(arr.length){ L.push("- **"+key+"**:"); for(var k=0;k<arr.length;k++) L.push("  - "+arr[k]); }
+      if(it.reformulation) L.push("Reformulation: "+it.reformulation);
+      const b=it.paria||{};
+      ["problemes","ameliorations","reconfigurations","integration_ia","actions"].forEach(key=>{
+        const arr=b[key]||[]; if(arr.length){ L.push("- **"+key+"**:"); arr.forEach(x=>L.push("  - "+x)); }
       });
-      if (it.questions && it.questions.length){
-        L.push("- **Questions**:"); for (var q=0;q<it.questions.length;q++) L.push("  - "+it.questions[q]);
-      }
+      if (it.questions?.length){ L.push("- **Questions**:"); it.questions.forEach(q=>L.push("  - "+q)); }
       L.push("");
     });
     L.push("## Décisions");
-    (s.decisions||[]).forEach(function(d){
-      L.push("- "+ new Date(d.ts).toLocaleString() +" — **"+d.status+"** — "+(d.item?.reformulation||'')+" ("+(d.tag||'P3')+")");
-    });
-    return L.join("\n");
-  }
-
-  function esc(x){ return (x||"").replace(/[&<>]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])); }
-  function buildReportHtml(ctx){
-    var service=ctx.service, ch=ctx.charter||{}, items=ctx.items||[], decs=ctx.decisions||[], brand=ctx.brand||{};
-    var rows = items.map(function(it,i){
-      var props = (it.propositions||[]).map(p=>"<li>"+esc(p.label||"")+" — "+esc(p.type||"")+"</li>").join("");
-      var qs = (it.questions||[]).map(q=>"<li>"+esc(q)+"</li>").join("");
-      var b = it.paria||{};
-      function block(label, arr){ return (arr&&arr.length)? "<li><b>"+label+"</b><ul><li>"+arr.map(esc).join("</li><li>")+"</li></ul></li>":""; }
-      var paria = "<ul>"+
-        block("Problèmes", b.problemes)+
-        block("Améliorations", b.ameliorations)+
-        block("Reconfigurations", b.reconfigurations)+
-        block("Intégration IA", b.integration_ia)+
-        block("Actions", b.actions)+
-      "</ul>";
-      return '<section style="margin:12px 0"><h3>Item #'+(i+1)+' <span style="border:1px solid #ccc;border-radius:12px;padding:2px 8px">'+esc(it._priority_tag||"P3")+'</span></h3><p>'+esc(it.reformulation||"")+'</p>'+paria+
-        (qs? "<p><b>Questions</b><ul>"+qs+"</ul></p>": "")+
-        (props? "<p><b>Propositions</b><ul>"+props+"</ul></p>": "")+
-        "</section>";
-    }).join("");
-    var decList = decs.map(d=>"<li>"+new Date(d.ts).toLocaleString()+" — <b>"+esc(d.status)+"</b> — "+esc(d.item?.reformulation||"")+" ("+esc(d.tag||"P3")+")</li>").join("");
-    return '<!doctype html><html><head><meta charset="utf-8"><title>Rapport — '+esc(brand.client_name||'Client')+' — '+esc(service)+'</title>'+
-      '<style>body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:24px}header{display:flex;align-items:center;gap:16px;margin-bottom:16px}header img{height:48px}.hdr{margin-left:auto;text-align:right;font-size:12px;color:#666}h1{margin:0 0 4px}</style></head><body>'+
-      '<header>'+ (brand.logo_self? '<img src="'+brand.logo_self+'">': '') +
-      '<div><h1>Rapport d\'audit — '+esc(service)+'</h1><small>'+new Date().toLocaleString()+'</small></div>'+
-      '<div class="hdr">'+esc(brand.header||'')+'</div>'+ (brand.logo_client? '<img src="'+brand.logo_client+'">': '') +'</header>'+
-      '<section><h2>Contexte (Charter)</h2><ul>'+
-      '<li><b>Objectifs</b> : '+esc(ch.objectifs||"-")+'</li>'+
-      '<li><b>Contexte & contraintes</b> : '+esc(ch.contexte||"-")+'</li>'+
-      '<li><b>Contraintes strictes</b> : '+esc(ch.contraintes||"-")+'</li>'+
-      '<li><b>Périmètre</b> : '+esc(ch.perimetre||"-")+'</li>'+
-      '<li><b>Douleurs</b> : '+esc(ch.douleurs||"-")+'</li>'+
-      '<li><b>KPI</b> : '+esc(ch.kpis||"-")+'</li>'+
-      '<li><b>Outils</b> : '+esc(ch.outils||"-")+'</li>'+
-      '<li><b>Rôles & charge</b> : '+esc(ch.roles||"-")+'</li>'+
-      '<li><b>Budget & fenêtre</b> : '+esc(ch.budget||"-")+'</li>'+
-      '</ul></section>'+
-      '<section><h2>Synthèse & stratégie</h2><p>Prioriser <b>P1</b> (quick wins), planifier <b>P2</b>, cadrer <b>P3</b>.</p></section>'+
-      '<section><h2>Analyses</h2>'+ (rows||'<em>Aucun item.</em>') +'</section>'+
-      '<section><h2>Décisions</h2><ul>'+ (decList||'<li>—</li>') +'</ul></section>'+
-      '</body></html>';
-  }
-
-  function computePathsForToday(ext){
-    var gh = loadGhCfg();
-    var svcKey = document.getElementById("serviceKeyGit").value || "Compta";
-    var dstr = document.getElementById("gh_date_git").value || new Date().toISOString().slice(0,10);
-    var d = new Date(dstr+"T12:00:00");
-    var year = String(d.getFullYear());
-    var day = d.toISOString().slice(0,10);
-    var base = gh.root.replace(/\/+$/,"") + "/" + svcKey + "/" + year + "/" + day;
-    var client = clientSlugFromRoot();
-    var mdPath   = base + "/audit_" + svcKey + "_" + day + ".md";
-    var htmlPath = base + "/rapport_" + client + "_" + svcKey + "_" + day + ".html";
-    return { mdPath, htmlPath, svcKey, day, client };
-  }
-
-  // Preview MD
-  document.getElementById("btnPreviewMd").addEventListener("click", function(){
-    var w = getWorkForService(); if(!w.s) return alert("Aucun état de travail (importe puis « Adopter »).");
-    var md = makeMarkdown(w.key, w.s);
-    document.getElementById("previewBox").textContent = md;
-  });
-
-  // Push MD
-  document.getElementById("btnPushMd").addEventListener("click", async function(){
-    try{
-      var w = getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
-      var md = makeMarkdown(w.key, w.s);
-      var p = computePathsForToday();
-      document.getElementById("exportStatus").textContent = "Push .md en cours…";
-      var res = await ghUpsertText(p.mdPath, md, "feat: audit "+w.key+" "+p.day+" (.md)");
-      document.getElementById("exportStatus").textContent = "Push .md OK ✔ ("+res.content.path+")";
-      alert("Push MD OK.");
-    }catch(e){
-      document.getElementById("exportStatus").textContent = "Erreur push .md";
-      alert("Erreur push .md: "+String(e));
-    }
-  });
-
-  // Preview HTML
-  document.getElementById("btnPreviewHtml").addEventListener("click", function(){
-    var w = getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
-    var html = buildReportHtml({
-      service: w.key,
-      charter: w.s.charter || {},
-      items: w.s.items || [],
-      decisions: w.s.decisions || [],
-      brand: { header:"", logo_self:"", client_name: clientSlugFromRoot(), logo_client:"" }
-    });
-    function prettyHtml(h){ return h.replace(/></g, '>\n<'); }
-		document.getElementById("previewBox").textContent = prettyHtml(html);
-
-  });
-
-  // Push HTML
-  document.getElementById("btnPushHtml").addEventListener("click", async function(){
-    try{
-      var w = getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
-      var p = computePathsForToday();
-      var html = buildReportHtml({
-        service: w.key,
-        charter: w.s.charter || {},
-        items: w.s.items || [],
-        decisions: w.s.decisions || [],
-        brand: { header:"", logo_self:"", client_name: p.client, logo_client:"" }
-      });
-      document.getElementById("exportStatus").textContent = "Push .html en cours…";
-      var res = await ghUpsertText(p.htmlPath, html, "feat: audit "+w.key+" "+p.day+" (rapport .html)");
-      document.getElementById("exportStatus").textContent = "Push .html OK ✔ ("+res.content.path+")";
-      alert("Push HTML OK.");
-    }catch(e){
-      document.getElementById("exportStatus").textContent = "Erreur push .html";
-      alert("Erreur push .html: "+String(e));
-    }
-  });
-
-	document.getElementById("btnPreviewHtmlLive").addEventListener("click", function(){
-		var w = getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
-		var p = computePathsForToday();
-		var html = buildReportHtml({
-			service: w.key,
-			charter: w.s.charter || {},
-			items: w.s.items || [],
-			decisions: w.s.decisions || [],
-			brand: { header:"", logo_self:"", client_name: p.client, logo_client:"" }
-		});
-		var fr = document.getElementById("previewFrame");
-		fr.srcdoc = html; // rendu live
-		// si tu avais "hide" sur le conteneur :
-		// document.getElementById("frameWrap").classList.remove("hide");
-	});
-
-	document.getElementById("btnOpenHtmlTab").addEventListener("click", function(){
-		var w = getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
-		var p = computePathsForToday();
-		var html = buildReportHtml({
-			service: w.key,
-			charter: w.s.charter || {},
-			items: w.s.items || [],
-			decisions: w.s.decisions || [],
-			brand: { header:"", logo_self:"", client_name: p.client, logo_client:"" }
-		});
-		var url = URL.createObjectURL(new Blob([html], {type:"text/html"}));
-		window.open(url, "_blank"); // ouvre dans un nouvel onglet
-	});
-
-	  // ====== Étape IA : appel au PROXY_URL ======
-  async function iaAnalyze(){
-    // 1) charter courant (si tu as “adopté” un JSON)
-    var svcKey = (document.getElementById("serviceKeyGit")?.value || "Compta");
-    var charter = {};
-    try {
-      var db = JSON.parse(localStorage.getItem("paria_db")||"{}");
-      if (db.services && db.services[svcKey] && db.services[svcKey].charter) {
-        charter = db.services[svcKey].charter;
-      }
-    } catch(e){}
-
-    // 2) PROXY_URL depuis les réglages (page exécutée)
-    var PROXY_URL = (localStorage.getItem("paria_proxy_url")||"").trim();
-    if(!PROXY_URL){ alert("Renseigne PROXY_URL dans les réglages, puis clique « Sauver réglages »."); return; }
-
-    var payload = {
-      route: "analyze",
-      model: "gpt-4o-mini",
-      service_key: svcKey,
-      charter: charter,
-      note: document.getElementById("ia_note").value || ""
-      // secret: (localStorage.getItem("paria_proxy_secret")||"").trim() || undefined
-    };
-
-    document.getElementById("iaStatus").textContent = "Analyse en cours…";
-
-    try{
-      const r = await fetch(PROXY_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain" }, // anti-preflight CORS
-        body: JSON.stringify(payload)
-      });
-      const j = await r.json();
-      if(!j.ok){
-        document.getElementById("iaStatus").textContent = "Erreur";
-        document.getElementById("iaResult").textContent = JSON.stringify(j, null, 2);
-        alert("Analyse échouée : "+(j.error||""));
-        return;
-      }
-      document.getElementById("iaStatus").textContent = "OK ✔";
-      document.getElementById("iaResult").textContent = JSON.stringify(j.data, null, 2);
-      // garde en tampon pour "Ajouter au travail"
-      localStorage.setItem("paria_last_ai", JSON.stringify(j.data));
-    }catch(err){
-      document.getElementById("iaStatus").textContent = "Erreur réseau";
-      alert("Erreur appel proxy : "+String(err));
-    }
-  }
-
-  document.getElementById("btnIaAnalyze")?.addEventListener("click", iaAnalyze);
-
-  document.getElementById("btnIaAdopt")?.addEventListener("click", function(){
-    var raw = localStorage.getItem("paria_last_ai");
-    if(!raw) return alert("Fais d'abord « Analyser (IA) ».");
-    var obj; try{ obj = JSON.parse(raw); }catch(e){ return alert("Résultat IA invalide."); }
-
-    var svcKey = (document.getElementById("serviceKeyGit")?.value || "Compta");
-    var db = { services:{} };
-    try{ db = JSON.parse(localStorage.getItem("paria_db")||"{}"); }catch(e){}
-    if(!db.services) db.services = {};
-    if(!db.services[svcKey]) db.services[svcKey] = { charter:{}, items:[], decisions:[] };
-
-    // tag de priorité simple (en attendant ta logique)
-    var n = Array.isArray(obj.propositions) ? obj.propositions.length : 0;
-    obj._priority_tag = n>=3 ? "P1" : n===2 ? "P2" : "P3";
-
-    db.services[svcKey].items = db.services[svcKey].items || [];
-    db.services[svcKey].items.push(obj);
-    localStorage.setItem("paria_db", JSON.stringify(db));
-    alert("Ajouté à l'état de travail ✔ (pense à Push .json/.md/.html si besoin)");
-  });
-	// ---- Test du proxy (GET + POST echo) ----
-  document.getElementById("btnProxyTest").addEventListener("click", async function(){
-    var url = (localStorage.getItem("paria_proxy_url")||"").trim();
-    if(!url){ alert("Renseigne PROXY_URL puis Sauver réglages."); return; }
-    var secret = (localStorage.getItem("paria_proxy_secret")||"").trim();
-    var label = document.getElementById("proxyState");
-    label.textContent = "Test…";
-
-    try{
-      // GET ping
-      var r1 = await fetch(url);
-      var j1 = await r1.json();
-      var ok1 = j1 && j1.ok === true;
-
-      // POST echo
-      var body = { route:"echo", hello:"ping" };
-      if (secret) body.secret = secret;
-      var r2 = await fetch(url, { method:"POST", headers:{ "Content-Type":"text/plain" }, body: JSON.stringify(body) });
-      var j2 = await r2.json();
-      var ok2 = j2 && j2.ok === true;
-
-      if (ok1 && ok2) {
-        label.style.color = "#2d7";
-        label.textContent = "Proxy OK ✔";
-      } else {
-        label.style.color = "#a60";
-        label.textContent = "Proxy partiel ("+(ok1?"GET ok":"GET ko")+"/"+(ok2?"POST ok":"POST ko")+")";
-      }
-    }catch(e){
-      label.style.color = "#a00";
-      label.textContent = "Erreur";
-      alert("Proxy KO : "+String(e));
-    }
-  });
-	// ====== Édition Charter ======
-  function getSvcKey(){ return (document.getElementById("serviceKeyGit")?.value || "Compta"); }
-
-  function loadCharterToEditor(){
-    var svc = getSvcKey();
-    var raw = localStorage.getItem("paria_db");
-    var s=null;
-    try{ var db=JSON.parse(raw||"{}"); s=db.services&&db.services[svc]?db.services[svc]:null; }catch(e){}
-    var ch = (s && s.charter) ? s.charter : {};
-    ed_obj.value    = ch.objectifs || "";
-    ed_ctx.value    = ch.contexte  || "";
-    ed_hard.value   = ch.contraintes || "";
-    ed_scope.value  = ch.perimetre || "";
-    ed_pains.value  = ch.douleurs  || "";
-    ed_kpi.value    = ch.kpis      || "";
-    ed_tools.value  = ch.outils    || "";
-    ed_roles.value  = ch.roles     || "";
-    ed_budget.value = ch.budget    || "";
-    charterState.textContent = "Chargé ✔";
-  }
-
-  function saveEditorToCharter(){
-    var svc = getSvcKey();
-    var db={services:{}}; try{ db=JSON.parse(localStorage.getItem("paria_db")||"{}"); }catch(e){}
-    if(!db.services) db.services={};
-    if(!db.services[svc]) db.services[svc]={ charter:{}, items:[], decisions:[] };
-
-    db.services[svc].charter = {
-      objectifs: ed_obj.value.trim(),
-      contexte:  ed_ctx.value.trim(),
-      contraintes: ed_hard.value.trim(),
-      perimetre:  ed_scope.value.trim(),
-      douleurs:   ed_pains.value.trim(),
-      kpis:       ed_kpi.value.trim(),
-      outils:     ed_tools.value.trim(),
-      roles:      ed_roles.value.trim(),
-      budget:     ed_budget.value.trim()
-    };
-    localStorage.setItem("paria_db", JSON.stringify(db));
-    if (typeof renderWorkSummary === 'function') renderWorkSummary();
-    charterState.textContent = "Sauvegardé ✔ (pense à Push .json)";
-  }
-
-  btnCharterLoad.addEventListener("click", loadCharterToEditor);
-  btnCharterSave.addEventListener("click", saveEditorToCharter);
-  // auto-load à l’ouverture
-  loadCharterToEditor();
-
-})();
-</script>
-</body>
-</html>
-
-
-
-
-
-
-
+    (s.decisions||[]).forEach(d=>L.push("- "+ new Date(d.ts).toLocaleString() +" — **"+d.status+"** — "+(d.item?.reformul
