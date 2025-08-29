@@ -520,6 +520,7 @@ btnExportClientHtml.onclick = ()=>{
   a.download = `form_client_${currentService()}_${new Date().toISOString().slice(0,10)}.html`;
   a.click();
 };
+
 btnImportClientJson.onclick = ()=> clientJsonFile.click();
 clientJsonFile.onchange = async (e)=>{
   const f=e.target.files?.[0]; if(!f) return;
@@ -535,6 +536,7 @@ clientJsonFile.onchange = async (e)=>{
   renderDecisions();
   alert(`Réponses client intégrées (${n}).`);
 };
+
 // Génère une page autonome que le client peut remplir (puis Télécharger JSON)
 function makeClientHtml(pack){
   const safe = x=> String(x||'').replace(/[&<>]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;'})[s]);
@@ -561,29 +563,29 @@ function makeClientHtml(pack){
         </table>
       </section>`;
   }).join('');
-  return `<!doctype html><meta charset="utf-8"><title>Formulaire client — ${safe(pack.service)}</title>
-  <h2>Validation — ${safe(pack.service)}</h2>
-  <p>Choisissez une décision pour chaque proposition, ajoutez un commentaire si besoin, puis <b>Télécharger les réponses</b> (ou Fichier → Imprimer → PDF).</p>
-  ${rows}
-  <button id="dl">Télécharger les réponses (JSON)</button>
-  <button onclick="window.print()">Imprimer/PDF</button>
-  <script>
-    document.getElementById('dl').onclick = ()=>{
-      const picks = [];
-      document.querySelectorAll('select[data-pid]').forEach(sel=>{
-        const pid=sel.getAttribute('data-pid');
-        const cid=sel.getAttribute('data-card');
-        const decision=sel.value;
-        const cmt = (document.querySelector('input[data-cmt][data-pid="'+pid+'"][data-card="'+cid+'"]')||{}).value||'';
-        picks.push({card_id:cid,pid,decision,comment:cmt});
-      });
-      const blob = new Blob([JSON.stringify({ responses:picks },null,2)],{type:'application/json'});
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'reponses_client.json';
-      a.click();
-    };
-  </script>`;
+	return `<!doctype html><meta charset="utf-8"><title>Formulaire client — ${safe(pack.service)}</title>
+		<h2>Validation — ${safe(pack.service)}</h2>
+		<p>Choisissez une décision pour chaque proposition, ajoutez un commentaire si besoin, puis <b>Télécharger les réponses</b> (ou Fichier → Imprimer → PDF).</p>
+		${rows}
+		<button id="dl">Télécharger les réponses (JSON)</button>
+		<button onclick="window.print()">Imprimer/PDF</button>
+		<script>
+			document.getElementById('dl').onclick = ()=>{
+				const picks = [];
+				document.querySelectorAll('select[data-pid]').forEach(sel=>{
+					const pid=sel.getAttribute('data-pid');
+					const cid=sel.getAttribute('data-card');
+					const decision=sel.value;
+					const cmt = (document.querySelector('input[data-cmt][data-pid="'+pid+'"][data-card="'+cid+'"]')||{}).value||'';
+					picks.push({card_id:cid,pid,decision,comment:cmt});
+				});
+				const blob = new Blob([JSON.stringify({ responses:picks },null,2)],{type:'application/json'});
+				const a = document.createElement('a');
+				a.href = URL.createObjectURL(blob);
+				a.download = 'reponses_client.json';
+				a.click();
+			};
+		</scr` + `ipt>`;   // ⬅️ important : ne pas laisser "</script>" tel quel
 }
 
 /* ====== PROJECTEUR : inline ====== */
