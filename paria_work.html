@@ -77,7 +77,7 @@
       <div class="card">
         <h4>Google Apps Script (proxy)</h4>
         <label>DEPLOY URL</label>
-        <input id="GAS_URL" placeholder="https://script.google.com/macros/s/AKfycb.../exec" value="<<TON_APPS_SCRIPT_DEPLOY_URL>>">
+        <input id="GAS_URL" placeholder="https://script.google.com/macros/s/AKfycb.../exec">
         <div class="actions">
           <button id="btnSaveCfg">Sauver</button>
           <button id="btnTestProxy">Tester</button>
@@ -243,6 +243,12 @@ const WORK_KEY= 'paria_work_id'; // "ACME|Compta|2025-08-28"
 const GH_OWNER='paria_gh_owner', GH_REPO='paria_gh_repo', GH_BRANCH='paria_gh_branch',
       GH_BASE='paria_gh_base', GH_TOKEN='paria_gh_token';
 const GH_API = 'https://api.github.com';
+
+const DEFAULT_GAS_URL = ''; // optionnel: mets ici ton URL Apps Script pour préremplir au 1er chargement
+
+function gasUrl(){
+  return (localStorage.getItem(GAS_KEY) || DEFAULT_GAS_URL || '').trim();
+}
 
 function gasUrl(){ return (localStorage.getItem(GAS_KEY)||'').trim(); }
 function setGasUrl(u){ localStorage.setItem(GAS_KEY,u.trim()); }
@@ -538,6 +544,7 @@ clientJsonFile.onchange = async (e)=>{
 };
 
 // Génère une page autonome que le client peut remplir (puis Télécharger JSON)
+// Génère une page autonome que le client peut remplir (puis Télécharger JSON)
 function makeClientHtml(pack){
   const safe = x=> String(x||'').replace(/[&<>]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;'})[s]);
   const rows = (pack.items||[]).map(it=>{
@@ -563,30 +570,33 @@ function makeClientHtml(pack){
         </table>
       </section>`;
   }).join('');
-	return `<!doctype html><meta charset="utf-8"><title>Formulaire client — ${safe(pack.service)}</title>
-		<h2>Validation — ${safe(pack.service)}</h2>
-		<p>Choisissez une décision pour chaque proposition, ajoutez un commentaire si besoin, puis <b>Télécharger les réponses</b> (ou Fichier → Imprimer → PDF).</p>
-		${rows}
-		<button id="dl">Télécharger les réponses (JSON)</button>
-		<button onclick="window.print()">Imprimer/PDF</button>
-		<script>
-			document.getElementById('dl').onclick = ()=>{
-				const picks = [];
-				document.querySelectorAll('select[data-pid]').forEach(sel=>{
-					const pid=sel.getAttribute('data-pid');
-					const cid=sel.getAttribute('data-card');
-					const decision=sel.value;
-					const cmt = (document.querySelector('input[data-cmt][data-pid="'+pid+'"][data-card="'+cid+'"]')||{}).value||'';
-					picks.push({card_id:cid,pid,decision,comment:cmt});
-				});
-				const blob = new Blob([JSON.stringify({ responses:picks },null,2)],{type:'application/json'});
-				const a = document.createElement('a');
-				a.href = URL.createObjectURL(blob);
-				a.download = 'reponses_client.json';
-				a.click();
-			};
-		</scr` + `ipt>`;   // ⬅️ important : ne pas laisser "</script>" tel quel
+
+  // IMPORTANT: <\/script> pour ne JAMAIS écrire "</script>" dans le JS source
+  return `<!doctype html><meta charset="utf-8"><title>Formulaire client — ${safe(pack.service)}</title>
+  <h2>Validation — ${safe(pack.service)}</h2>
+  <p>Choisissez une décision pour chaque proposition, ajoutez un commentaire si besoin, puis <b>Télécharger les réponses</b> (ou Imprimer → PDF).</p>
+  ${rows}
+  <button id="dl">Télécharger les réponses (JSON)</button>
+  <button onclick="window.print()">Imprimer/PDF</button>
+  <script>
+    document.getElementById('dl').onclick = ()=>{
+      const picks = [];
+      document.querySelectorAll('select[data-pid]').forEach(sel=>{
+        const pid=sel.getAttribute('data-pid');
+        const cid=sel.getAttribute('data-card');
+        const decision=sel.value;
+        const cmt = (document.querySelector('input[data-cmt][data-pid="'+pid+'"][data-card="'+cid+'"]')||{}).value||'';
+        picks.push({card_id:cid,pid,decision,comment:cmt});
+      });
+      const blob = new Blob([JSON.stringify({ responses:picks },null,2)],{type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'reponses_client.json';
+      a.click();
+    };
+  <\/script>`;
 }
+
 
 /* ====== PROJECTEUR : inline ====== */
 function chip(t){ return `<span style="border:1px solid #ddd;border-radius:999px;padding:2px 8px;margin-right:6px">${t}</span>`; }
