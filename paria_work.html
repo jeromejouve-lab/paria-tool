@@ -10,6 +10,14 @@
   html,body{height:100%}
   body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink)}
   header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+
+  .status-pill{display:inline-flex;align-items:center;gap:6px;border:1px solid #ddd;border-radius:999px;padding:2px 8px;font-size:12px}
+  .dot{width:8px;height:8px;border-radius:50%}
+  .dot.pending{background:#9aa3af}
+  .dot.a_preciser{background:#f59e0b}
+  .dot.valide{background:#10b981}
+  .dot.refuse{background:#ef4444}
+
   .tabs{display:flex;gap:8px;flex-wrap:wrap}
   .tabs button{background:#fff;border:1px solid var(--line);padding:8px 12px;border-radius:10px;cursor:pointer}
   .tabs button.active{background:#222;color:#fff;border-color:#222}
@@ -333,14 +341,23 @@ document.getElementById('btnAnalyze').onclick = async ()=>{
     const j=await r.json();
     if(!j.ok) throw new Error(j.error||'analyse KO');
     const item=j.data;
-    // garde-fous id/pid
+    const s=svc();
     item.id = item.id || ('I'+((s.items?.length||0)+1));
-    (item.propositions||[]).forEach((p,i)=> p.pid = p.pid || ('P'+(i+1)));
+    item.title = item.title || (item.reformulation ? item.reformulation.slice(0,80) : 'Sujet à préciser');
+    (item.propositions||[]).forEach((p,i)=>{
+      p.pid = p.pid || ('P'+(i+1));
+      p.decision = p.decision || { status:'a_preciser', comment:'' };
+    });
+    item.pipeline = item.pipeline || 'pret_projecteur'; // prêt à projeter direct
+    item.priority = item.priority || 'P2';
+    
+    // 2) push + save
     s.items.push(item);
     saveDB();
-    document.getElementById('analysis').textContent = JSON.stringify(item,null,2);
-    document.getElementById('aiState').textContent='OK ✔';
-    // notifier autres onglets (projecteur)
+    
+    // 3) UI
+    analysis.textContent = JSON.stringify(item,null,2);
+    aiState.textContent='OK ✔';
     localStorage.setItem('paria_touch', String(Date.now()));
   }catch(e){
     document.getElementById('aiState').textContent='Erreur';
@@ -415,53 +432,50 @@ function renderProjectorInline(){
   list.innerHTML = it ? `<li><a href="#" onclick="return false;">${it.id} · ${it.title||it.reformulation||''}</a></li>` : '<li>—</li>';
   if(!it){ card.innerHTML='<em>Aucun item.</em>'; return; }
   const chips = (s.charter?.contraintes||'').split(/[;,•\n]/).map(x=>x.trim()).filter(Boolean).slice(0,4).map(chip).join(' ') || chip('—');
+  function pill(dec){ const st=(dec?.status)||'pending';
+    return `<span class="status-pill"><span class="dot ${st}"></span>${st.replace('_',' ')}</span>`;
+  }
+  
   const props = (it.propositions||[]).map((p,i)=>`
-    <div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:10px">
+    <div style="border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <div><strong>${p.pid||('P'+(i+1))}</strong> · ${p.label||''}</div>
+        <div><strong>${p.pid||('P'+(i+1))}</strong> · ${p.label||''} &nbsp; ${pill(p.decision)}</div>
         <div>
-          <button data-act="valide" style="margin-right:6px">Valider</button>
-          <button data-act="a_preciser" style="margin-right:6px">À préciser</button>
-          <button data-act="refuse">Refuser</button>
+          <button class="pact" data-act="valide" data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}" style="margin-right:6px">Valider</button>
+          <button class="pact" data-act="a_preciser" data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}" style="margin-right:6px">À préciser</button>
+          <button class="pact" data-act="refuse" data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}">Refuser</button>
         </div>
       </div>
       <div style="opacity:.8;margin:4px 0">coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · embauche:${p.indicateurs?.embauche||'—'}</div>
       <label style="font-size:.9em;opacity:.8">Commentaire</label>
-      <input type="text" data-comm="1" value="${p.decision?.comment||''}" style="width:100%">
+      <input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}" value="${p.decision?.comment||''}" style="width:100%">
     </div>`).join('');
-  card.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <div>
-        <div style="font-size:18px;font-weight:700">${it.title||it.reformulation||'(sujet à nommer)'}</div>
-        <div style="opacity:.8">${chip('Objectif: '+(it.objectif||'—'))} ${chip('Question: '+(it.question||'—'))}</div>
-      </div>
-      <div>${stateBadge(it.pipeline||'discovery')}</div>
-    </div>
-    <div style="margin:6px 0">${chips}</div>
-    <div style="margin-top:10px;border-top:1px dashed #ddd;padding-top:8px">
-      ${block('Problèmes', it.paria?.problemes)}
-      ${block('Améliorations', it.paria?.ameliorations)}
-      ${block('Reconfigurations', it.paria?.reconfigurations)}
-      ${block('Intégration IA', it.paria?.integration_ia)}
-      ${block('Actions (brouillon)', it.paria?.actions)}
-    </div>
-    <h4 style="margin-top:10px">Propositions</h4>
-    ${props}`;
-  // listeners (inline) — mettent à jour le dernier item
-  card.querySelectorAll('button[data-act]').forEach(b=>{
+  
+  // Listeners
+  card.querySelectorAll('.pact').forEach(b=>{
     b.onclick=()=>{
-      const act=b.getAttribute('data-act');
-      const p=(it.propositions||[])[0]; if(!p) return;
-      p.decision = p.decision||{status:'pending',comment:''};
-      p.decision.status=act;
-      it.pipeline = act==='valide' ? 'en_validation' : 'en_validation';
+      const act=b.dataset.act, c=b.dataset.c, p=b.dataset.p;
+      const s=svc(); const it=s.items.find(x=>x.id===c); if(!it) return;
+      const prop=(it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
+      prop.decision = prop.decision || {status:'a_preciser',comment:''};
+      prop.decision.status=act;
+      const all=(it.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
+      it.pipeline = all ? 'bouclee' : 'en_validation';
       saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
       renderProjectorInline();
     };
   });
-  card.querySelectorAll('input[data-comm]').forEach(inp=>{
-    inp.onchange=()=>{ const p=(it.propositions||[])[0]; if(!p) return; p.decision=p.decision||{status:'pending',comment:''}; p.decision.comment=inp.value; saveDB(); localStorage.setItem('paria_touch', String(Date.now())); };
+  card.querySelectorAll('.pcmt').forEach(inp=>{
+    inp.onchange=()=>{
+      const c=inp.dataset.c, p=inp.dataset.p;
+      const s=svc(); const it=s.items.find(x=>x.id===c); if(!it) return;
+      const prop=(it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
+      prop.decision = prop.decision || {status:'a_preciser',comment:''};
+      prop.decision.comment = inp.value;
+      saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
+    };
   });
+
   function block(label,arr){ if(!Array.isArray(arr)||!arr.length) return ''; return `<div><strong>${label}</strong><ul style="margin:6px 0 12px 20px">${arr.slice(0,4).map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
 }
 
@@ -549,7 +563,7 @@ renderLastItem();
       state.agendaIds.map((cid,i)=>{
         const it = items.find(x=>x.id===cid);
         const cur = (i===state.idx) ? 'font-weight:700;text-decoration:underline;' : '';
-        return `<li style="margin:6px 0"><a href="#" data-i="${i}" style="${cur}">${cid} · ${(it?.title||it?.reformulation||'—')}</a></li>`;
+        return `<li style="margin:6px 0"><a href="#" data-i="${i}" style="${cur}">const label = (it?.title || it?.reformulation || '—');</a></li>`;
       }).join('') + `</ol>`;
     agenda.querySelectorAll('a[data-i]').forEach(a=>{
       a.onclick = (e)=>{ e.preventDefault(); state.idx = parseInt(a.dataset.i,10)||0; renderCard(); };
@@ -679,4 +693,5 @@ renderLastItem();
 </script>
 </body>
 </html>
+
 
