@@ -413,17 +413,37 @@ btnCharterToState.onclick = ()=>{
   saveDB(); charterState.textContent='Sauvé ✔';
 };
 
-/* ====== DICTÉE ====== */
+/* ====== DICTÉE (anti-duplication) ====== */
 (function setupMic(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR){ micStatus.textContent='(non supportée)'; return; }
-  const rec=new SR(); rec.lang='fr-FR'; rec.interimResults=true; rec.continuous=true;
+  const rec=new SR();
+  rec.lang='fr-FR';
+  rec.continuous=true;
+  rec.interimResults=false; // ⬅️ clé: pas de résultats intermédiaires
+
   let on=false;
-  btnMic.onclick=()=>{ if(!on){ rec.start(); on=true; micStatus.textContent='Écoute…'; btnMic.textContent='■ Stop'; }
-                       else { rec.stop();  on=false; micStatus.textContent='—';       btnMic.textContent='🎙️ Dicter'; } };
-  rec.onresult=(e)=>{ let txt=''; for(let i=e.resultIndex;i<e.results.length;i++){ txt+=e.results[i][0].transcript; } note.value=(note.value+' '+txt).trim(); };
+  btnMic.onclick=()=>{
+    if(!on){ rec.start(); on=true; micStatus.textContent='Écoute…'; btnMic.textContent='■ Stop'; }
+    else { rec.stop();  on=false; micStatus.textContent='—';       btnMic.textContent='🎙️ Dicter'; }
+  };
+
+  rec.onresult=(e)=>{
+    // on n’ajoute QUE les segments finals
+    for (let i = e.resultIndex; i < e.results.length; i++){
+      const res = e.results[i];
+      if (res.isFinal){
+        const txt = res[0].transcript.trim();
+        // anti-répétition courte (si le même segment a déjà été ajouté en fin)
+        if (!note.value.trim().endsWith(txt)) {
+          note.value = (note.value + ' ' + txt).trim();
+        }
+      }
+    }
+  };
   rec.onend=()=>{ if(on) rec.start(); else { micStatus.textContent='—'; btnMic.textContent='🎙️ Dicter'; } };
 })();
+
 
 /* ====== ANALYSE (Apps Script -> OpenAI) ====== */
 btnAnalyze.onclick = async ()=>{
@@ -457,6 +477,15 @@ btnAnalyze.onclick = async ()=>{
     alert('Analyse échouée: '+e.message);
   }
 };
+
+function recomputePipelineForItem(it){
+  const statuses = (it.propositions||[]).map(p=> (p.decision?.status)||'a_preciser');
+  const hasAny = statuses.some(s => s==='valide' || s==='refuse');
+  const allFinal = statuses.length>0 && statuses.every(s => s==='valide' || s==='refuse');
+  if (allFinal) return 'bouclee';
+  if (hasAny)   return 'en_validation';
+  return 'pret_projecteur';
+}
 
 /* ====== DÉCISIONS ====== */
 function renderLastItem(){
@@ -535,7 +564,9 @@ clientJsonFile.onchange = async (e)=>{
   (obj?.responses||[]).forEach(r=>{
     const it = (s.items||[]).find(x=>x.id===r.card_id); if(!it) return;
     const p  = (it.propositions||[]).find(y=>y.pid===r.pid); if(!p) return;
-    p.decision = { status:r.decision, comment:r.comment||'' }; n++;
+    p.decision = { status:r.decision, comment:r.comment||'', source:'client', ts: Date.now() };
+    it.pipeline = recomputePipelineForItem(it);
+    n++;
     (s.decisions||(s.decisions=[])).push({ ts:Date.now(), type:'client_import', status:r.decision, item:{ id:it.id, reformulation: it.reformulation||it.title||'' }, note:`${r.pid} ${r.decision}${r.comment? ' ('+r.comment+')':''}` });
   });
   saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
@@ -611,7 +642,9 @@ function renderProjectorInline(){
     card.innerHTML='<em>Aucun item.</em>'; return;
   }
   const chips = (s.charter?.contraintes||'').split(/[;,•\n]/).map(x=>x.trim()).filter(Boolean).slice(0,4).map(chip).join(' ') || chip('—');
-  function pill(dec){ const st=(dec?.status)||'a_preciser';
+  function pill(dec){ 
+    const st=(dec?.status)||'a_preciser';
+    const src = dec?.source==='client' ? ' <span style="border:1px solid #60a5fa;border-radius:6px;padding:1px 6px;margin-left:6px">client</span>' : '';
     return `<span class="status-pill"><span class="dot ${st}"></span>${st.replace('_',' ')}</span>`;
   }
   list.innerHTML = `<li><a href="#" onclick="return false;">${it.title||it.reformulation||''}</a></li>`;
@@ -662,7 +695,7 @@ function renderProjectorInline(){
       prop.decision = prop.decision || {status:'a_preciser',comment:''};
       prop.decision.status=act;
       const all=(it.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
-      it.pipeline = all ? 'bouclee' : 'en_validation';
+      it.pipeline = recomputePipelineForItem(it);
       saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
       renderProjectorInline();
     };
@@ -784,7 +817,7 @@ loadDB(); hydrateCharter(); renderDecisions(); renderLastItem();
     if(status) p.decision.status = status;
     if(comment!==undefined) p.decision.comment = comment;
     const all = (it.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
-    it.pipeline = all ? 'bouclee' : 'en_validation';
+    it.pipeline = recomputePipelineForItem(it);
     (it.history||(it.history=[])).push({ts:Date.now(), who:'client', what:`${pid}=${p.decision.status}${p.decision.comment?' ('+p.decision.comment+')':''}`});
     saveLocal(state.db); renderCard();
   }
@@ -874,4 +907,5 @@ loadDB(); hydrateCharter(); renderDecisions(); renderLastItem();
 </script>
 </body>
 </html>
+
 
