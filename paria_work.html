@@ -480,52 +480,203 @@ renderLastItem();
 /* ====== ROUTAGE : Projecteur en nouvel onglet ======
    Si on ouvre la page avec ?projecteur=1, on affiche uniquement le projecteur (plein écran),
    on lit le même localStorage et on écoute les événements 'storage' pour rafraîchir. */
+
+/* ====== Projecteur standalone interactif ====== */
 (function maybeStandaloneProjector(){
   const params = new URL(location.href).searchParams;
-  if(params.get('projecteur')==='1'){
-    // Remplacer tout le body par le projecteur
-    document.body.innerHTML = `
-      <div class="full">
-        <div class="actions" style="justify-content:space-between">
-          <div><strong>Projecteur</strong> — <span id="projHdr">—</span></div>
-          <div class="actions">
-            <button id="btnBigger">A+</button>
-            <button id="btnSmaller">A−</button>
+  if(params.get('projecteur')!=='1') return;
+
+  const DB_KEY   = 'paria_db';
+  const WORK_KEY = 'paria_work_id';
+
+  // Helpers localStorage
+  function loadDB(){ try{ return JSON.parse(localStorage.getItem(DB_KEY)||'{"services":{}}'); }catch(e){ return {services:{}}; } }
+  function saveDB(db){ localStorage.setItem(DB_KEY, JSON.stringify(db)); localStorage.setItem('paria_touch', String(Date.now())); }
+
+  // UI minimal plein écran
+  document.body.innerHTML = `
+    <div class="full" style="max-width:1200px;margin:0 auto;padding:16px;font-size:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div><strong>Projecteur</strong> — <span id="p_hdr">—</span></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="p_prev">◀</button>
+          <button id="p_next">▶</button>
+          <button id="p_big">A+</button>
+          <button id="p_small">A−</button>
+          <button id="p_toggle_agenda">Afficher/Masquer Agenda</button>
+          <small style="opacity:.7">Astuce: F11 plein écran · ←/→ navigate · 1/2/3 décider</small>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:280px 1fr;gap:16px">
+        <aside id="p_agenda" style="border:1px solid #ddd;border-radius:10px;padding:10px;max-height:74vh;overflow:auto"></aside>
+        <main id="p_card" style="border:1px solid #ddd;border-radius:10px;padding:16px;min-height:70vh;background:#fff"></main>
+      </div>
+    </div>
+  `;
+
+  const hdr   = document.getElementById('p_hdr');
+  const agenda= document.getElementById('p_agenda');
+  const card  = document.getElementById('p_card');
+  const btnPrev = document.getElementById('p_prev');
+  const btnNext = document.getElementById('p_next');
+  const btnBig  = document.getElementById('p_big');
+  const btnSmall= document.getElementById('p_small');
+  const btnTogA = document.getElementById('p_toggle_agenda');
+
+  function chip(t){ return `<span style="border:1px solid #ddd;border-radius:999px;padding:2px 8px;margin-right:6px">${t}</span>`; }
+  function stateBadge(p){ const map={discovery:'#A8B0B9',pret_projecteur:'#2463EB',en_validation:'#F59E0B',bouclee:'#10B981'}; const c=map[p]||'#A8B0B9'; return `<span style="background:${c};color:#fff;border-radius:6px;padding:2px 8px">${p||'—'}</span>`; }
+  function block(label,arr){ if(!Array.isArray(arr)||!arr.length) return ''; return `<div><strong>${label}</strong><ul style="margin:6px 0 12px 22px">${arr.slice(0,6).map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
+
+  let state = { db: loadDB(), svcKey: null, svc: null, agendaIds: [], idx: 0 };
+
+  function deriveServiceFromWorkId(){
+    const wid = localStorage.getItem(WORK_KEY)||'';
+    const parts = wid.split('|');
+    return parts[1] || Object.keys(state.db.services||{})[0] || 'Compta';
+  }
+
+  function computeAgenda(){
+    const items = state.svc.items||[];
+    const ag = Array.isArray(state.svc.agenda)&&state.svc.agenda.length ? state.svc.agenda.slice() : items.map(x=>x.id);
+    return ag.filter(id => items.some(x=>x.id===id));
+  }
+
+  function renderAgenda(){
+    const items = state.svc.items||[];
+    agenda.innerHTML = `<h4 style="margin:0 0 8px 0">Agenda</h4>` +
+      `<ol style="margin:0;padding-left:18px">` +
+      state.agendaIds.map((cid,i)=>{
+        const it = items.find(x=>x.id===cid);
+        const cur = (i===state.idx) ? 'font-weight:700;text-decoration:underline;' : '';
+        return `<li style="margin:6px 0"><a href="#" data-i="${i}" style="${cur}">${cid} · ${(it?.title||it?.reformulation||'—')}</a></li>`;
+      }).join('') + `</ol>`;
+    agenda.querySelectorAll('a[data-i]').forEach(a=>{
+      a.onclick = (e)=>{ e.preventDefault(); state.idx = parseInt(a.dataset.i,10)||0; renderCard(); };
+    });
+  }
+
+  function decide(cardId, pid, status, comment){
+    const items = state.svc.items||[];
+    const it = items.find(x=>x.id===cardId); if(!it) return;
+    const p  = (it.propositions||[]).find(pp=>pp.pid===pid); if(!p) return;
+    p.decision = p.decision || {status:'pending', comment:''};
+    if(status) p.decision.status = status;
+    if(comment!==undefined) p.decision.comment = comment;
+    const all = (it.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
+    it.pipeline = all ? 'bouclee' : 'en_validation';
+    // historisation light (facultatif)
+    (it.history||(it.history=[])).push({ts:Date.now(), who:'client', what:`${pid}=${p.decision.status}${p.decision.comment?' ('+p.decision.comment+')':''}`});
+    saveDB(state.db);
+    renderCard(); // refresh local
+  }
+
+  function renderCard(){
+    const items = state.svc.items||[];
+    if(!state.agendaIds.length){ card.innerHTML = '<em>Aucun item.</em>'; return; }
+    if(state.idx<0) state.idx=0;
+    if(state.idx>=state.agendaIds.length) state.idx = state.agendaIds.length-1;
+
+    const cid = state.agendaIds[state.idx];
+    const it  = items.find(x=>x.id===cid);
+    if(!it){ card.innerHTML='<em>Item introuvable.</em>'; return; }
+
+    const chips = (state.svc.charter?.contraintes||'').split(/[;,•\n]/).map(x=>x.trim()).filter(Boolean).slice(0,4).map(chip).join(' ') || chip('—');
+
+    const props = (it.propositions||[]).map((p,i)=>`
+      <div style="border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><strong>${p.pid||('P'+(i+1))}</strong> · ${p.label||''}</div>
+          <div>
+            <button class="pact" data-c="${it.id}" data-p="${p.pid}" data-act="valide" style="margin-right:6px">Valider</button>
+            <button class="pact" data-c="${it.id}" data-p="${p.pid}" data-act="a_preciser" style="margin-right:6px">À préciser</button>
+            <button class="pact" data-c="${it.id}" data-p="${p.pid}" data-act="refuse">Refuser</button>
           </div>
         </div>
-        <div id="projContent"></div>
-      </div>`;
-    const hdr=document.getElementById('projHdr');
-    const cont=document.getElementById('projContent');
-    function render(){
-      loadDB();
-      const sKey = (localStorage.getItem(WORK_KEY)||'').split('|')[1] || currentService();
-      const s = db.services[sKey] || {charter:{},items:[]};
-      hdr.textContent = localStorage.getItem(WORK_KEY)||'—';
-      const it = (s.items||[])[(s.items||[]).length-1];
-      if(!it){ cont.innerHTML = '<em>Aucun item à afficher.</em>'; return; }
-      const chips = (s.charter?.contraintes||'').split(/[;,•\n]/).map(x=>x.trim()).filter(Boolean).slice(0,4).map(chip).join(' ') || chip('—');
-      cont.innerHTML = `
-        <h2 style="margin:6px 0">${it.title||it.reformulation||'(sujet à nommer)'}</h2>
-        <div style="opacity:.8;margin-bottom:8px">${chip('Objectif: '+(it.objectif||'—'))} ${chip('Question: '+(it.question||'—'))}</div>
-        <div style="margin:6px 0">${chips}</div>
-        <div style="margin-top:10px;border-top:1px dashed #ddd;padding-top:8px">
-          ${block('Problèmes', it.paria?.problemes)}
-          ${block('Améliorations', it.paria?.ameliorations)}
-          ${block('Reconfigurations', it.paria?.reconfigurations)}
-          ${block('Intégration IA', it.paria?.integration_ia)}
-          ${block('Actions (brouillon)', it.paria?.actions)}
+        <div style="opacity:.8;margin:4px 0">coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · embauche:${p.indicateurs?.embauche||'—'} · données:${p.indicateurs?.donnees||'—'}</div>
+        <label style="font-size:.9em;opacity:.8">Commentaire</label>
+        <input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid}" value="${p.decision?.comment||''}" style="width:100%">
+      </div>
+    `).join('');
+
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div>
+          <div style="font-size:22px;font-weight:700">${it.title||it.reformulation||'(sujet à nommer)'}</div>
+          <div style="opacity:.8">${chip('Objectif: '+(it.objectif||'—'))} ${chip('Question: '+(it.question||'—'))}</div>
         </div>
-        <h3 style="margin-top:10px">Propositions</h3>
-        ${(it.propositions||[]).map((p,i)=>`<div style="margin:8px 0">• <strong>${p.pid||('P'+(i+1))}</strong> ${p.label||''} — <em>${p.type||''}</em> [${p.indicateurs?.cout||'—'}/${p.indicateurs?.complexite||'—'}]</div>`).join('')}`;
-      function block(label,arr){ if(!Array.isArray(arr)||!arr.length) return ''; return `<div><strong>${label}</strong><ul style="margin:6px 0 12px 22px">${arr.slice(0,6).map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
-    }
-    render();
-    window.addEventListener('storage', (e)=>{ if(e.key===DB_KEY || e.key==='paria_touch') render(); });
-    document.getElementById('btnBigger').onclick=()=>{ document.querySelector('.full').style.fontSize = '18px'; };
-    document.getElementById('btnSmaller').onclick=()=>{ document.querySelector('.full').style.fontSize = '14px'; };
+        <div>${stateBadge(it.pipeline||'discovery')}</div>
+      </div>
+      <div style="margin:6px 0">${chips}</div>
+      <div style="margin-top:10px;border-top:1px dashed #ddd;padding-top:8px">
+        ${block('Problèmes', it.paria?.problemes)}
+        ${block('Améliorations', it.paria?.ameliorations)}
+        ${block('Reconfigurations', it.paria?.reconfigurations)}
+        ${block('Intégration IA', it.paria?.integration_ia)}
+        ${block('Actions (brouillon)', it.paria?.actions)}
+      </div>
+      <h3 style="margin-top:10px">Propositions</h3>
+      ${props}
+      <div style="display:flex;justify-content:space-between;margin-top:8px">
+        <button id="p_prev2">◀ Précédent</button>
+        <div>${state.idx+1}/${state.agendaIds.length}</div>
+        <button id="p_next2">Suivant ▶</button>
+      </div>
+    `;
+
+    // Actions
+    card.querySelectorAll('.pact').forEach(b=>{
+      b.onclick = ()=> decide(b.dataset.c, b.dataset.p, b.dataset.act);
+    });
+    card.querySelectorAll('.pcmt').forEach(inp=>{
+      inp.onchange = ()=> decide(inp.dataset.c, inp.dataset.p, null, inp.value);
+    });
+    document.getElementById('p_prev2').onclick = ()=> { state.idx=Math.max(0,state.idx-1); renderCard(); };
+    document.getElementById('p_next2').onclick = ()=> { state.idx=Math.min(state.agendaIds.length-1,state.idx+1); renderCard(); };
   }
+
+  function renderAll(){
+    state.db = loadDB();
+    state.svcKey = deriveServiceFromWorkId();
+    state.svc    = state.db.services[state.svcKey] || {charter:{},items:[],agenda:[]};
+    state.agendaIds = computeAgenda();
+    if(state.idx>=state.agendaIds.length) state.idx = 0;
+    const wid = localStorage.getItem(WORK_KEY)||('— | '+state.svcKey+' | —');
+    hdr.textContent = wid;
+    renderAgenda();
+    renderCard();
+  }
+
+  // Boot + refresh quand l’autre onglet modifie le storage
+  renderAll();
+  window.addEventListener('storage', (e)=>{
+    if(e.key===DB_KEY || e.key==='paria_touch' || e.key===WORK_KEY) renderAll();
+  });
+
+  // Boutons barre du haut
+  btnPrev.onclick = ()=>{ state.idx=Math.max(0,state.idx-1); renderCard(); };
+  btnNext.onclick = ()=>{ state.idx=Math.min(state.agendaIds.length-1,state.idx+1); renderCard(); };
+  btnBig.onclick  = ()=>{ document.querySelector('.full').style.fontSize='18px'; };
+  btnSmall.onclick= ()=>{ document.querySelector('.full').style.fontSize='15px'; };
+  btnTogA.onclick = ()=>{ agenda.style.display = (agenda.style.display==='none'?'block':'none'); };
+
+  // Raccourcis clavier (←/→ pour naviguer ; 1/2/3 pour décider sur la 1ᵉ proposition visible)
+  window.addEventListener('keydown', (ev)=>{
+    if(ev.key==='ArrowLeft'){ btnPrev.click(); ev.preventDefault(); }
+    if(ev.key==='ArrowRight'){ btnNext.click(); ev.preventDefault(); }
+    if(['1','2','3'].includes(ev.key)){
+      // applique sur la 1ère proposition visible
+      const first = card.querySelector('.pact[data-act]');
+      if(!first) return;
+      const c = first.getAttribute('data-c');
+      const p = first.getAttribute('data-p');
+      const map = { '1':'valide', '2':'a_preciser', '3':'refuse' };
+      decide(c,p,map[ev.key]);
+      ev.preventDefault();
+    }
+  });
 })();
 </script>
 </body>
 </html>
+
