@@ -436,4 +436,412 @@
       L.push("");
     });
     L.push("## Décisions");
-    (s.decisions||[]).forEach(d=>L.push("- "+ new Date(d.ts).toLocaleString() +" — **"+d.status+"** — "+(d.item?.reformul
+    (s.decisions||[]).forEach(d=>L.push("- "+ new Date(d.ts).toLocaleString() +" — **"+d.status+"** — "+(d.item?.reformulation||'')+" ("+(d.tag||'P3')+")"));
+    return L.join("\n");
+  }
+  function esc(x){ return (x||"").replace(/[&<>]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])); }
+  function buildReportHtml(ctx){
+    const {service, charter:ch={}, items=[], decisions:decs=[], brand={}}=ctx;
+    const rows = items.map((it,i)=>{
+      const props = (it.propositions||[]).map(p=>"<li>"+esc(p.label||"")+" — "+esc(p.type||"")+"</li>").join("");
+      const qs = (it.questions||[]).map(q=>"<li>"+esc(q)+"</li>").join("");
+      const b=it.paria||{};
+      function block(label,arr){ return (arr&&arr.length)? "<li><b>"+label+"</b><ul><li>"+arr.map(esc).join("</li><li>")+"</li></ul></li>":""; }
+      const paria = "<ul>"+block("Problèmes",b.problemes)+block("Améliorations",b.ameliorations)+block("Reconfigurations",b.reconfigurations)+block("Intégration IA",b.integration_ia)+block("Actions",b.actions)+"</ul>";
+      return `<section style="margin:12px 0"><h3>Item #${i+1} <span style="border:1px solid #ccc;border-radius:12px;padding:2px 8px">${esc(it._priority_tag||"P3")}</span></h3><p>${esc(it.reformulation||"")}</p>${paria}${qs? "<p><b>Questions</b><ul>"+qs+"</ul></p>": ""}${props? "<p><b>Propositions</b><ul>"+props+"</ul></p>": ""}</section>`;
+    }).join("");
+    const decList = decs.map(d=>"<li>"+new Date(d.ts).toLocaleString()+" — <b>"+esc(d.status)+"</b> — "+esc(d.item?.reformulation||"")+" ("+esc(d.tag||"P3")+")</li>").join("");
+    return '<!doctype html><html><head><meta charset="utf-8"><title>Rapport — '+esc(brand.client_name||'Client')+' — '+esc(service)+'</title>'+
+      '<style>body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:24px}header{display:flex;align-items:center;gap:16px;margin-bottom:16px}header img{height:48px}.hdr{margin-left:auto;text-align:right;font-size:12px;color:#666}h1{margin:0 0 4px}</style></head><body>'+
+      '<header>'+ (brand.logo_self? '<img src="'+brand.logo_self+'">': '') +
+      '<div><h1>Rapport d\'audit — '+esc(service)+'</h1><small>'+new Date().toLocaleString()+'</small></div>'+
+      '<div class="hdr">'+esc(brand.header||'')+'</div>'+ (brand.logo_client? '<img src="'+brand.logo_client+'">': '') +'</header>'+
+      '<section><h2>Contexte (Charter)</h2><ul>'+
+      '<li><b>Objectifs</b> : '+esc(ch.objectifs||"-")+'</li>'+
+      '<li><b>Contexte & contraintes</b> : '+esc(ch.contexte||"-")+'</li>'+
+      '<li><b>Contraintes strictes</b> : '+esc(ch.contraintes||"-")+'</li>'+
+      '<li><b>Périmètre</b> : '+esc(ch.perimetre||"-")+'</li>'+
+      '<li><b>Douleurs</b> : '+esc(ch.douleurs||"-")+'</li>'+
+      '<li><b>KPI</b> : '+esc(ch.kpis||"-")+'</li>'+
+      '<li><b>Outils</b> : '+esc(ch.outils||"-")+'</li>'+
+      '<li><b>Rôles & charge</b> : '+esc(ch.roles||"-")+'</li>'+
+      '<li><b>Budget & fenêtre</b> : '+esc(ch.budget||"-")+'</li>'+
+      '</ul></section>'+
+      '<section><h2>Synthèse & stratégie</h2><p>Prioriser <b>P1</b> (quick wins), planifier <b>P2</b>, cadrer <b>P3</b>.</p></section>'+
+      '<section><h2>Analyses</h2>'+ (rows||'<em>Aucun item.</em>') +'</section>'+
+      '<section><h2>Décisions</h2><ul>'+ (decList||'<li>—</li>') +'</ul></section>'+
+      '</body></html>';
+  }
+  function computePathsForToday(){
+    const gh=loadGhCfg();
+    const svcKey = serviceKeyGit.value || "Compta";
+    const dstr = gh_date_git.value || new Date().toISOString().slice(0,10);
+    const d = new Date(dstr+"T12:00:00"); const year=String(d.getFullYear()); const day=d.toISOString().slice(0,10);
+    const base = gh.root.replace(/\/+$/,"")+"/"+svcKey+"/"+year+"/"+day;
+    const client = clientSlugFromRoot();
+    return { mdPath: base+"/audit_"+svcKey+"_"+day+".md", htmlPath: base+"/rapport_"+client+"_"+svcKey+"_"+day+".html", svcKey, day, client };
+  }
+
+  btnPreviewMd.addEventListener("click", ()=>{
+    const w=getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
+    previewBox.textContent = makeMarkdown(w.key,w.s);
+  });
+  btnPushMd.addEventListener("click", async ()=>{
+    try{
+      const w=getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
+      const p=computePathsForToday();
+      exportStatus.textContent="Push .md en cours…";
+      const res=await ghUpsertText(p.mdPath, makeMarkdown(w.key,w.s), "feat: audit "+w.key+" "+p.day+" (.md)");
+      exportStatus.textContent="Push .md OK ✔ ("+res.content.path+")";
+    }catch(e){ exportStatus.textContent="Erreur push .md"; alert("Erreur push .md: "+String(e)); }
+  });
+  btnPreviewHtml.addEventListener("click", ()=>{
+    const w=getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
+    const p=computePathsForToday();
+    const html=buildReportHtml({service:w.key,charter:w.s.charter||{},items:w.s.items||[],decisions:w.s.decisions||[],brand:{header:"",logo_self:"",client_name:p.client,logo_client:""}});
+    previewBox.textContent = html.replace(/></g,'>\n<');
+  });
+  btnPreviewHtmlLive.addEventListener("click", ()=>{
+    const w=getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
+    const p=computePathsForToday();
+    const html=buildReportHtml({service:w.key,charter:w.s.charter||{},items:w.s.items||[],decisions:w.s.decisions||[],brand:{header:"",logo_self:"",client_name:p.client,logo_client:""}});
+    previewFrame.srcdoc = html;
+  });
+  btnOpenHtmlTab.addEventListener("click", ()=>{
+    const w=getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
+    const p=computePathsForToday();
+    const html=buildReportHtml({service:w.key,charter:w.s.charter||{},items:w.s.items||[],decisions:w.s.decisions||[],brand:{header:"",logo_self:"",client_name:p.client,logo_client:""}});
+    const url = URL.createObjectURL(new Blob([html],{type:"text/html"})); window.open(url,"_blank");
+  });
+  btnPushHtml.addEventListener("click", async ()=>{
+    try{
+      const w=getWorkForService(); if(!w.s) return alert("Aucun état de travail.");
+      const p=computePathsForToday();
+      const html=buildReportHtml({service:w.key,charter:w.s.charter||{},items:w.s.items||[],decisions:w.s.decisions||[],brand:{header:"",logo_self:"",client_name:p.client,logo_client:""}});
+      exportStatus.textContent="Push .html en cours…";
+      const res=await ghUpsertText(p.htmlPath, html, "feat: audit "+w.key+" "+p.day+" (rapport .html)");
+      exportStatus.textContent="Push .html OK ✔ ("+res.content.path+")";
+    }catch(e){ exportStatus.textContent="Erreur push .html"; alert("Erreur push .html: "+String(e)); }
+  });
+
+  // Formulaire client (export/import)
+  function download(name,content,mime){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([content],{type:mime||'text/plain'})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1500); }
+  btnGenClientForm.onclick = ()=>{
+    const {key,s}=svc(); if(!s.agenda?.length) return alert('Agenda vide.');
+    const dateStr=(localStorage.getItem('paria_work_id')||'').split('|')[2] || new Date().toISOString().slice(0,10);
+    download(`client_form_${key}_${dateStr}.html`, genClientFormHTML(key,dateStr,s), 'text/html');
+    clientFormState.textContent='Formulaire généré';
+  };
+  function genClientFormHTML(service,dateStr,s){
+    const cards=(s.agenda||[]).map(cid=>s.items.find(x=>x.id===cid)).filter(Boolean);
+    function propBlock(c){ return (c.propositions||[]).map((p,ix)=>`
+      <div style="border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:12px">
+        <div><strong>${p.pid||('P'+(ix+1))}</strong> · ${p.label||''}</div>
+        <div>
+          <label><input type="radio" name="${c.id}_${p.pid}" value="valider"> Valider</label>
+          <label style="margin-left:12px"><input type="radio" name="${c.id}_${p.pid}" value="a_preciser"> À préciser</label>
+          <label style="margin-left:12px"><input type="radio" name="${c.id}_${p.pid}" value="refuse"> Refuser</label>
+        </div>
+        <div><em>coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · embauche:${p.indicateurs?.embauche||'—'}</em></div>
+        <div>Commentaire: <input type="text" id="cmt_${c.id}_${p.pid}" style="width:100%"></div>
+      </div>`).join(''); }
+    const pages = cards.map((c,i)=>`
+      <section class="page" data-c="${c.id}" style="display:${i===0?'block':'none'}">
+        <h2>${c.id} · ${c.title||''}</h2>
+        <div style="opacity:.8;margin-bottom:6px">Service: ${service} · Date: ${dateStr}</div>
+        <h3>Propositions</h3>
+        ${propBlock(c)}
+        <div style="display:flex;justify-content:space-between;margin-top:8px">
+          <button onclick="nav(-1)">${i===0?'':'◀ Précédent'}</button>
+          <div>${i+1}/${cards.length}</div>
+          <button onclick="nav(1)">${i===cards.length-1?'Terminer':'Suivant ▶'}</button>
+        </div>
+      </section>`).join('');
+    return `<!doctype html><meta charset="utf-8">
+      <title>Formulaire client — ${service} ${dateStr}</title>
+      <style>body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:900px;margin:24px auto;padding:0 12px}</style>
+      <h1>Validation des propositions — ${service}</h1>
+      <p>Pour chaque proposition, choisissez une option et ajoutez un commentaire si utile. À la fin, cliquez “Exporter réponses (JSON)” et renvoyez le fichier.</p>
+      ${pages}
+      <div style="margin-top:16px"><button onclick="exportJSON()">Exporter réponses (JSON)</button> <span id="state"></span></div>
+      <script>
+        function nav(dir){ const pages=[...document.querySelectorAll('.page')]; const cur=pages.findIndex(p=>p.style.display!=='none'); const next=Math.min(pages.length-1,Math.max(0,cur+dir)); pages[cur].style.display='none'; pages[next].style.display='block'; }
+        function exportJSON(){
+          const decisions=[];
+          document.querySelectorAll('.page').forEach(sec=>{
+            const cid=sec.getAttribute('data-c');
+            sec.querySelectorAll('input[type=radio]:checked').forEach(r=>{
+              const name=r.name, val=r.value;
+              const pid=name.split('_').slice(1).join('_').replace(cid+'_','');
+              const cmt=(document.getElementById('cmt_'+cid+'_'+pid)?.value||'').trim();
+              decisions.push({ cardId: cid, pid: pid, decision: val, comment: cmt });
+            });
+          });
+          const payload={ service:"${service}", date:"${dateStr}", decisions };
+          const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'})); a.download='client_responses_${service}_${dateStr}.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+          document.getElementById('state').textContent='Exporté ✔';
+        }
+      </script>`;
+  }
+  btnImportClientJSON.onclick = ()=> fileClientJSON.click();
+  fileClientJSON.onchange = async (e)=>{
+    const f=e.target.files?.[0]; if(!f) return;
+    let obj={}; try{ obj=JSON.parse(await f.text()); }catch(e){ return alert('JSON invalide'); }
+    const {db,s}=svc(); const map=new Map((s.items||[]).map(c=>[c.id,c]));
+    (obj.decisions||[]).forEach(d=>{
+      const card=map.get(d.cardId); if(!card) return;
+      const prop=(card.propositions||[]).find(p=>p.pid===d.pid); if(!prop) return;
+      if(!prop.decision) prop.decision={status:'pending',comment:''};
+      if(d.decision) prop.decision.status=d.decision;
+      if(typeof d.comment==='string') prop.decision.comment=d.comment;
+      (card.history||(card.history=[])).push({ts:Date.now(),who:'client(import)',what:`${d.pid}=${prop.decision.status}${prop.decision.comment?' ('+prop.decision.comment+')':''}`});
+      const all=(card.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
+      card.pipeline = all ? 'bouclee' : 'en_validation';
+    });
+    saveDB(db);
+    clientFormState.textContent='Réponses importées ✔';
+    if(document.getElementById('tab-projecteur') && !document.getElementById('tab-projecteur').classList.contains('hide')) renderProjector();
+  };
+
+  /* ------------------ PROXY TEST ------------------ */
+  btnProxyTest.addEventListener("click", async ()=>{
+    const url=(localStorage.getItem("paria_proxy_url")||"").trim(); if(!url){ alert("Renseigne PROXY_URL puis Sauver."); return; }
+    proxyState.style.color="#555"; proxyState.textContent="Test…";
+    try{
+      const r1=await fetch(url); const j1=await r1.json(); const ok1=j1?.ok===true;
+      const r2=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({route:"echo",hello:"ping"})}); const j2=await r2.json(); const ok2=j2?.ok===true;
+      proxyState.style.color = (ok1&&ok2) ? "#2d7" : "#a60";
+      proxyState.textContent = (ok1&&ok2) ? "Proxy OK ✔" : `Proxy partiel (${ok1?"GET ok":"GET ko"}/${ok2?"POST ok":"POST ko"})`;
+    }catch(e){ proxyState.style.color="#a00"; proxyState.textContent="Erreur"; alert("Proxy KO : "+String(e)); }
+  });
+
+  /* ------------------ IA (note -> card) ------------------ */
+  async function iaAnalyze(){
+    const svcKey = serviceKeyGit.value || "Compta";
+    let charter={}; try{ const db=JSON.parse(localStorage.getItem("paria_db")||"{}"); charter = db.services?.[svcKey]?.charter || {}; }catch(e){}
+    const PROXY_URL=(localStorage.getItem("paria_proxy_url")||"").trim(); if(!PROXY_URL){ alert("Renseigne PROXY_URL."); return; }
+    const payload={ route:"analyze", model:"gpt-4o-mini", service_key:svcKey, charter, note: (noteInput.value||"") };
+    iaStatus.textContent="Analyse en cours…";
+    try{
+      const r=await fetch(PROXY_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(payload)});
+      const j=await r.json();
+      if(!j.ok){ iaStatus.textContent="Erreur"; iaResult.textContent=JSON.stringify(j,null,2); alert("Analyse échouée : "+(j.error||"")); return; }
+      iaStatus.textContent="OK ✔"; iaResult.textContent=JSON.stringify(j.data,null,2);
+      localStorage.setItem("paria_last_ai", JSON.stringify(j.data));
+    }catch(err){ iaStatus.textContent="Erreur réseau"; alert("Erreur appel proxy : "+String(err)); }
+  }
+  btnIaAnalyze.addEventListener("click", iaAnalyze);
+  btnIaAdopt.addEventListener("click", ()=>{
+    const raw=localStorage.getItem("paria_last_ai"); if(!raw) return alert("Fais d'abord « Analyser (IA) ».");
+    let obj; try{ obj=JSON.parse(raw); }catch(e){ return alert("Résultat IA invalide."); }
+    const svcKey = serviceKeyGit.value || "Compta";
+    let db={services:{}}; try{ db=JSON.parse(localStorage.getItem("paria_db")||"{}"); }catch(e){}
+    if(!db.services) db.services={};
+    if(!db.services[svcKey]) db.services[svcKey]={ charter:{}, items:[], decisions:[], agenda:[] };
+    // id/pid/pipeline minimum
+    const s=db.services[svcKey];
+    obj.id = obj.id || ("I"+( (s.items?.length||0)+1 ));
+    (obj.propositions||[]).forEach((p,i)=> p.pid = p.pid || ("P"+(i+1)));
+    obj.pipeline = obj.pipeline || "discovery";
+    obj.priority = obj.priority || ( (obj.propositions?.length||0)>=3? "P1" : (obj.propositions?.length===2? "P2":"P3") );
+    s.items = s.items||[]; s.items.push(obj);
+    localStorage.setItem("paria_db", JSON.stringify(db));
+    alert("Card ajoutée au Board ✔");
+  });
+
+  /* ------------------ Dictée ------------------ */
+  (function setupMic(){
+    const btn = document.getElementById('btnMic'); if(!btn) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SR){ micState.textContent='(dictée non supportée)'; btn.disabled=true; return; }
+    const rec = new SR(); rec.lang='fr-FR'; rec.interimResults=true; rec.continuous=true;
+    let listening=false;
+    btn.onclick = ()=>{
+      if(!listening){ rec.start(); listening=true; btn.textContent='■ Stop'; micState.textContent='écoute…'; }
+      else { rec.stop(); listening=false; btn.textContent='🎙️ Dicter'; micState.textContent=''; }
+    };
+    rec.onresult = (e)=>{ let txt=''; for(let i=e.resultIndex;i<e.results.length;i++){ txt += e.results[i][0].transcript; } noteInput.value = (noteInput.value+' '+txt).trim(); };
+    rec.onend = ()=>{ if(listening){ rec.start(); } else { micState.textContent=''; btn.textContent='🎙️ Dicter'; } };
+  })();
+
+  /* ------------------ Board ------------------ */
+  function svc(){
+    const key = serviceKeyGit.value || "Compta";
+    let db={}; try{ db=JSON.parse(localStorage.getItem("paria_db")||"{}"); }catch(e){}
+    if(!db.services) db.services={};
+    if(!db.services[key]) db.services[key]={ charter:{}, items:[], agenda:[] };
+    return { key, db, s: db.services[key] };
+  }
+  function saveDB(db){ localStorage.setItem("paria_db", JSON.stringify(db)); }
+  function renderBoard(){
+    const {key,db,s}=svc();
+    boardService.textContent = key;
+    const cols={ discovery:col_discovery, pret_projecteur:col_pret, en_validation:col_valid, bouclee:col_done };
+    Object.values(cols).forEach(c=>c.innerHTML='');
+    (s.items||[]).forEach(card=>{
+      const div=document.createElement('div');
+      div.style.cssText='border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:8px;background:#fff';
+      div.innerHTML=`
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <label><input type="checkbox" data-sel="${card.id}"> ${card.id} · ${card.title||''}</label>
+          <span style="opacity:.7">${card.priority||''}</span>
+        </div>
+        <div style="font-size:.9em;opacity:.8;margin:4px 0">✅ ${['problemes','ameliorations','reconfigurations','integration_ia','actions'].map(k=>Array.isArray(card.paria?.[k])&&card.paria[k].length?'✓':'•').join(' ')}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button data-mv="left" data-c="${card.id}">◀</button>
+          <button data-mv="right" data-c="${card.id}">▶</button>
+          <button data-ag="${card.id}">+ Agenda</button>
+        </div>`;
+      (cols[card.pipeline||'discovery']||cols.discovery).appendChild(div);
+    });
+    document.querySelectorAll('button[data-mv]').forEach(b=>{
+      b.onclick=()=>{ const dir=b.getAttribute('data-mv'); moveCardPipeline(b.getAttribute('data-c'), dir==='left'?-1:1); renderBoard(); };
+    });
+    document.querySelectorAll('button[data-ag]').forEach(b=>{
+      b.onclick=()=>{ addToAgenda(b.getAttribute('data-ag')); renderBoard(); };
+    });
+  }
+  function moveCardPipeline(id,delta){
+    const order=['discovery','pret_projecteur','en_validation','bouclee'];
+    const {db,s}=svc();
+    const c=s.items.find(x=>x.id===id); if(!c) return;
+    const i=Math.max(0,Math.min(order.length-1,(order.indexOf(c.pipeline||'discovery')+delta)));
+    c.pipeline=order[i]; saveDB(db);
+  }
+  function addToAgenda(id){
+    const {db,s}=svc(); s.agenda=s.agenda||[]; if(!s.agenda.includes(id)) s.agenda.push(id); saveDB(db);
+  }
+  boardRefresh.onclick = renderBoard;
+  boardAddToAgenda.onclick = ()=>{
+    const {db,s}=svc(); s.agenda=s.agenda||[];
+    document.querySelectorAll('input[data-sel]:checked').forEach(ch=>{ const id=ch.getAttribute('data-sel'); if(!s.agenda.includes(id)) s.agenda.push(id); });
+    saveDB(db); alert('Ajouté à l’Agenda.');
+  };
+
+  /* ------------------ Projecteur ------------------ */
+  function chip(text){ return `<span style="border:1px solid #ddd;border-radius:999px;padding:2px 8px;margin-right:6px">${text}</span>`; }
+  function stateBadge(pipeline){ const map={discovery:'#A8B0B9',pret_projecteur:'#2463EB',en_validation:'#F59E0B',bouclee:'#10B981'}; const col=map[pipeline]||'#A8B0B9'; return `<span style="background:${col};color:#fff;border-radius:6px;padding:2px 8px">${pipeline||'—'}</span>`; }
+  function renderProjector(){
+    const {key,db,s}=svc();
+    projServiceBadge.textContent = key;
+    projWorkId.textContent = (localStorage.getItem('paria_work_id')||"");
+    projWorkIdHdr.textContent = (localStorage.getItem('paria_work_id')||"—");
+    projAgendaList.innerHTML='';
+    (s.agenda||[]).forEach(cid=>{
+      const item=s.items.find(x=>x.id===cid);
+      const li=document.createElement('li'); li.style.margin='6px 0';
+      li.innerHTML=`<a href="#" data-c="${cid}">${cid} · ${(item?.title||'—')}</a><span style="float:right;opacity:.7">${item?.priority||''}</span>`;
+      li.querySelector('a').onclick=(e)=>{ e.preventDefault(); showCard(cid); };
+      projAgendaList.appendChild(li);
+    });
+    if(s.agenda?.length) showCard(s.agenda[0]); else projCard.innerHTML='<em>Ajoute des cards à l’Agenda dans le Board.</em>';
+  }
+  function showCard(cid){
+    const {s}=svc();
+    const card=s.items.find(x=>x.id===cid);
+    if(!card){ projCard.innerHTML = `<em>Card ${cid} introuvable.</em>`; return; }
+    const cc=(s.charter?.contraintes||'').trim();
+    const chips = cc ? cc.split(/[;,•\n]/).map(x=>x.trim()).filter(Boolean).slice(0,4).map(chip).join(' ') : chip('—');
+    function bl(label,arr){ if(!Array.isArray(arr)||!arr.length) return ''; return `<div><strong>${label}</strong><ul style="margin:6px 0 12px 20px">${arr.slice(0,4).map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
+    const propsHTML=(card.propositions||[]).map((p,ix)=>{
+      if(!p.pid) p.pid="P"+(ix+1);
+      const d=p.decision||{status:'pending',comment:''};
+      function btn(name,label){ const act=d.status===name?'font-weight:700;text-decoration:underline;':''; return `<button data-act="${name}" data-c="${card.id}" data-p="${p.pid}" style="margin-right:6px;${act}">${label}</button>`; }
+      return `<div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><strong>${p.pid}</strong> · ${p.label||''}</div>
+          <div>${btn('valide','Valider')}${btn('a_preciser','À préciser')}${btn('refuse','Refuser')}</div>
+        </div>
+        <div style="opacity:.8;margin:4px 0">coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · formation:${p.indicateurs?.formation||'—'} · embauche:${p.indicateurs?.embauche||'—'} · données:${p.indicateurs?.donnees||'—'}</div>
+        <label style="font-size:.9em;opacity:.8">Commentaire</label>
+        <input type="text" data-comm="1" data-c="${card.id}" data-p="${p.pid}" value="${d.comment||''}" style="width:100%">
+      </div>`;
+    }).join('');
+    projCard.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div>
+          <div style="font-size:18px;font-weight:700">${card.title||'(sujet à nommer)'}</div>
+          <div style="opacity:.8">${chip('Objectif: '+(card.objectif||'—'))} ${chip('Question: '+(card.question||'—'))}</div>
+        </div>
+        <div>${stateBadge(card.pipeline||'discovery')}</div>
+      </div>
+      <div style="margin:6px 0">${chips}</div>
+      <div style="margin-top:10px;border-top:1px dashed #ddd;padding-top:8px">
+        ${bl('Problèmes',card.paria?.problemes)}
+        ${bl('Améliorations',card.paria?.ameliorations)}
+        ${bl('Reconfigurations',card.paria?.reconfigurations)}
+        ${bl('Intégration IA',card.paria?.integration_ia)}
+        ${bl('Actions (brouillon)',card.paria?.actions)}
+      </div>
+      <h4 style="margin-top:10px">Propositions</h4>
+      ${propsHTML}
+      <div style="display:flex;justify-content:space-between;margin-top:8px">
+        <button id="projPrev">◀ Précédent</button>
+        <button id="projNext">Suivant ▶</button>
+      </div>`;
+    document.querySelectorAll('#projCard button[data-act]').forEach(btn=>{
+      btn.onclick=()=>{ applyDecision(btn.getAttribute('data-c'), btn.getAttribute('data-p'), btn.getAttribute('data-act'), null); showCard(card.id); };
+    });
+    document.querySelectorAll('#projCard input[data-comm]').forEach(inp=>{
+      inp.onchange=()=>{ applyDecision(inp.getAttribute('data-c'), inp.getAttribute('data-p'), null, inp.value); };
+    });
+    projPrev.onclick = ()=>{
+      const idx=(s.agenda||[]).indexOf(card.id); if(idx>0) showCard(s.agenda[idx-1]);
+    };
+    projNext.onclick = ()=>{
+      const idx=(s.agenda||[]).indexOf(card.id); if(idx>=0 && idx<s.agenda.length-1) showCard(s.agenda[idx+1]);
+    };
+  }
+  function applyDecision(cardId,pid,statusOrNull,commentOrNull){
+    const {db,s}=svc();
+    const card=s.items.find(x=>x.id===cardId); if(!card) return;
+    const p=(card.propositions||[]).find(x=>x.pid===pid); if(!p) return;
+    if(!p.decision) p.decision={status:'pending',comment:''};
+    if(statusOrNull) p.decision.status=statusOrNull;
+    if(commentOrNull!==null) p.decision.comment=commentOrNull;
+    const all=(card.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
+    card.pipeline = all ? 'bouclee' : 'en_validation';
+    (card.history||(card.history=[])).push({ts:Date.now(),who:'client',what:`${pid}=${p.decision.status}${p.decision.comment?' ('+p.decision.comment+')':''}`});
+    saveDB(db);
+  }
+  projAgendaRefresh.onclick = renderProjector;
+  projSync.onclick = renderProjector;
+  projMode.onchange = function(){ const on=this.checked; document.body.style.background = on ? '#fff': ''; projCard.style.fontSize = on ? '18px' : ''; };
+
+  /* ------------------ Charter load/save ------------------ */
+  function getSvcKey(){ return serviceKeyGit.value || "Compta"; }
+  function loadCharterToEditor(){
+    const svc=getSvcKey();
+    let s=null; try{ const db=JSON.parse(localStorage.getItem("paria_db")||"{}"); s=db.services?.[svc]||null; }catch(e){}
+    const ch = (s&&s.charter) ? s.charter : {};
+    ed_obj.value=ch.objectifs||""; ed_ctx.value=ch.contexte||""; ed_hard.value=ch.contraintes||"";
+    ed_scope.value=ch.perimetre||""; ed_pains.value=ch.douleurs||""; ed_kpi.value=ch.kpis||"";
+    ed_tools.value=ch.outils||""; ed_roles.value=ch.roles||""; ed_budget.value=ch.budget||"";
+    charterState.textContent="Chargé ✔";
+  }
+  function saveEditorToCharter(){
+    const svc=getSvcKey();
+    let db={services:{}}; try{ db=JSON.parse(localStorage.getItem("paria_db")||"{}"); }catch(e){}
+    if(!db.services) db.services={};
+    if(!db.services[svc]) db.services[svc]={ charter:{}, items:[], decisions:[], agenda:[] };
+    db.services[svc].charter = {
+      objectifs: ed_obj.value.trim(), contexte: ed_ctx.value.trim(), contraintes: ed_hard.value.trim(),
+      perimetre: ed_scope.value.trim(), douleurs: ed_pains.value.trim(), kpis: ed_kpi.value.trim(),
+      outils: ed_tools.value.trim(), roles: ed_roles.value.trim(), budget: ed_budget.value.trim()
+    };
+    localStorage.setItem("paria_db", JSON.stringify(db));
+    renderWorkSummary();
+    charterState.textContent="Sauvegardé ✔ (pense à Push .json)";
+  }
+  btnCharterLoad.addEventListener("click", loadCharterToEditor);
+  btnCharterSave.addEventListener("click", saveEditorToCharter);
+
+  /* ------------------ Proxy Ping ------------------ */
+  // (déjà câblé via btnProxyTest)
+
+  // Default tab
+  showTab("reglages");
+})();
+</script>
+</body>
+</html>
