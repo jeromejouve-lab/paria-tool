@@ -571,7 +571,6 @@ function makeClientHtml(pack){
       </section>`;
   }).join('');
 
-  // IMPORTANT: <\/script> pour ne JAMAIS écrire "</script>" dans le JS source
   return `<!doctype html><meta charset="utf-8"><title>Formulaire client — ${safe(pack.service)}</title>
   <h2>Validation — ${safe(pack.service)}</h2>
   <p>Choisissez une décision pour chaque proposition, ajoutez un commentaire si besoin, puis <b>Télécharger les réponses</b> (ou Imprimer → PDF).</p>
@@ -875,3 +874,4 @@ loadDB(); hydrateCharter(); renderDecisions(); renderLastItem();
 </script>
 </body>
 </html>
+
