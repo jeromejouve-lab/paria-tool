@@ -140,7 +140,7 @@
           <button id="btnDump">Voir JSON</button>
           <button id="btnClear">Réinitialiser local</button>
         </div>
-        <pre id="dump" style="max-height:240px;overflow:auto;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px"></pre>
+        <pre id="analysis" style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;max-height:70vh;min-height:260px;overflow:auto">—</pre>
       </div>
     </div>
   </section>
@@ -254,10 +254,6 @@ const GH_API = 'https://api.github.com';
 
 const DEFAULT_GAS_URL = ''; // optionnel: mets ici ton URL Apps Script pour préremplir au 1er chargement
 
-function gasUrl(){
-  return (localStorage.getItem(GAS_KEY) || DEFAULT_GAS_URL || '').trim();
-}
-
 function gasUrl(){ return (localStorage.getItem(GAS_KEY)||'').trim(); }
 function setGasUrl(u){ localStorage.setItem(GAS_KEY,u.trim()); }
 
@@ -284,6 +280,8 @@ function showTab(id){
   if(id==='scenarios') renderScList();
 }
 document.querySelectorAll('.tabbtn').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+loadDB();
+showTab('reglages');
 
 /* ====== WORK ID ====== */
 function currentWorkId(){
@@ -458,13 +456,16 @@ function touch(){ saveDB(); localStorage.setItem('paria_touch', String(Date.now(
 })();
 btnSaveCfg.onclick = ()=>{ setGasUrl(document.getElementById('GAS_URL').value); alert('Réglages sauvegardés.'); };
 btnTestProxy.onclick = async ()=>{
-  const u=gasUrl(); if(!u) return alert('Renseigne le DEPLOY URL.');
+  const u = gasUrl(); if(!u) return alert('Renseigne le DEPLOY URL.');
   try{
-    const r1=await fetch(u+'?route=echo'); const j1=await r1.json();
-    const r2=await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({route:'echo',hello:'world'})}); const j2=await r2.json();
-    proxyState.textContent = (j1.ok&&j2.ok)?'OK ✔':'Partiel';
-  }catch(e){ proxyState.textContent='Erreur'; }
+    const pong = await fetch(u+'?route=ping&secret=Prox11_Secret'); // <-- ton PROXY_SECRET
+    const j = await pong.json();
+    proxyState.textContent = j.ok ? 'OK ✔' : 'Erreur';
+  }catch(e){
+    proxyState.textContent = 'Erreur';
+  }
 };
+
 btnBindWork.onclick = bindWork;
 
 /* ====== GH helpers ====== */
@@ -518,21 +519,32 @@ btnPushGh.onclick = async ()=>{
 /* ====== LOAD / SAVE (Apps Script) ====== */
 btnLoad.onclick = async ()=>{
   const u=gasUrl(); if(!u) return alert('Proxy non configuré.');
-  const service=currentService();
-  const r = await fetch(`${u}?route=load&service=${encodeURIComponent(service)}`);
-  const j = await r.json();
-  if(j?.ok && j.data){
-    db.services[service]=j.data;
-    touch(); hydrateCharter(); gsState.textContent='Chargé ✔';
-  }else alert('Rien à charger.');
+  const wid = localStorage.getItem(WORK_KEY)||currentWorkId();
+  try{
+    const r = await fetch(`${u}?route=load&secret=Prox11_Secret&work_id=${encodeURIComponent(wid)}`);
+    const j = await r.json();
+    if(j?.ok && j.data){
+      const key = currentService();
+      db.services[key] = j.data;
+      saveDB();
+      gsState.textContent='Chargé ✔';
+    }else gsState.textContent='Aucune donnée';
+  }catch(e){ gsState.textContent='Erreur'; alert(e.message); }
 };
+
 btnSave.onclick = async ()=>{
   const u=gasUrl(); if(!u) return alert('Proxy non configuré.');
-  const service=currentService();
-  const body={route:'save', service, data: db.services[service]||{charter:{},items:[],decisions:[],scenarios:[]} };
-  const r=await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)});
-  const j=await r.json(); gsState.textContent = j.ok ? 'Sauvé ✔' : 'Erreur';
+  const wid = localStorage.getItem(WORK_KEY)||currentWorkId();
+  const key = currentService();
+  const state = db.services[key] || {charter:{},items:[],decisions:[],scenarios:[]};
+  try{
+    const r = await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},
+      body: JSON.stringify({route:'save', secret:'Prox11_Secret', work_id: wid, state})});
+    const j = await r.json();
+    gsState.textContent = j.ok ? 'Sauvé ✔' : 'Erreur';
+  }catch(e){ gsState.textContent='Erreur'; alert(e.message); }
 };
+
 
 /* ====== DUMP / CLEAR ====== */
 btnDump.onclick = ()=>{ dump.textContent = JSON.stringify(db,null,2); };
@@ -561,33 +573,22 @@ btnCharterToState.onclick = ()=>{
 (function setupMic(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR){ micStatus.textContent='(non supportée)'; return; }
-  const rec=new SR();
-  rec.lang='fr-FR';
-  rec.continuous=true;
-  rec.interimResults=false; // ⬅️ clé: pas de résultats intermédiaires
-
+  const rec=new SR(); rec.lang='fr-FR'; rec.continuous=true; rec.interimResults=false;
   let on=false;
   btnMic.onclick=()=>{
     if(!on){ rec.start(); on=true; micStatus.textContent='Écoute…'; btnMic.textContent='■ Stop'; }
-    else { rec.stop();  on=false; micStatus.textContent='—';       btnMic.textContent='🎙️ Dicter'; }
+    else   { rec.stop();  on=false; micStatus.textContent='—';       btnMic.textContent='🎙️ Dicter'; }
   };
-
   rec.onresult=(e)=>{
-    // on n’ajoute QUE les segments finals
-    for (let i = e.resultIndex; i < e.results.length; i++){
-      const res = e.results[i];
-      if (res.isFinal){
-        const txt = res[0].transcript.trim();
-        // anti-répétition courte (si le même segment a déjà été ajouté en fin)
-        if (!note.value.trim().endsWith(txt)) {
-          note.value = (note.value + ' ' + txt).trim();
-        }
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const res=e.results[i]; if(res.isFinal){
+        const txt=res[0].transcript.trim();
+        if(!note.value.trim().endsWith(txt)) note.value=(note.value+' '+txt).trim();
       }
     }
   };
   rec.onend=()=>{ if(on) rec.start(); else { micStatus.textContent='—'; btnMic.textContent='🎙️ Dicter'; } };
 })();
-
 
 /* ====== ANALYSE (Apps Script -> OpenAI) ====== */
 btnAnalyze.onclick = async ()=>{
@@ -884,7 +885,7 @@ function renderScList(){
 }
 
 /* ====== BOOT ====== */
-loadDB(); hydrateCharter(); renderDecisions(); renderLastItem();
+
 
 /* ====== Projecteur standalone interactif (plein écran) ====== */
 (function maybeStandaloneProjector(){
@@ -1051,6 +1052,7 @@ loadDB(); hydrateCharter(); renderDecisions(); renderLastItem();
 </script>
 </body>
 </html>
+
 
 
 
