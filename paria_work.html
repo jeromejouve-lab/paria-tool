@@ -58,6 +58,12 @@
     <button class="tabbtn" data-tab="analyse">Analyse</button>
     <button class="tabbtn" data-tab="projecteur">Projecteur</button>
     <button class="tabbtn" data-tab="scenarios">Scénarios</button>
+    <button id="btnStartSess">Démarrer séance</button>
+    <button id="btnCopyGuest" disabled>Copier lien invité</button>
+    <button id="btnPauseSess" disabled>Pause</button>
+    <button id="btnRotateGuest" disabled>Changer lien</button>
+    <button id="btnEndSess" disabled>Terminer</button>
+    <span id="liveState" class="pill">offline</span>
   </div>
   <div class="spacer"></div>
   <div class="ctx">Service:
@@ -76,6 +82,8 @@
     <div class="row">
       <div class="card">
         <h4>Google Apps Script (proxy)</h4>
+        <label>URL publique (cette page)</label>
+        <input id="public_base" placeholder="https://jeromejouve-lab.github.io/paria-tool/paria_work.html">
         <label>DEPLOY URL</label>
         <input id="GAS_URL" placeholder="https://script.google.com/macros/s/AKfycb.../exec">
         <div class="actions">
@@ -296,6 +304,142 @@ function bindWork(){
   document.getElementById('workBindState').textContent = 'lié ✔';
 }
 
+/* ====== SESSION SYNC ====== */
+let sess = { id:null, operator_token:null, guest_token:null, last_seq:0, paused:false };
+let poller = null;
+function publicBase(){ return (localStorage.getItem('paria_public_base')||'').trim(); }
+
+async function gasPost(route, payload){
+  const u = gasUrl(); if(!u) throw new Error('Proxy non configuré');
+  const body = {route, secret: 'seniar-123', ...payload}; // <-- mets le même PROXY_SECRET que dans Apps Script
+  const r = await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)});
+  const j = await r.json(); if(!j.ok) throw new Error(j.error||route+' ko'); return j;
+}
+async function gasGet(route, qs){
+  const u = new URL(gasUrl());
+  u.searchParams.set('route', route);
+  u.searchParams.set('secret', 'seniar-123'); // idem
+  Object.entries(qs||{}).forEach(([k,v])=>u.searchParams.set(k, String(v)));
+  const r = await fetch(u.toString()); const j=await r.json(); if(!j.ok) throw new Error(j.error||route+' ko'); return j;
+}
+
+btnStartSess.onclick = async ()=>{
+  const wid = localStorage.getItem('paria_work_id')||'';
+  const j = await gasPost('session_start', {work_id: wid, moderation: false});
+  sess.id=j.session_id; sess.operator_token=j.operator_token; sess.guest_token=j.guest_token; sess.last_seq=0; sess.paused=false;
+  liveState.textContent='live'; btnCopyGuest.disabled=btnPauseSess.disabled=btnRotateGuest.disabled=btnEndSess.disabled=false;
+  startPoll();
+  alert('Séance démarrée.');
+};
+btnEndSess.onclick = async ()=>{
+  if(!sess.id) return;
+  await gasPost('session_end', {session_id: sess.id});
+  stopPoll(); sess={id:null,operator_token:null,guest_token:null,last_seq:0,paused:false};
+  liveState.textContent='offline'; btnCopyGuest.disabled=btnPauseSess.disabled=btnRotateGuest.disabled=btnEndSess.disabled=true;
+};
+btnPauseSess.onclick = async ()=>{
+  if(!sess.id) return;
+  const j = await gasPost('session_pause', {session_id: sess.id, paused: !sess.paused});
+  sess.paused = j.paused; liveState.textContent = sess.paused? 'paused' : 'live';
+};
+btnRotateGuest.onclick = async ()=>{
+  if(!sess.id) return;
+  const j = await gasPost('session_rotate', {session_id: sess.id});
+  sess.guest_token = j.guest_token;
+  alert('Nouveau lien invité généré.');
+};
+btnCopyGuest.onclick = ()=>{
+  if(!sess.id) return;
+  const base = publicBase() || location.href.split('?')[0];
+  const url = new URL(base);
+  url.searchParams.set('session', sess.id);
+  url.searchParams.set('role', 'guest');
+  url.searchParams.set('token', sess.guest_token);
+  navigator.clipboard.writeText(url.toString());
+  alert('Lien invité copié.');
+};
+
+btnPushGh.onclick = async ()=>{
+  try{
+    ghState.textContent='Push…';
+    const wid = localStorage.getItem('paria_work_id')||'';
+    const {client, service, date} = parseWorkId();
+    const s = svc();
+    const state_json = JSON.stringify(s,null,2);
+    const md = makeMarkdown(service, s);
+    const message = (gh_msg.value||`snapshot: ${service} ${date}`);
+    await gasPost('git_snapshot', {work_id: wid, service, date, state_json, md, message});
+    ghState.textContent='OK ✔';
+  }catch(e){ ghState.textContent='Erreur'; alert(e.message); }
+};
+
+function startPoll(){
+  stopPoll();
+  poller = setInterval(async ()=>{
+    if(!sess.id) return;
+    try{
+      const j = await gasGet('events_since', {session_id: sess.id, token: sess.operator_token, after: sess.last_seq});
+      sess.paused = j.paused; liveState.textContent = sess.paused? 'paused' : 'live';
+      (j.events||[]).forEach(ev=>{ sess.last_seq=Math.max(sess.last_seq, ev.seq||0); applyEvent(ev); });
+    }catch(e){ /* ignore qques ratés réseau */ }
+  }, 1500);
+}
+function stopPoll(){ if(poller){ clearInterval(poller); poller=null; } }
+
+/* Applique un event entrant invited/operator -> sur l’état */
+function applyEvent(ev){
+  const e = ev.event||{};
+  const s = svc();
+  if(e.type==='prop_decision'){
+    const it = (s.items||[]).find(x=>x.id===e.card_id); if(!it) return;
+    const p = (it.propositions||[]).find(x=>x.pid===e.pid); if(!p) return;
+    p.decision = p.decision || {status:'a_preciser', comment:''};
+    if(e.status)  p.decision.status  = e.status;
+    if(e.comment!==undefined) p.decision.comment = e.comment;
+    it.pipeline = recomputePipelineForItem(it);
+    touch();
+    // si la card affichée est celle-ci, re-render
+  }
+  if(e.type==='comment'){ // commentaire simple (crée un fil de discussions basique)
+    const it = (s.items||[]).find(x=>x.id===e.card_id); if(!it) return;
+    (it.comments||(it.comments=[])).push({ts:ev.ts, who: ev.role, pid: e.pid, text:e.text});
+    touch();
+  }
+  // plus tard: sim_create (Sx) -> ajouter à it.propositions[i].sims
+  touch();
+}
+
+/* Helpers pour pousser un event quand TOI tu agis */
+async function pushDecision(card_id, pid, status, comment){
+  if(!sess.id) return; // si pas de séance, pas d’event (local only)
+  try{
+    await gasPost('event_push', {session_id: sess.id, token: sess.operator_token, role:'operator', event:{type:'prop_decision', card_id, pid, status, comment}});
+  }catch(e){}
+}
+async function pushComment(card_id, pid, text){
+  if(!sess.id) return;
+  try{
+    await gasPost('event_push', {session_id: sess.id, token: sess.operator_token, role:'operator', event:{type:'comment', card_id, pid, text}});
+  }catch(e){}
+}
+
+let _saveTimer=null, _lastSaveTs=0;
+function autosaveCloud(){
+  if(_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(async ()=>{
+    try{
+      const wid = localStorage.getItem('paria_work_id')||'';
+      const service = currentService();
+      const state = svc();
+      await gasPost('save', {work_id: wid || (`CLIENT|${service}|`+new Date().toISOString().slice(0,10)), state});
+      _lastSaveTs = Date.now();
+      // TODO: MAJ indicateur “💾 Sauvé il y a 0s”
+    }catch(e){}
+  }, 1200);
+}
+// À appeler après CHAQUE action clé :
+function touch(){ saveDB(); localStorage.setItem('paria_touch', String(Date.now())); autosaveCloud(); }
+  
 /* ====== BOOT RÉGLAGES ====== */
 (function bootCfg(){
   document.getElementById('GAS_URL').value = gasUrl();
@@ -379,7 +523,7 @@ btnLoad.onclick = async ()=>{
   const j = await r.json();
   if(j?.ok && j.data){
     db.services[service]=j.data;
-    saveDB(); hydrateCharter(); gsState.textContent='Chargé ✔';
+    touch(); hydrateCharter(); gsState.textContent='Chargé ✔';
   }else alert('Rien à charger.');
 };
 btnSave.onclick = async ()=>{
@@ -410,7 +554,7 @@ btnCharterToState.onclick = ()=>{
     contraintes: ch_hard.value.trim(), douleurs: ch_pains.value.trim(), kpis: ch_kpi.value.trim(),
     outils: ch_tools.value.trim(), roles: ch_roles.value.trim(), budget: ch_budget.value.trim()
   };
-  saveDB(); charterState.textContent='Sauvé ✔';
+  touch(); charterState.textContent='Sauvé ✔';
 };
 
 /* ====== DICTÉE (anti-duplication) ====== */
@@ -468,10 +612,10 @@ btnAnalyze.onclick = async ()=>{
     item.priority = item.priority || 'P2';
 
     s.items.push(item);
-    saveDB();
+    touch();
     analysis.textContent = JSON.stringify(item,null,2);
     aiState.textContent='OK ✔';
-    localStorage.setItem('paria_touch', String(Date.now()));
+    touch();
   }catch(e){
     aiState.textContent='Erreur';
     alert('Analyse échouée: '+e.message);
@@ -500,8 +644,8 @@ document.querySelectorAll('.decide').forEach(b=>{
   b.onclick=()=>{
     const s=svc(); const it=(s.items||[])[(s.items||[]).length-1]; if(!it) return;
     (s.decisions||(s.decisions=[])).push({ ts:Date.now(), status:b.dataset.status, item:{ id:it.id, reformulation: it.reformulation||it.title||'' }});
-    saveDB(); renderDecisions(); decState.textContent='Noté ✔';
-    localStorage.setItem('paria_touch', String(Date.now()));
+    touch(); renderDecisions(); decState.textContent='Noté ✔';
+    touch();
   };
 });
 function renderDecisions(){
@@ -569,7 +713,7 @@ clientJsonFile.onchange = async (e)=>{
     n++;
     (s.decisions||(s.decisions=[])).push({ ts:Date.now(), type:'client_import', status:r.decision, item:{ id:it.id, reformulation: it.reformulation||it.title||'' }, note:`${r.pid} ${r.decision}${r.comment? ' ('+r.comment+')':''}` });
   });
-  saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
+  touch(); 
   renderDecisions();
   alert(`Réponses client intégrées (${n}).`);
 };
@@ -696,7 +840,7 @@ function renderProjectorInline(){
       prop.decision.status=act;
       const all=(it.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
       it.pipeline = recomputePipelineForItem(it);
-      saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
+      touch();
       renderProjectorInline();
     };
   });
@@ -707,7 +851,7 @@ function renderProjectorInline(){
       const prop=(it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
       prop.decision = prop.decision || {status:'a_preciser',comment:''};
       prop.decision.comment = inp.value;
-      saveDB(); localStorage.setItem('paria_touch', String(Date.now()));
+      touch();
     };
   });
 }
@@ -723,7 +867,7 @@ btnForkScenario.onclick = ()=>{
   (s.scenarios||(s.scenarios=[]));
   const id = 'S'+((s.scenarios.length||0)+1);
   s.scenarios.push({ id, snapshot: JSON.parse(JSON.stringify(s)) , ts: Date.now() });
-  saveDB(); renderScList(); alert(`Scénario ${id} créé.`);
+  touch(); renderScList(); alert(`Scénario ${id} créé.`);
 };
 btnPromoteScenario.onclick = ()=>{
   const s=svc(); if(!s.scenarios?.length) return alert('Aucun scénario.');
@@ -731,7 +875,7 @@ btnPromoteScenario.onclick = ()=>{
   const snap = chosen.snapshot || {};
   s.items     = snap.items||s.items||[];
   s.decisions = snap.decisions||s.decisions||[];
-  saveDB(); renderScList(); alert('Scénario promu.');
+  touch(); renderScList(); alert('Scénario promu.');
 };
 function renderScList(){
   const s=svc(); const el=document.getElementById('scList');
@@ -748,7 +892,7 @@ loadDB(); hydrateCharter(); renderDecisions(); renderLastItem();
   if(params.get('projecteur')!=='1') return;
 
   function loadLocal(){ try{ return JSON.parse(localStorage.getItem(DB_KEY)||'{"services":{}}'); }catch(e){ return {services:{}}; } }
-  function saveLocal(x){ localStorage.setItem(DB_KEY, JSON.stringify(x)); localStorage.setItem('paria_touch', String(Date.now())); }
+  function saveLocal(x){ localStorage.setItem(DB_KEY, JSON.stringify(x)); touch(); }
 
   document.body.innerHTML = `
     <div class="full" style="font-size:16px">
@@ -907,5 +1051,6 @@ loadDB(); hydrateCharter(); renderDecisions(); renderLastItem();
 </script>
 </body>
 </html>
+
 
 
