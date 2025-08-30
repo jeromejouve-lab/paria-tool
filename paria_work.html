@@ -136,12 +136,13 @@
     <div class="row">
       <div class="card">
         <h4>État local</h4>
-        <div class="actions">
-          <div class="row"><button id="btnDump">Voir JSON</button></div>
-          <pre id="dump" style="max-height:70vh;min-height:240px;overflow:auto;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;display:none"></pre>
-          <button id="btnClear">Réinitialiser local</button>
-        </div>
-        <pre id="cfgDiag" style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;max-height:70vh;min-height:260px;overflow:auto">—</pre>
+		<div class="actions" style="gap:8px;align-items:center;margin-bottom:8px">
+		  <button id="btnDump">Voir JSON</button>
+		  <button id="btnClear">Réinitialiser local</button>
+		</div>
+		<pre id="dump"
+		     style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;
+		            min-height:240px;max-height:70vh;overflow:auto;resize:vertical">—</pre>
       </div>
     </div>
   </section>
@@ -1267,6 +1268,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
