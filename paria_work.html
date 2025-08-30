@@ -534,19 +534,31 @@ btnPushGh.onclick = async ()=>{
 
 /* ====== LOAD / SAVE (Apps Script) ====== */
 btnLoad.onclick = async ()=>{
-  const u=gasUrl(); if(!u) return alert('Proxy non configuré.');
-  const wid = localStorage.getItem(WORK_KEY)||currentWorkId();
+  const u = gasUrl(); if(!u) return alert('Proxy non configuré.');
+  const wid = localStorage.getItem(WORK_KEY) || currentWorkId();      // ex: ACME|Compta|2025-08-30
+  const svcKey = (wid.split('|')[1] || '').trim() || currentService();// <- clé service depuis WID
+  gsState.textContent = 'Chargement…';
   try{
     const r = await fetch(`${u}?route=load&secret=Prox11_Secret&work_id=${encodeURIComponent(wid)}`);
     const j = await r.json();
-    if(j?.ok && j.data){
-      const key = currentService();
-      db.services[key] = j.data;
+    if(j.ok && j.data){
+      // normalise si besoin (au cas où le JSON n’a pas la structure attendue)
+      const data = j.data && j.data.charter ? j.data
+                   : { charter:{}, items:[], decisions:[], scenarios:[], ...j.data };
+      db.services = db.services || {};
+      db.services[svcKey] = data;     // <- range au bon endroit
       saveDB();
+      // option: bascule l’UI sur ce service
+      if (typeof selectService === 'function') selectService(svcKey);
       gsState.textContent='Chargé ✔';
-    }else gsState.textContent='Aucune donnée';
-  }catch(e){ gsState.textContent='Erreur'; alert(e.message); }
+    } else if(j.ok && !j.data){
+      gsState.textContent='Aucune donnée';
+    } else {
+      gsState.textContent='Erreur'; alert('LOAD: '+(j.error||'inconnu'));
+    }
+  }catch(e){ gsState.textContent='Erreur'; alert('LOAD exception: '+e.message); }
 };
+
 
 btnSave.onclick = async ()=>{
   const u=gasUrl(); if(!u) return alert('Proxy non configuré.');
@@ -1068,6 +1080,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
