@@ -137,7 +137,8 @@
       <div class="card">
         <h4>État local</h4>
         <div class="actions">
-          <button id="btnDump">Voir JSON</button>
+          <div class="row"><button id="btnDump">Voir JSON</button></div>
+          <pre id="dump" style="max-height:70vh;min-height:240px;overflow:auto;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;display:none"></pre>
           <button id="btnClear">Réinitialiser local</button>
         </div>
         <pre id="analysis" style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;max-height:70vh;min-height:260px;overflow:auto">—</pre>
@@ -309,14 +310,14 @@ function publicBase(){ return (localStorage.getItem('paria_public_base')||'').tr
 
 async function gasPost(route, payload){
   const u = gasUrl(); if(!u) throw new Error('Proxy non configuré');
-  const body = {route, secret: 'seniar-123', ...payload}; // <-- mets le même PROXY_SECRET que dans Apps Script
+  const body = {route, secret: 'Prox11_Secret', ...payload}; // <-- mets le même PROXY_SECRET que dans Apps Script
   const r = await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)});
   const j = await r.json(); if(!j.ok) throw new Error(j.error||route+' ko'); return j;
 }
 async function gasGet(route, qs){
   const u = new URL(gasUrl());
   u.searchParams.set('route', route);
-  u.searchParams.set('secret', 'seniar-123'); // idem
+  u.searchParams.set('secret', 'Prox11_Secret'); // idem
   Object.entries(qs||{}).forEach(([k,v])=>u.searchParams.set(k, String(v)));
   const r = await fetch(u.toString()); const j=await r.json(); if(!j.ok) throw new Error(j.error||route+' ko'); return j;
 }
@@ -369,6 +370,21 @@ btnPushGh.onclick = async ()=>{
     await gasPost('git_snapshot', {work_id: wid, service, date, state_json, md, message});
     ghState.textContent='OK ✔';
   }catch(e){ ghState.textContent='Erreur'; alert(e.message); }
+};
+const dumpEl = document.getElementById('dump');
+
+function refreshDump(){
+  try {
+    const s = svc(); // ton état courant (service sélectionné)
+    dumpEl.textContent = JSON.stringify(s || {}, null, 2);
+  } catch(e) {
+    dumpEl.textContent = 'Erreur JSON: ' + e.message;
+  }
+}
+
+btnDump.onclick = ()=>{
+  refreshDump();
+  dumpEl.style.display = 'block';
 };
 
 function startPoll(){
@@ -1052,6 +1068,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
