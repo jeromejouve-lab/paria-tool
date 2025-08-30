@@ -386,9 +386,15 @@ function refreshDump(){
   }
 }
 
-btnDump.onclick = ()=>{
-  refreshDump();
-  dumpEl.style.display = 'block';
+btnDump.onclick = () => {
+  const raw = localStorage.getItem('paria_db');
+  const obj = raw ? JSON.parse(raw) : (window.db || {});
+  const el  = document.getElementById('dump');
+  if (!el) { alert('Élément <pre id="dump"> introuvable.'); return; }
+  el.textContent = JSON.stringify(obj, null, 2) || '—';
+  // au cas où c’est masqué par un wrapper :
+  el.parentElement?.classList?.remove('hide');
+  el.style.display = 'block';
 };
 
 function startPoll(){
@@ -561,13 +567,13 @@ btnSave.onclick = async ()=>{
 };
 
 /* ====== DUMP / CLEAR ====== */
-btnClear.onclick = ()=>{
-  if(confirm('Effacer l’état local ?')){
-    localStorage.removeItem(DB_KEY);
-    loadDB();
-    dumpEl.textContent='—';
-    alert('Réinitialisé.');
-  }
+btnClear.onclick = () => {
+  if (!confirm('Effacer l’état local ?')) return;
+  localStorage.removeItem('paria_db');
+  if (typeof loadDB === 'function') loadDB();
+  const el = document.getElementById('dump');
+  if (el) el.textContent = '—';
+  alert('Réinitialisé.');
 };
 
 /* ====== CHARTER ====== */
@@ -1261,6 +1267,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
