@@ -141,7 +141,7 @@
           <pre id="dump" style="max-height:70vh;min-height:240px;overflow:auto;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;display:none"></pre>
           <button id="btnClear">Réinitialiser local</button>
         </div>
-        <pre id="analysis" style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;max-height:70vh;min-height:260px;overflow:auto">—</pre>
+        <pre id="cfgDiag" style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;max-height:70vh;min-height:260px;overflow:auto">—</pre>
       </div>
     </div>
   </section>
@@ -308,6 +308,8 @@ let sess = { id:null, operator_token:null, guest_token:null, last_seq:0, paused:
 let poller = null;
 function publicBase(){ return (localStorage.getItem('paria_public_base')||'').trim(); }
 
+function selectService(k){ if(document.getElementById('serviceKey')) document.getElementById('serviceKey').value = k; }
+
 async function gasPost(route, payload){
   const u = gasUrl(); if(!u) throw new Error('Proxy non configuré');
   const body = {route, secret: 'Prox11_Secret', ...payload}; // <-- mets le même PROXY_SECRET que dans Apps Script
@@ -354,6 +356,8 @@ btnCopyGuest.onclick = ()=>{
   url.searchParams.set('session', sess.id);
   url.searchParams.set('role', 'guest');
   url.searchParams.set('token', sess.guest_token);
+	const prox = gasUrl();
+	if (prox) url.searchParams.set('prox', prox);
   navigator.clipboard.writeText(url.toString());
   alert('Lien invité copié.');
 };
@@ -447,16 +451,42 @@ function autosaveCloud(){
       const state = svc();
       await gasPost('save', {work_id: wid || (`CLIENT|${service}|`+new Date().toISOString().slice(0,10)), state});
       _lastSaveTs = Date.now();
-      // TODO: MAJ indicateur “💾 Sauvé il y a 0s”
+      if (gsState) gsState.textContent = 'Sauvé ✔ ' + new Date(_lastSaveTs).toLocaleTimeString();
     }catch(e){}
   }, 1200);
 }
 // À appeler après CHAQUE action clé :
 function touch(){ saveDB(); localStorage.setItem('paria_touch', String(Date.now())); autosaveCloud(); }
-  
+
+/* ====== SNAPSHOT GIT AUTO (10 min) ====== */
+let _gitTimer = null, _lastGitTs = 0;
+async function snapshotGitAuto(reason='auto-10min'){
+  try{
+    const wid = localStorage.getItem(WORK_KEY)||'';
+    if(!wid) return;
+    const {service, date} = parseWorkId();
+    const s = svc();
+    const state_json = JSON.stringify(s,null,2);
+    const md = makeMarkdown(service, s);
+    const message = (gh_msg?.value || `snapshot(${reason}): ${service} ${date}`);
+    await gasPost('git_snapshot', { work_id: wid, service, date, state_json, md, message });
+    _lastGitTs = Date.now();
+    if (ghState) ghState.textContent = 'Auto ✔ ' + new Date(_lastGitTs).toLocaleTimeString();
+  }catch(e){
+    if (ghState) ghState.textContent = 'Auto: en attente';
+    // on n’interrompt pas la séance : on retentera au prochain tick
+  }
+}
+function startGitTimer(){
+  if(_gitTimer) clearInterval(_gitTimer);
+  _gitTimer = setInterval(()=> snapshotGitAuto('auto-10min'), 10*60*1000); // 10 min
+}
+startGitTimer();
+ 
 /* ====== BOOT RÉGLAGES ====== */
 (function bootCfg(){
   document.getElementById('GAS_URL').value = gasUrl();
+	document.getElementById('public_base').value = publicBase();
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('workDate').value = today;
   const wid = localStorage.getItem(WORK_KEY)||'—';
@@ -470,7 +500,12 @@ function touch(){ saveDB(); localStorage.setItem('paria_touch', String(Date.now(
   gh_token.value  = localStorage.getItem(GH_TOKEN)||'';
   gh_msg.value    = gh_msg.value || `feat: audit ${currentService()} ${today}`;
 })();
-btnSaveCfg.onclick = ()=>{ setGasUrl(document.getElementById('GAS_URL').value); alert('Réglages sauvegardés.'); };
+btnSaveCfg.onclick = ()=>{
+  setGasUrl(document.getElementById('GAS_URL').value);
+  localStorage.setItem('paria_public_base', document.getElementById('public_base').value.trim());
+  alert('Réglages sauvegardés.');
+};
+
 btnTestProxy.onclick = async ()=>{
   const u = gasUrl(); if(!u) return alert('Renseigne le DEPLOY URL.');
   try{
@@ -483,54 +518,6 @@ btnTestProxy.onclick = async ()=>{
 };
 
 btnBindWork.onclick = bindWork;
-
-/* ====== GH helpers ====== */
-btnSaveGh.onclick = ()=>{
-  localStorage.setItem(GH_OWNER, gh_owner.value.trim());
-  localStorage.setItem(GH_REPO, gh_repo.value.trim());
-  localStorage.setItem(GH_BRANCH, gh_branch.value.trim()||'main');
-  localStorage.setItem(GH_BASE, gh_base.value.trim()||'clients');
-  localStorage.setItem(GH_TOKEN, gh_token.value.trim());
-  ghState.textContent='Sauvé ✔';
-};
-function utf8ToBase64(str){ return btoa(unescape(encodeURIComponent(str))); }
-async function ghGetSHA(path){
-  const u = `${GH_API}/repos/${gh_owner.value}/${gh_repo.value}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(gh_branch.value)}`;
-  const r = await fetch(u,{headers:{'Accept':'application/vnd.github+json','Authorization':`Bearer ${gh_token.value}` }});
-  if(r.status===200){ const j=await r.json(); return j.sha||null; }
-  return null;
-}
-async function ghPutFile(path, content, message){
-  const sha = await ghGetSHA(path);
-  const u = `${GH_API}/repos/${gh_owner.value}/${gh_repo.value}/contents/${encodeURIComponent(path)}`;
-  const body = {
-    message: message||'update',
-    content: utf8ToBase64(content),
-    branch: gh_branch.value
-  };
-  if(sha) body.sha = sha;
-  const r = await fetch(u,{
-    method:'PUT',
-    headers:{'Accept':'application/vnd.github+json','Authorization':`Bearer ${gh_token.value}`,'Content-Type':'application/json'},
-    body: JSON.stringify(body)
-  });
-  if(!r.ok){ const t=await r.text(); throw new Error(`GitHub ${r.status}: ${t}`); }
-  return r.json();
-}
-btnPushGh.onclick = async ()=>{
-  try{
-    ghState.textContent='Push…';
-    const {client, service, date} = parseWorkId();
-    const base = `${gh_base.value}/${client}/${service}/${date}`;
-    const s = svc();
-    // JSON snapshot
-    const json = JSON.stringify(s,null,2);
-    const md   = makeMarkdown(service, s);
-    await ghPutFile(`${base}/state.json`, json, gh_msg.value||`feat: ${service} ${date} snapshot`);
-    await ghPutFile(`${base}/audit_${service}_${date}.md`, md, gh_msg.value||`feat: ${service} ${date} md`);
-    ghState.textContent='OK ✔';
-  }catch(e){ ghState.textContent='Erreur'; alert(e.message); }
-};
 
 /* ====== LOAD / SAVE (Apps Script) ====== */
 btnLoad.onclick = async ()=>{
@@ -573,10 +560,15 @@ btnSave.onclick = async ()=>{
   }catch(e){ gsState.textContent='Erreur'; alert(e.message); }
 };
 
-
 /* ====== DUMP / CLEAR ====== */
-btnDump.onclick = ()=>{ dump.textContent = JSON.stringify(db,null,2); };
-btnClear.onclick = ()=>{ if(confirm('Effacer l’état local ?')){ localStorage.removeItem(DB_KEY); loadDB(); dump.textContent='—'; alert('Réinitialisé.'); } };
+btnClear.onclick = ()=>{
+  if(confirm('Effacer l’état local ?')){
+    localStorage.removeItem(DB_KEY);
+    loadDB();
+    dumpEl.textContent='—';
+    alert('Réinitialisé.');
+  }
+};
 
 /* ====== CHARTER ====== */
 function hydrateCharter(){
@@ -658,6 +650,35 @@ function recomputePipelineForItem(it){
   if (allFinal) return 'bouclee';
   if (hasAny)   return 'en_validation';
   return 'pret_projecteur';
+}
+
+async function runSim(item, prop, comment){
+  const u = gasUrl(); if(!u) return alert('Proxy non configuré.');
+  const s = svc();
+  const payload = {
+    route:'analyze', model:MODEL,
+    service_key: currentService(),
+    charter: s.charter,
+    note: comment || (item.reformulation||'')  // on base la sim sur le commentaire; fallback = sujet
+  };
+  try{
+    const r = await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
+    const j = await r.json(); if(!j.ok) throw new Error(j.error||'analyse KO');
+    const now = Date.now();
+    const sid = 'S'+(((prop.sims||[]).length||0)+1);
+    const sim = {
+      id: sid, origin:'IA', ts: now,
+      comment_source: comment||'',
+      impact: { cout:'≈', delai:'≈', risque:'≈' }, // tu peux raffiner avec le retour
+      paria: j.data?.paria || {},
+      note: j.data?.reformulation || 'Simulation générée'
+    };
+    (prop.sims||(prop.sims=[])).push(sim);
+    item.pipeline = recomputePipelineForItem(item);
+    touch(); // autosave local + Drive
+  }catch(e){
+    alert('Simulation KO: '+e.message);
+  }
 }
 
 /* ====== DÉCISIONS ====== */
@@ -800,10 +821,27 @@ function makeClientHtml(pack){
   <\/script>`;
 }
 
-
 /* ====== PROJECTEUR : inline ====== */
 function chip(t){ return `<span style="border:1px solid #ddd;border-radius:999px;padding:2px 8px;margin-right:6px">${t}</span>`; }
 function stateBadge(p){ const map={discovery:'#A8B0B9',pret_projecteur:'#2463EB',en_validation:'#F59E0B',bouclee:'#10B981'}; const c=map[p]||'#A8B0B9'; return `<span style="background:${c};color:#fff;border-radius:6px;padding:2px 8px">${p||'—'}</span>`; }
+function originTag(origin, who){
+  // Normalise
+  const label = origin
+    || (who==='guest' ? 'Client' : who==='operator' ? 'SenIAr' : '—');
+  const text  = (label==='ClientImport') ? 'Client (import)' : label;
+
+  // Couleurs
+  const colMap = {
+    'IA':'#7c3aed',          // violet
+    'Client':'#0ea5e9',      // bleu
+    'ClientImport':'#0284c7',// bleu + foncé
+    'SenIAr':'#14b8a6',      // turquoise
+    '—':'#9ca3af'
+  };
+  const col = colMap[label] || '#9ca3af';
+
+  return `<span style="display:inline-block;background:${col};color:#fff;border-radius:999px;padding:2px 8px;font-size:12px;line-height:18px">${text}</span>`;
+}
 
 function renderProjectorInline(){
   const s=svc();
@@ -821,24 +859,62 @@ function renderProjectorInline(){
     return `<span class="status-pill"><span class="dot ${st}"></span>${st.replace('_',' ')}</span>`;
   }
   list.innerHTML = `<li><a href="#" onclick="return false;">${it.title||it.reformulation||''}</a></li>`;
-  const props = (it.propositions||[]).map((p,i)=>{
-    const st = (p.decision?.status)||'a_preciser';
-    const is = s=> (st===s ? 'class="pact active"' : 'class="pact"');
-    return `
-    <div style="border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div><strong>${p.pid||('P'+(i+1))}</strong> · ${p.label||''} &nbsp; ${pill(p.decision)}</div>
-        <div>
-          <button ${is('valide')}     data-act="valide"     data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}" style="margin-right:6px">Valider</button>
-          <button ${is('a_preciser')} data-act="a_preciser" data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}" style="margin-right:6px">À préciser</button>
-          <button ${is('refuse')}     data-act="refuse"     data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}">Refuser</button>
-        </div>
-      </div>
-      <div style="opacity:.8;margin:4px 0">coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · embauche:${p.indicateurs?.embauche||'—'}</div>
-      <label style="font-size:.9em;opacity:.8">Commentaire</label>
-      <input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid||('P'+(i+1))}" value="${p.decision?.comment||''}" style="width:100%">
-    </div>`;
-  }).join('');
+	const props = (it.propositions||[]).map((p,i)=>{
+		const st = (p.decision?.status)||'a_preciser';
+		const is = s=> (st===s ? 'class="pact active"' : 'class="pact"');
+		const sims = (p.sims||[]).map(sm=>`
+			<div style="border:1px dashed #ddd;border-radius:6px;padding:8px;margin-top:6px">
+				<div style="display:flex;align-items:center;gap:8px;font-size:12px;opacity:.9">
+					${originTag(sm.origin||'IA')}
+					<span>${sm.id} · ${new Date(sm.ts).toLocaleTimeString()}</span>
+				</div>
+				<div style="margin:4px 0">${(sm.note||'').replace(/</g,'&lt;')}</div>
+				<div style="font-size:12px;opacity:.8">impact: coût ${sm.impact?.cout||'—'} · délai ${sm.impact?.delai||'—'} · risque ${sm.impact?.risque||'—'}</div>
+			</div>
+		`).join('');
+
+		// ➜ on définit **notes** ici (JS), juste après sims
+		const notes = (p.notes||[]).slice(-6).map(n=>`
+			<div style="display:flex;gap:8px;align-items:baseline;margin-top:6px">
+				${originTag(n.origin, n.who)}
+				<span style="font-size:12px;opacity:.7">${new Date(n.ts).toLocaleTimeString()}</span>
+				<div>${(n.text||'').replace(/</g,'&lt;')}</div>
+			</div>
+		`).join('') || `<div style="opacity:.6;margin-top:6px">—</div>`;
+
+		return `
+			<div class="proposition" style="border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:12px">
+				<div style="display:flex;justify-content:space-between;align-items:center">
+					<div><strong>${p.pid||('P'+(i+1))}</strong> · ${p.label||''}</div>
+					<div>
+						<button ${(st==='valide'?'class="pact active"':'class="pact"')}      data-c="${it.id}" data-p="${p.pid}" data-act="valide" style="margin-right:6px">Valider</button>
+						<button ${(st==='a_preciser'?'class="pact active"':'class="pact"')}  data-c="${it.id}" data-p="${p.pid}" data-act="a_preciser" style="margin-right:6px">À préciser</button>
+						<button ${(st==='refuse'?'class="pact active"':'class="pact"')}      data-c="${it.id}" data-p="${p.pid}" data-act="refuse">Refuser</button>
+					</div>
+				</div>
+
+				<div style="opacity:.8;margin:4px 0">
+					coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · embauche:${p.indicateurs?.embauche||'—'} · données:${p.indicateurs?.donnees||'—'}
+				</div>
+
+				<label style="font-size:.9em;opacity:.8">Commentaire</label>
+				<div style="display:flex;gap:6px;align-items:center">
+					<input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid}" value="${p.decision?.comment||''}" style="width:100%">
+					<button class="psim" data-c="${it.id}" data-p="${p.pid}">⚡</button>
+				</div>
+
+				<div class="sims" style="margin-top:8px">
+					${sims}
+				</div>
+
+				<div class="notes" style="margin-top:6px">
+					${notes}
+				</div>
+			</div>`;
+
+
+	}).join('');
+
   card.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <div>
@@ -861,29 +937,58 @@ function renderProjectorInline(){
 
   // Listeners
   card.querySelectorAll('.pact').forEach(b=>{
-    b.onclick=()=>{
-      const act=b.dataset.act, c=b.dataset.c, p=b.dataset.p;
-      const s=svc(); const it=s.items.find(x=>x.id===c); if(!it) return;
-      const prop=(it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
-      prop.decision = prop.decision || {status:'a_preciser',comment:''};
-      prop.decision.status=act;
-      const all=(it.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
-      it.pipeline = recomputePipelineForItem(it);
-      touch();
+		b.onclick=()=>{
+			const act=b.dataset.act, c=b.dataset.c, pid=b.dataset.p;
+			const s=svc(); const it=s.items.find(x=>x.id===c); if(!it) return;
+			const prop=(it.propositions||[]).find(x=>x.pid===pid); if(!prop) return;
+			prop.decision = prop.decision || {status:'a_preciser',comment:''};
+			prop.decision.status=act;
+
+			// INFORMER la séance (invité) si active
+			pushDecision(it.id, pid, act, prop.decision.comment);
+
+			const all=(it.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
+			it.pipeline = recomputePipelineForItem(it);
+			touch();
+			renderProjectorInline();
+		};
+	});
+
+	card.querySelectorAll('.pcmt').forEach(inp=>{
+		inp.onchange=()=>{
+			const c=inp.dataset.c, pid=inp.dataset.p;
+			const s=svc(); const it=s.items.find(x=>x.id===c); if(!it) return;
+			const prop=(it.propositions||[]).find(x=>x.pid===pid); if(!prop) return;
+			prop.decision = prop.decision || {status:'a_preciser',comment:''};
+			prop.decision.comment = inp.value;
+
+			// Historiser la note (origine opérateur/SenIAr)
+			(prop.notes||(prop.notes=[])).push({
+				ts: Date.now(), origin:'SenIAr', who:'operator', text: inp.value
+			});
+
+			// INFORMER la séance (invité) si active
+			pushComment(it.id, pid, prop.decision.comment || '');
+
+			touch();
+		};
+	});
+
+  // Simulateur ⚡
+  card.querySelectorAll('.psim').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const c = btn.dataset.c, p = btn.dataset.p;
+      const s = svc();
+      const it = s.items.find(x=>x.id===c); if(!it) return;
+      const prop = (it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
+      const comment = (card.querySelector(`.pcmt[data-c="${c}"][data-p="${p}"]`)||{}).value||'';
+      await runSim(it, prop, comment);
       renderProjectorInline();
     };
   });
-  card.querySelectorAll('.pcmt').forEach(inp=>{
-    inp.onchange=()=>{
-      const c=inp.dataset.c, p=inp.dataset.p;
-      const s=svc(); const it=s.items.find(x=>x.id===c); if(!it) return;
-      const prop=(it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
-      prop.decision = prop.decision || {status:'a_preciser',comment:''};
-      prop.decision.comment = inp.value;
-      touch();
-    };
-  });
 }
+
+
 btnOpenProjector.onclick = ()=>{
   const url = new URL(location.href);
   url.searchParams.set('projecteur','1');
@@ -919,6 +1024,8 @@ function renderScList(){
 (function maybeStandaloneProjector(){
   const params = new URL(location.href).searchParams;
   if(params.get('projecteur')!=='1') return;
+	const qpProx = params.get('prox');
+	if (qpProx && (!gasUrl() || gasUrl()!==qpProx)) { setGasUrl(qpProx); }
 
   function loadLocal(){ try{ return JSON.parse(localStorage.getItem(DB_KEY)||'{"services":{}}'); }catch(e){ return {services:{}}; } }
   function saveLocal(x){ localStorage.setItem(DB_KEY, JSON.stringify(x)); touch(); }
@@ -952,6 +1059,75 @@ function renderScList(){
   const btnBig  = document.getElementById('p_big');
   const btnSmall= document.getElementById('p_small');
   const btnTogA = document.getElementById('p_toggle_agenda');
+
+	// --- SYNC INVITÉ (session events) ---
+	let guest = { session:null, role:null, token:null, last_seq:0, poll:null };
+
+	function isGuestMode(){
+		const p = new URL(location.href).searchParams;
+		return p.get('role') === 'guest' && p.get('session') && p.get('token');
+	}
+	function readGuestParams(){
+		const p = new URL(location.href).searchParams;
+		guest.session = p.get('session'); guest.role = 'guest'; guest.token = p.get('token');
+	}
+	async function pollGuestEvents(){
+		if(!guest.session) return;
+		try{
+			const j = await (async ()=>{
+				const u = new URL(gasUrl());
+				u.searchParams.set('route','events_since');
+				u.searchParams.set('secret','Prox11_Secret');
+				u.searchParams.set('session_id', guest.session);
+				u.searchParams.set('token', guest.token);
+				u.searchParams.set('after', String(guest.last_seq||0));
+				const r = await fetch(u.toString());
+				return await r.json();
+			})();
+			if(!j.ok) return;
+			(j.events||[]).forEach(ev=>{
+				guest.last_seq = Math.max(guest.last_seq, ev.seq||0);
+				applyIncomingEventToLocal(ev);
+			});
+		}catch(e){ /* on tolère des ratés */ }
+	}
+	function startGuestPoll(){
+		stopGuestPoll();
+		guest.poll = setInterval(pollGuestEvents, 1500);
+	}
+	function stopGuestPoll(){ if(guest.poll){ clearInterval(guest.poll); guest.poll=null; } }
+
+	// Applique un event reçu sur l'état local du projecteur
+	function applyIncomingEventToLocal(ev){
+		const e = ev.event||{};
+		const items = state.svc.items || [];
+		if(e.type==='prop_decision'){
+			const it = items.find(x=>x.id===e.card_id); if(!it) return;
+			const p  = (it.propositions||[]).find(pp=>pp.pid===e.pid); if(!p) return;
+			p.decision = p.decision || {status:'a_preciser', comment:''};
+			if(e.status) p.decision.status = e.status;
+			if(e.comment!==undefined) p.decision.comment = e.comment;
+			it.pipeline = recomputePipelineForItem(it);
+			saveLocal(state.db); renderCard();
+		}
+		if(e.type==='comment'){
+			const it = (s.items||[]).find(x=>x.id===e.card_id); if(!it) return;
+			const prop = (it.propositions||[]).find(pp=>pp.pid===e.pid); if(!prop) return;
+			const origin = (ev.role==='guest') ? 'Client' : 'SenIAr';
+			(prop.notes||(prop.notes=[])).push({
+				ts: ev.ts || Date.now(),
+				origin, who: ev.role,
+				text: e.text||''
+			});
+			touch();
+			try{
+				if(!document.getElementById('tab-projecteur').classList.contains('hide')){
+					renderProjectorInline();
+				}
+			}catch(_){}
+		}
+		// (plus tard) sim_create ...
+	}
 
   function chip(t){ return `<span style="border:1px solid #ddd;border-radius:999px;padding:2px 8px;margin-right:6px">${t}</span>`; }
   function stateBadge(p){ const map={discovery:'#A8B0B9',pret_projecteur:'#2463EB',en_validation:'#F59E0B',bouclee:'#10B981'}; const c=map[p]||'#A8B0B9'; return `<span style="background:${c};color:#fff;border-radius:6px;padding:2px 8px">${p||'—'}</span>`; }
@@ -1059,6 +1235,11 @@ function renderScList(){
     renderAgenda(); renderCard();
   }
   renderAll();
+	
+	if(isGuestMode()){
+		readGuestParams();
+		startGuestPoll();
+	}
 
   // sync via storage et contrôles
   window.addEventListener('storage', (e)=>{ if(e.key===DB_KEY || e.key==='paria_touch' || e.key===WORK_KEY) renderAll(); });
@@ -1080,7 +1261,6 @@ function renderScList(){
 </script>
 </body>
 </html>
-
 
 
 
