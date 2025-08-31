@@ -86,6 +86,10 @@
         <input id="public_base" placeholder="https://jeromejouve-lab.github.io/paria-tool/paria_work.html">
         <label>DEPLOY URL</label>
         <input id="GAS_URL" placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+		<div class="row" style="margin-top:6px">
+		  <label for="PROXY_SECRET" style="min-width:120px;display:inline-block">Proxy secret</label>
+		  <input id="PROXY_SECRET" type="password" placeholder="ex: Prox11_Secret" style="width:380px">
+		</div>
         <div class="actions">
           <button id="btnSaveCfg">Sauver</button>
           <button id="btnTestProxy">Tester</button>
@@ -502,6 +506,9 @@ startGitTimer();
   const wid = localStorage.getItem(WORK_KEY)||'—';
   document.getElementById('workIdHdr').textContent = wid;
 	document.getElementById('PROXY_SECRET').value = localStorage.getItem(PROXY_SECRET_KEY)||'';
+	const ps = localStorage.getItem('paria_proxy_secret') || '';
+	const psEl = document.getElementById('PROXY_SECRET');
+	if (psEl) psEl.value = ps;
 
   // GH cfg
   gh_owner.value  = localStorage.getItem(GH_OWNER)||'';
@@ -1277,6 +1284,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
