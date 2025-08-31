@@ -397,7 +397,7 @@ async function gasGet(route, qs){
 }
 
 btnStartSess.onclick = async ()=>{
-	await autosaveCloud(); // baseline cloud avant la création de la séance (P0)
+	await saveCloudNow(); // baseline cloud IMMEDIATE avant la séance
   const wid = localStorage.getItem('paria_work_id')||'';
   const j = await gasPost('session_start', {work_id: wid, moderation: false});
   sess.id=j.session_id; sess.operator_token=j.operator_token; sess.guest_token=j.guest_token; sess.last_seq=0; sess.paused=false;
@@ -424,7 +424,8 @@ btnRotateGuest.onclick = async ()=>{
 };
 btnCopyGuest.onclick = ()=>{
   if(!sess.id) return;
-  const base = publicBase() || location.href.split('?')[0];
+	await saveCloudNow(); // on pousse l’état actuel avant d’envoyer le lien
+	const base = publicBase() || location.href.split('?')[0];
 	const url = new URL(base);
   url.searchParams.set('projecteur','1');       // <- ajoute ce paramètre
   url.searchParams.set('session', sess.id);
@@ -538,6 +539,12 @@ function autosaveCloud(){
     }catch(e){}
   }, 1200);
 }
+async function saveCloudNow(){
+  const wid = localStorage.getItem('paria_work_id')||currentWorkId();
+  const state = svc();
+  await gasPost('save', {work_id: wid, state});
+}
+
 // À appeler après CHAQUE action clé :
 function touch(){ saveDB(); localStorage.setItem('paria_touch', String(Date.now())); autosaveCloud(); }
 
@@ -1203,9 +1210,8 @@ function renderScPreview(){
   const el  = document.getElementById('scPreview');
   if(!el){ return; }
   if(!sc){ el.innerHTML = '<em>Aucun scénario sélectionné.</em>'; return; }
-
-  const items = Array.isArray(sc.items) ? sc.items : [];
-  const decisions = Array.isArray(sc.decisions) ? sc.decisions : [];
+	const items = Array.isArray(sc.snapshot?.items) ? sc.snapshot.items : [];
+	const decisions = Array.isArray(sc.snapshot?.decisions) ? sc.snapshot.decisions : [];
   const itemsHtml = items.map((it,i)=>`
     <div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:6px">
       <div style="font-weight:700">${it.title || it.reformulation || '(sujet)'}</div>
@@ -1331,7 +1337,7 @@ function renderScPreview(){
 		const e = ev.event||{};
 		const items = state.svc.items || [];
 		if(e.type==='prop_decision'){
-			const it = items.find(x=>x.id===e.card_id); if(!it) return;
+			const it = (state.svc.items||[]).find(x=>x.id===e.card_id);
 			const p  = (it.propositions||[]).find(pp=>pp.pid===e.pid); if(!p) return;
 			p.decision = p.decision || {status:'a_preciser', comment:''};
 			if(e.status) p.decision.status = e.status;
@@ -1517,6 +1523,7 @@ loadBaselineFromCloud().finally(()=>{
 </script>
 </body>
 </html>
+
 
 
 
