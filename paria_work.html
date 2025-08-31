@@ -924,7 +924,6 @@ function renderProjectorInline(){
     const src = dec?.source==='client' ? ' <span style="border:1px solid #60a5fa;border-radius:6px;padding:1px 6px;margin-left:6px">client</span>' : '';
     return `<span class="status-pill"><span class="dot ${st}"></span>${st.replace('_',' ')}</span>`;
   }
-  const items = (s.items||[]);
 	const sel = window._projSel || (items[items.length-1]?.id);
 	list.innerHTML = items.map(x=>{
 	  const cur = (x.id===sel) ? 'font-weight:700;text-decoration:underline;' : '';
@@ -1371,6 +1370,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
