@@ -86,8 +86,10 @@
         <input id="public_base" placeholder="https://jeromejouve-lab.github.io/paria-tool/paria_work.html">
         <label>DEPLOY URL</label>
         <input id="GAS_URL" placeholder="https://script.google.com/macros/s/AKfycb.../exec" style="width:380px">
-		<label for="PROXY_SECRET" style="min-width:120px;>Proxy secret</label>
-		<input id="PROXY_SECRET" type="password" placeholder="ex:xxxxx" style="width:380px">
+		<div class="row" style="margin-top:6px">
+		  <label for="PROXY_SECRET" style="min-width:120px;display:inline-block">Proxy secret</label>
+		  <input id="PROXY_SECRET" type="password" placeholder="ex: Prox11_Secret" style="width:380px">
+		</div>
         <div class="actions">
           <button id="btnSaveCfg">Sauver</button>
           <button id="btnTestProxy">Tester</button>
@@ -1280,6 +1282,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
