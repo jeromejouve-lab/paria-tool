@@ -78,6 +78,13 @@
 	  max-height: calc(100vh - 160px);
 	  overflow: auto;
 	}
+	#projAgendaList a, #p_agenda a {
+  display: block;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+}
 	
 </style>
 </head>
@@ -1150,9 +1157,15 @@ btnOpenProjector.onclick = ()=>{
 btnForkScenario.onclick = ()=>{
   const s=svc();
   (s.scenarios||(s.scenarios=[]));
-  const id = 'S'+((s.scenarios.length||0)+1);
-  s.scenarios.push({ id, snapshot: JSON.parse(JSON.stringify(s)) , ts: Date.now() });
-  touch(); renderScList(); alert(`Scénario ${id} créé.`);
+  s.scenarios = Array.isArray(s.scenarios) ? s.scenarios : [];
+	const id = 'S'+(s.scenarios.length+1);
+	const snap = {
+	  charter: s.charter || {},
+	  items: JSON.parse(JSON.stringify(s.items||[])),
+	  decisions: JSON.parse(JSON.stringify(s.decisions||[]))
+	};
+	s.scenarios.push({ id, snapshot: snap, ts: Date.now() });
+	touch(); renderScList(); alert(`Scénario ${id} créé.`);
 };
 btnPromoteScenario.onclick = ()=>{
   const s=svc(); if(!s.scenarios?.length) return alert('Aucun scénario.');
@@ -1504,6 +1517,7 @@ loadBaselineFromCloud().finally(()=>{
 </script>
 </body>
 </html>
+
 
 
 
