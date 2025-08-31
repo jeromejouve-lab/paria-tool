@@ -43,11 +43,42 @@
 	.tab-col{display:flex;flex-direction:column}
 
   /* Projecteur (onglet) */
-  #projAgenda{border:1px solid #ddd;border-radius:10px;padding:10px;max-height:70vh;overflow:auto}
-  #projCard{border:1px solid #ddd;border-radius:10px;padding:16px;min-height:60vh;background:#fff}
+	#projAgenda{
+	  border:1px solid #ddd;border-radius:10px;padding:10px;
+	  max-height:70vh;overflow:auto;position:sticky;top:8px
+	}
+	#projCard{
+	  border:1px solid #ddd;border-radius:10px;padding:16px;
+	  min-height:60vh;max-height:70vh;overflow:auto;background:#fff
+	}
 
   /* Projecteur standalone */
   .full{max-width:1200px;margin:0 auto;padding:16px}
+
+	/* container 2 colonnes pour le projecteur inline */
+	#projectorInline{
+	  display: grid;
+	  grid-template-columns: 320px 1fr;
+	  gap: 12px;
+	  align-items: start;
+	}
+	
+	/* colonne gauche (agenda) sticky et scroll indépendante */
+	.proj-left{
+	  position: sticky;
+	  top: 8px;
+	  max-height: calc(100vh - 160px);
+	  overflow: auto;
+	  border-right: 1px solid #eee;
+	  padding-right: 8px;
+	}
+	
+	/* colonne droite scroll indépendante */
+	.proj-right{
+	  max-height: calc(100vh - 160px);
+	  overflow: auto;
+	}
+	
 </style>
 </head>
 <body>
@@ -279,15 +310,23 @@ function loadDB(){ try{ db = JSON.parse(localStorage.getItem(DB_KEY)||'{"service
 
 /* ====== ONGLETING ====== */
 const tabs = ['reglages','capture','analyse','projecteur','scenarios'];
-function showTab(id){
-  tabs.forEach(t=>{
-    document.getElementById('tab-'+t).classList.toggle('hide', t!==id);
+function showTab(name){
+  tabs.forEach(id=>{
+    const el = document.getElementById('tab-'+id);
+    if (el) el.classList.toggle('hide', id!==name);
   });
-  document.querySelectorAll('.tabbtn').forEach(b=>b.classList.toggle('active', b.dataset.tab===id));
-  if(id==='analyse') renderLastItem();
-  if(id==='projecteur') renderProjectorInline();
-  if(id==='scenarios') renderScList();
+  if(name==='analyse'){ 
+    renderLastItem(); 
+    renderJournal();          // ← AJOUT : le journal se remplit immédiatement
+  }
+  if(name==='projecteur'){ 
+    renderProjectorInline();
+  }
+  if(name==='scenarios'){
+    renderScList();
+  }
 }
+
 document.querySelectorAll('.tabbtn').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 loadDB();
 showTab('reglages');
@@ -871,7 +910,8 @@ function originTag(origin, who){
 
 function renderProjectorInline(){
   const s=svc();
-  const it=(s.items||[])[(s.items||[]).length-1];
+  const items=(s.items||[]);
+	const it = items.find(x=>x.id===window._projSel) || items[items.length-1];
   const list=document.getElementById('projAgendaList');
   const card=document.getElementById('projCard');
   if(!it){
@@ -884,7 +924,18 @@ function renderProjectorInline(){
     const src = dec?.source==='client' ? ' <span style="border:1px solid #60a5fa;border-radius:6px;padding:1px 6px;margin-left:6px">client</span>' : '';
     return `<span class="status-pill"><span class="dot ${st}"></span>${st.replace('_',' ')}</span>`;
   }
-  list.innerHTML = `<li><a href="#" onclick="return false;">${it.title||it.reformulation||''}</a></li>`;
+  const items = (s.items||[]);
+	const sel = window._projSel || (items[items.length-1]?.id);
+	list.innerHTML = items.map(x=>{
+	  const cur = (x.id===sel) ? 'font-weight:700;text-decoration:underline;' : '';
+	  const label = x.title || x.reformulation || '—';
+	  return `<li style="margin:6px 0"><a href="#" data-c="${x.id}" style="${cur}">${label}</a></li>`;
+	}).join('') || '<li>—</li>';
+	
+	list.querySelectorAll('a[data-c]').forEach(a=>{
+	  a.onclick=(e)=>{ e.preventDefault(); window._projSel=a.dataset.c; renderProjectorInline(); };
+	});
+
 	const props = (it.propositions||[]).map((p,i)=>{
 		const st = (p.decision?.status)||'a_preciser';
 		const is = s=> (st===s ? 'class="pact active"' : 'class="pact"');
@@ -937,8 +988,6 @@ function renderProjectorInline(){
 					${notes}
 				</div>
 			</div>`;
-
-
 	}).join('');
 
   card.innerHTML = `
@@ -959,7 +1008,28 @@ function renderProjectorInline(){
     </div>
     <h4 style="margin-top:10px">Propositions</h4>
     ${props}`;
+	
   function block(label,arr){ if(!Array.isArray(arr)||!arr.length) return ''; return `<div><strong>${label}</strong><ul style="margin:6px 0 12px 20px">${arr.slice(0,4).map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
+
+	function renderProjectorInlineSelect(cardId){
+	  const s = svc();
+	  const it = (s.items||[]).find(x=>x.id===cardId) || (s.items||[])[0];
+	  if(!it){ rightCol.innerHTML = `<div style="opacity:.6">Aucune card.</div>`; return; }
+	
+	  // ... ici, réutilise EXACTEMENT le code que tu as déjà pour construire la card à droite ...
+	  // Ex.: const props = (it.propositions||[]).map(...); etc.
+	
+	  rightCol.innerHTML = `
+	    <div class="proj-card">
+	      <h3 style="margin:0 0 8px 0">${it.title || it.reformulation || '—'}</h3>
+	      <div style="opacity:.7;margin-bottom:8px">${it.reformulation || ''}</div>
+	      <div>${/* insère ton HTML de propositions ici (avec boutons pact, pcmt, psim) */''}</div>
+	    </div>
+	  `;
+	
+	  // rebrancher les listeners sur .pact / .pcmt / .psim comme tu le fais déjà
+	  // (tu peux copier/coller les 3 forEach(b => b.onclick=...) que tu as dans renderProjectorInline)
+	}
 
   // Listeners
   card.querySelectorAll('.pact').forEach(b=>{
@@ -1031,16 +1101,30 @@ btnForkScenario.onclick = ()=>{
 };
 btnPromoteScenario.onclick = ()=>{
   const s=svc(); if(!s.scenarios?.length) return alert('Aucun scénario.');
-  const chosen = s.scenarios[s.scenarios.length-1];
+  const cur = localStorage.getItem('paria_sel_scenario') || '';
+  const chosen = s.scenarios.find(x=>x.id===cur) || s.scenarios[s.scenarios.length-1];
   const snap = chosen.snapshot || {};
-  s.items     = snap.items||s.items||[];
-  s.decisions = snap.decisions||s.decisions||[];
-  touch(); renderScList(); alert('Scénario promu.');
+  s.items     = Array.isArray(snap.items)     ? JSON.parse(JSON.stringify(snap.items))     : (s.items||[]);
+  s.decisions = Array.isArray(snap.decisions) ? JSON.parse(JSON.stringify(snap.decisions)) : (s.decisions||[]);
+  touch(); renderScList(); alert(`Scénario ${chosen.id} promu (items & décisions).`);
 };
+
 function renderScList(){
   const s=svc(); const el=document.getElementById('scList');
   if(!s.scenarios?.length){ el.innerHTML='<em>Aucun scénario.</em>'; return; }
-  el.innerHTML = s.scenarios.map(sc=>`<div class="pill">${sc.id} — ${new Date(sc.ts).toLocaleString()}</div>`).join(' ');
+
+  const cur = localStorage.getItem('paria_sel_scenario') || '';
+  el.innerHTML = s.scenarios.map(sc=>{
+    const sel = (sc.id===cur) ? 'style="font-weight:700"' : '';
+    return `<button class="pill scPick" data-id="${sc.id}" ${sel}>${sc.id} — ${new Date(sc.ts).toLocaleString()}</button>`;
+  }).join(' ');
+
+  el.querySelectorAll('.scPick').forEach(b=>{
+    b.onclick = ()=>{
+      localStorage.setItem('paria_sel_scenario', b.dataset.id);
+      renderScList();
+    };
+  });
 }
 
 /* ====== BOOT ====== */
@@ -1287,6 +1371,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
