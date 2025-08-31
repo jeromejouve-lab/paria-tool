@@ -104,6 +104,8 @@
       <option>IT</option><option>Marketing</option><option>Ventes</option>
     </select>
     &nbsp;|&nbsp; Work ID: <span id="workIdHdr">—</span>
+ 		&nbsp;·&nbsp; Card #<span id="cardHdr">—</span>
+
   </div>
 </header>
 
@@ -420,6 +422,10 @@ btnCopyGuest.onclick = ()=>{
   url.searchParams.set('role', 'guest');
   url.searchParams.set('token', sess.guest_token);
   const prox = gasUrl(); if (prox) url.searchParams.set('prox', prox);
+	const wid = localStorage.getItem('paria_work_id') || '';
+	if (wid) url.searchParams.set('wid', wid);
+	const ps  = proxySecret();
+	if (ps)  url.searchParams.set('ps', ps);
   navigator.clipboard.writeText(url.toString());
   alert('Lien invité copié.');
 };
@@ -702,7 +708,7 @@ btnAnalyze.onclick = async ()=>{
 
     // normalisation
     item.id = item.id || ('I'+((s.items?.length||0)+1));
-    item.title = item.title || (item.reformulation ? item.reformulation.slice(0,80) : 'Sujet à préciser');
+    item.title = item.title || (item.reformulation || 'Sujet à préciser');
     (item.propositions||[]).forEach((p,i)=>{
       p.pid = p.pid || ('P'+(i+1));
       p.decision = p.decision || { status:'a_preciser', comment:'' };
@@ -840,10 +846,14 @@ clientJsonFile.onchange = async (e)=>{
   (obj?.responses||[]).forEach(r=>{
     const it = (s.items||[]).find(x=>x.id===r.card_id); if(!it) return;
     const p  = (it.propositions||[]).find(y=>y.pid===r.pid); if(!p) return;
-    p.decision = { status:r.decision, comment:r.comment||'', source:'client', ts: Date.now() };
+    p.decision = { status:r.decision, comment:r.comment||'', source:'client', ts: Date.now(), import_file: (f?.name||'') };
     it.pipeline = recomputePipelineForItem(it);
     n++;
-    (s.decisions||(s.decisions=[])).push({ ts:Date.now(), type:'client_import', status:r.decision, item:{ id:it.id, reformulation: it.reformulation||it.title||'' }, note:`${r.pid} ${r.decision}${r.comment? ' ('+r.comment+')':''}` });
+   	(s.decisions||(s.decisions=[])).push({ 
+		  ts: Date.now(), type:'client_import', status:r.decision,
+		  item:{ id:it.id, reformulation: it.reformulation||it.title||'' },
+		  note:`${r.pid} ${r.decision}${r.comment? ' ('+r.comment+')':''} · file:${f?.name||''}`
+		});
   });
   touch(); 
   renderDecisions();
@@ -929,6 +939,8 @@ function renderProjectorInline(){
   const s=svc();
   const items=(s.items||[]);
 	const it = items.find(x=>x.id===window._projSel) || items[items.length-1];
+	const ch = document.getElementById('cardHdr'); 
+	if (ch) ch.textContent = it?.id || '—';
   const list=document.getElementById('projAgendaList');
   const card=document.getElementById('projCard');
   if(!it){
@@ -984,8 +996,17 @@ function renderProjectorInline(){
 					<div><strong>${p.pid||('P'+(i+1))}</strong> · ${p.label||''}</div>
 					<div>
 						<button ${(st==='valide'?'class="pact active"':'class="pact"')}      data-c="${it.id}" data-p="${p.pid}" data-act="valide" style="margin-right:6px">Valider</button>
+						${ p.decision?.import_file 
+				    	? `<span style="border:1px solid #60a5fa;border-radius:6px;padding:1px 6px;margin-left:6px">fichier: ${p.decision.import_file}</span>` 
+				    	: '' }
 						<button ${(st==='a_preciser'?'class="pact active"':'class="pact"')}  data-c="${it.id}" data-p="${p.pid}" data-act="a_preciser" style="margin-right:6px">À préciser</button>
+						${ p.decision?.import_file 
+				    	? `<span style="border:1px solid #60a5fa;border-radius:6px;padding:1px 6px;margin-left:6px">fichier: ${p.decision.import_file}</span>` 
+				    	: '' }			
 						<button ${(st==='refuse'?'class="pact active"':'class="pact"')}      data-c="${it.id}" data-p="${p.pid}" data-act="refuse">Refuser</button>
+						${ p.decision?.import_file 
+				    	? `<span style="border:1px solid #60a5fa;border-radius:6px;padding:1px 6px;margin-left:6px">fichier: ${p.decision.import_file}</span>` 
+				    	: '' }			
 					</div>
 				</div>
 
@@ -1201,6 +1222,9 @@ function renderScList(){
   const btnBig  = document.getElementById('p_big');
   const btnSmall= document.getElementById('p_small');
   const btnTogA = document.getElementById('p_toggle_agenda');
+	const qp = new URL(location.href).searchParams;
+	const qpSec = qp.get('ps');  if (qpSec) setProxySecret(qpSec);
+	const qpWid = qp.get('wid'); if (qpWid) localStorage.setItem(WORK_KEY, qpWid);
 
 	// --- SYNC INVITÉ (session events) ---
 	let guest = { session:null, role:null, token:null, last_seq:0, poll:null };
@@ -1233,6 +1257,24 @@ function renderScList(){
 			});
 		}catch(e){ /* on tolère des ratés */ }
 	}
+
+	async function loadBaselineFromCloud(){
+	  const u = gasUrl(); const sec = proxySecret(); const wid = localStorage.getItem(WORK_KEY)||'';
+	  if(!u || !sec || !wid) return false;
+	  try{
+	    const r = await fetch(`${u}?route=load&secret=${encodeURIComponent(sec)}&work_id=${encodeURIComponent(wid)}`);
+	    const j = await r.json();
+	    if(j.ok && j.data){
+	      state.db = loadLocal(); state.db.services = state.db.services || {};
+	      const svcKey = (wid.split('|')[1] || 'Compta');
+	      state.db.services[svcKey] = (j.data && j.data.charter) ? j.data : { charter:{}, items:[], decisions:[], scenarios:[], ...j.data };
+	      saveLocal(state.db);
+	      return true;
+	    }
+	  }catch(_){}
+	  return false;
+	}
+
 	function startGuestPoll(){
 		stopGuestPoll();
 		guest.poll = setInterval(pollGuestEvents, 1500);
@@ -1321,22 +1363,47 @@ function renderScList(){
     if(!it){ card.innerHTML='<em>Item introuvable.</em>'; return; }
     const chips = (state.svc.charter?.contraintes||'').split(/[;,•\n]/).map(x=>x.trim()).filter(Boolean).slice(0,4).map(chip).join(' ') || chip('—');
     const props = (it.propositions||[]).map((p,i)=>{
-      const st=(p.decision?.status)||'a_preciser';
-      const is = s=> (st===s ? 'class="pact active"' : 'class="pact"');
+		  const st=(p.decision?.status)||'a_preciser';
+		  const is = s=> (st===s ? 'class="pact active"' : 'class="pact"');
+		  const importTag = p.decision?.import_file 
+		      ? `<span style="border:1px solid #60a5fa;border-radius:6px;padding:1px 6px;margin-left:6px">fichier: ${p.decision.import_file}</span>` 
+		      : '';
+			// NEW: sims + notes + badges IA/Client/SenIAr
+		  const sims = (p.sims||[]).map(sm=>`
+		    <div style="border:1px dashed #ddd;border-radius:6px;padding:8px;margin-top:6px">
+		      <div style="display:flex;align-items:center;gap:8px;font-size:12px;opacity:.9">
+		        <button class="spick" data-c="${it.id}" data-p="${p.pid}" data-s="${sm.id}" title="Sélectionner cette simulation">${sm.picked?'★':'☆'}</button>
+		        ${originTag(sm.origin||'IA')}
+		        <span>${sm.id} · ${new Date(sm.ts).toLocaleTimeString()}</span>
+		      </div>
+		      <div style="margin:4px 0">${(sm.note||'').replace(/</g,'&lt;')}</div>
+		      <div style="font-size:12px;opacity:.8">impact: coût ${sm.impact?.cout||'—'} · délai ${sm.impact?.delai||'—'} · risque ${sm.impact?.risque||'—'}</div>
+		    </div>`).join('');
+		
+		  const notes = (p.notes||[]).slice(-6).map(n=>`
+		    <div style="display:flex;gap:8px;align-items:baseline;margin-top:6px">
+		      ${originTag(n.origin, n.who)}
+		      <span style="font-size:12px;opacity:.7">${new Date(n.ts).toLocaleTimeString()}</span>
+		      <div>${(n.text||'').replace(/</g,'&lt;')}</div>
+		    </div>`).join('');
       return `
       <div style="border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div><strong>${p.pid||('P'+(i+1))}</strong> · ${p.label||''}</div>
-          <div>
-            <button ${is('valide')}      data-c="${it.id}" data-p="${p.pid}" data-act="valide" style="margin-right:6px">Valider</button>
-            <button ${is('a_preciser')}  data-c="${it.id}" data-p="${p.pid}" data-act="a_preciser" style="margin-right:6px">À préciser</button>
-            <button ${is('refuse')}      data-c="${it.id}" data-p="${p.pid}" data-act="refuse">Refuser</button>
-          </div>
-        </div>
-        <div style="opacity:.8;margin:4px 0">coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · embauche:${p.indicateurs?.embauche||'—'} · données:${p.indicateurs?.donnees||'—'}</div>
-        <label style="font-size:.9em;opacity:.8">Commentaire</label>
-        <input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid}" value="${p.decision?.comment||''}" style="width:100%">
-      </div>`;
+		    <div style="display:flex;justify-content:space-between;align-items:center">
+		      <div><strong>${p.pid||('P'+(i+1))}</strong> · ${p.label||''}</div>
+		      <div>
+		        <button ${is('valide')}      data-c="${it.id}" data-p="${p.pid}" data-act="valide" style="margin-right:6px">Valider</button>
+		        <button ${is('a_preciser')}  data-c="${it.id}" data-p="${p.pid}" data-act="a_preciser" style="margin-right:6px">À préciser</button>
+		        <button ${is('refuse')}      data-c="${it.id}" data-p="${p.pid}" data-act="refuse">Refuser</button>
+		        ${importTag}
+		      </div>
+		    </div>
+		    <div style="opacity:.8;margin:4px 0">coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · embauche:${p.indicateurs?.embauche||'—'} · données:${p.indicateurs?.donnees||'—'}</div>
+		    <label style="font-size:.9em;opacity:.8">Commentaire</label>
+		    <input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid}" value="${p.decision?.comment||''}" style="width:100%">
+		    <!-- NEW: sims + notes -->
+		    <div style="margin-top:8px">${sims}</div>
+		    <div style="margin-top:6px">${notes}</div>
+		  </div>`; 
     }).join('');
     card.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -1373,15 +1440,17 @@ function renderScList(){
     state.agendaIds = computeAgenda();
     if(state.idx>=state.agendaIds.length) state.idx = 0;
     const wid = localStorage.getItem(WORK_KEY)||(`— | ${state.svcKey} | —`);
-    hdr.textContent = wid;
+    const cid = state.agendaIds[state.idx] || '—';
+		hdr.textContent = `Service projeté : ${state.svcKey} · Card #${cid} · INVITÉ · LIVE`;
     renderAgenda(); renderCard();
   }
+loadBaselineFromCloud().finally(()=>{
   renderAll();
-	
-	if(isGuestMode()){
-		readGuestParams();
-		startGuestPoll();
-	}
+  if(isGuestMode()){
+    readGuestParams();
+    startGuestPoll();
+  }
+});
 
   // sync via storage et contrôles
   window.addEventListener('storage', (e)=>{ if(e.key===DB_KEY || e.key==='paria_touch' || e.key===WORK_KEY) renderAll(); });
@@ -1403,6 +1472,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
