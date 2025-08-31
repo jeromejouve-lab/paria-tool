@@ -253,11 +253,13 @@ const WORK_KEY= 'paria_work_id'; // "ACME|Compta|2025-08-28"
 const GH_OWNER='paria_gh_owner', GH_REPO='paria_gh_repo', GH_BRANCH='paria_gh_branch',
       GH_BASE='paria_gh_base', GH_TOKEN='paria_gh_token';
 const GH_API = 'https://api.github.com';
-
 const DEFAULT_GAS_URL = ''; // optionnel: mets ici ton URL Apps Script pour préremplir au 1er chargement
+const PROXY_SECRET_KEY = 'paria_proxy_secret';
 
 function gasUrl(){ return (localStorage.getItem(GAS_KEY)||'').trim(); }
 function setGasUrl(u){ localStorage.setItem(GAS_KEY,u.trim()); }
+function proxySecret(){ return (localStorage.getItem(PROXY_SECRET_KEY)||'').trim(); }
+
 
 /* ====== ÉTAT LOCAL ====== */
 let db = { services:{} }; // services[key]={ charter:{}, items:[], decisions:[], scenarios:[] }
@@ -313,16 +315,17 @@ function selectService(k){ if(document.getElementById('serviceKey')) document.ge
 
 async function gasPost(route, payload){
   const u = gasUrl(); if(!u) throw new Error('Proxy non configuré');
-  const body = {route, secret: 'Prox11_Secret', ...payload}; // <-- mets le même PROXY_SECRET que dans Apps Script
-  const r = await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)});
+  const body = { route, secret: proxySecret(), ...(payload||{}) };
+  const r = await fetch(u,{ method:'POST', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(body) });
   const j = await r.json(); if(!j.ok) throw new Error(j.error||route+' ko'); return j;
 }
 async function gasGet(route, qs){
   const u = new URL(gasUrl());
   u.searchParams.set('route', route);
-  u.searchParams.set('secret', 'Prox11_Secret'); // idem
+  u.searchParams.set('secret', proxySecret());
   Object.entries(qs||{}).forEach(([k,v])=>u.searchParams.set(k, String(v)));
-  const r = await fetch(u.toString()); const j=await r.json(); if(!j.ok) throw new Error(j.error||route+' ko'); return j;
+  const r = await fetch(u.toString());
+  const j = await r.json(); if(!j.ok) throw new Error(j.error||route+' ko'); return j;
 }
 
 btnStartSess.onclick = async ()=>{
@@ -498,6 +501,7 @@ startGitTimer();
   document.getElementById('workDate').value = today;
   const wid = localStorage.getItem(WORK_KEY)||'—';
   document.getElementById('workIdHdr').textContent = wid;
+	document.getElementById('PROXY_SECRET').value = localStorage.getItem(PROXY_SECRET_KEY)||'';
 
   // GH cfg
   gh_owner.value  = localStorage.getItem(GH_OWNER)||'';
@@ -507,16 +511,18 @@ startGitTimer();
   gh_token.value  = localStorage.getItem(GH_TOKEN)||'';
   gh_msg.value    = gh_msg.value || `feat: audit ${currentService()} ${today}`;
 })();
+	
 btnSaveCfg.onclick = ()=>{
   setGasUrl(document.getElementById('GAS_URL').value);
   localStorage.setItem('paria_public_base', document.getElementById('public_base').value.trim());
+  localStorage.setItem(PROXY_SECRET_KEY, document.getElementById('PROXY_SECRET').value.trim());
   alert('Réglages sauvegardés.');
 };
 
 btnTestProxy.onclick = async ()=>{
   const u = gasUrl(); if(!u) return alert('Renseigne le DEPLOY URL.');
   try{
-    const pong = await fetch(u+'?route=ping&secret=Prox11_Secret'); // <-- ton PROXY_SECRET
+    const pong = await fetch(gasUrl()+`?route=ping&secret=${encodeURIComponent(proxySecret())}`); // <-- ton PROXY_SECRET
     const j = await pong.json();
     proxyState.textContent = j.ok ? 'OK ✔' : 'Erreur';
   }catch(e){
@@ -533,7 +539,7 @@ btnLoad.onclick = async ()=>{
   const svcKey = (wid.split('|')[1] || '').trim() || currentService();// <- clé service depuis WID
   gsState.textContent = 'Chargement…';
   try{
-    const r = await fetch(`${u}?route=load&secret=Prox11_Secret&work_id=${encodeURIComponent(wid)}`);
+    const r = await fetch(`${u}?route=load&secret=${encodeURIComponent(proxySecret())}&work_id=${encodeURIComponent(wid)}`);
     const j = await r.json();
     if(j.ok && j.data){
       // normalise si besoin (au cas où le JSON n’a pas la structure attendue)
@@ -560,8 +566,11 @@ btnSave.onclick = async ()=>{
   const key = currentService();
   const state = db.services[key] || {charter:{},items:[],decisions:[],scenarios:[]};
   try{
-    const r = await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},
-      body: JSON.stringify({route:'save', secret:'Prox11_Secret', work_id: wid, state})});
+    const r = await fetch(u,{
+  		method:'POST',
+  		headers:{'Content-Type':'text/plain'},
+  		body: JSON.stringify({ route:'save', secret: proxySecret(), work_id: wid, state })
+		});
     const j = await r.json();
     gsState.textContent = j.ok ? 'Sauvé ✔' : 'Erreur';
   }catch(e){ gsState.textContent='Erreur'; alert(e.message); }
@@ -1084,7 +1093,7 @@ function renderScList(){
 			const j = await (async ()=>{
 				const u = new URL(gasUrl());
 				u.searchParams.set('route','events_since');
-				u.searchParams.set('secret','Prox11_Secret');
+				u.searchParams.set('secret', proxySecret());
 				u.searchParams.set('session_id', guest.session);
 				u.searchParams.set('token', guest.token);
 				u.searchParams.set('after', String(guest.last_seq||0));
@@ -1268,6 +1277,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
