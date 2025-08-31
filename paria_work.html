@@ -39,7 +39,8 @@
   textarea{width:100%;min-height:100px}
   .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .pill{padding:4px 8px;border-radius:999px;border:1px solid #ddd;background:#fafafa}
-  .hide{display:none}
+  .hide{display:none !important}
+	.tab-col{display:flex;flex-direction:column}
 
   /* Projecteur (onglet) */
   #projAgenda{border:1px solid #ddd;border-radius:10px;padding:10px;max-height:70vh;overflow:auto}
@@ -190,7 +191,7 @@
   </section>
 
   <!-- ANALYSE / DÉCISIONS -->
-  <section id="tab-analyse" class="card hide" style="display:flex;flex-direction:column;min-height:calc(100vh - 160px)">
+  <section id="tab-analyse" class="card hide tab-col" style="min-height:calc(100vh - 160px)">
     <div class="row">
       <div class="card">
         <h3>Dernier item (réformulation & PARIA)</h3>
@@ -1286,6 +1287,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
