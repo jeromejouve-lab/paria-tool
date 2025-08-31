@@ -237,7 +237,9 @@
 
       <div class="card">
         <h3>Décisions (journal)</h3>
-        <div id="decisions"></div>
+        <div style="max-height:calc(100vh - 280px);overflow:auto">
+				  <div id="decisions"></div>
+				</div>
         <div class="actions" style="margin-top:8px">
           <button id="btnExportMd">Exporter Markdown</button>
           <button id="btnExportClientHtml">Exporter HTML client</button>
@@ -412,12 +414,12 @@ btnRotateGuest.onclick = async ()=>{
 btnCopyGuest.onclick = ()=>{
   if(!sess.id) return;
   const base = publicBase() || location.href.split('?')[0];
-  const url = new URL(base);
+	const url = new URL(base);
+  url.searchParams.set('projecteur','1');       // <- ajoute ce paramètre
   url.searchParams.set('session', sess.id);
   url.searchParams.set('role', 'guest');
   url.searchParams.set('token', sess.guest_token);
-	const prox = gasUrl();
-	if (prox) url.searchParams.set('prox', prox);
+  const prox = gasUrl(); if (prox) url.searchParams.set('prox', prox);
   navigator.clipboard.writeText(url.toString());
   alert('Lien invité copié.');
 };
@@ -784,6 +786,7 @@ function renderDecisions(){
     return `<div class="pill">${new Date(d.ts).toLocaleString()} — <b>${st}</b> — ${txt}</div>`;
   }).join('');
 }
+
 /* Alias legacy (certaines zones appellent encore renderJournal) */
 window.renderJournal = window.renderDecisions;
 
@@ -955,8 +958,11 @@ function renderProjectorInline(){
 		const sims = (p.sims||[]).map(sm=>`
 			<div style="border:1px dashed #ddd;border-radius:6px;padding:8px;margin-top:6px">
 				<div style="display:flex;align-items:center;gap:8px;font-size:12px;opacity:.9">
-					${originTag(sm.origin||'IA')}
-					<span>${sm.id} · ${new Date(sm.ts).toLocaleTimeString()}</span>
+				  <button class="spick" data-c="${it.id}" data-p="${p.pid}" data-s="${sm.id}" title="Sélectionner cette simulation">
+				    ${sm.picked?'★':'☆'}
+				  </button>
+				  ${originTag(sm.origin||'IA')}
+				  <span>${sm.id} · ${new Date(sm.ts).toLocaleTimeString()}</span>
 				</div>
 				<div style="margin:4px 0">${(sm.note||'').replace(/</g,'&lt;')}</div>
 				<div style="font-size:12px;opacity:.8">impact: coût ${sm.impact?.cout||'—'} · délai ${sm.impact?.delai||'—'} · risque ${sm.impact?.risque||'—'}</div>
@@ -1084,24 +1090,37 @@ function renderProjectorInline(){
 	});
 
   // Simulateur ⚡
-  card.querySelectorAll('.psim').forEach(btn=>{
-    btn.onclick = async ()=>{
-      const c = btn.dataset.c, p = btn.dataset.p;
-      const s = svc();
-      const it = s.items.find(x=>x.id===c); if(!it) return;
-      const prop = (it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
-      const comment = (card.querySelector(`.pcmt[data-c="${c}"][data-p="${p}"]`)||{}).value||'';
-      await runSim(it, prop, comment);
-      renderProjectorInline();
-    };
-  });
+	card.querySelectorAll('.psim').forEach(btn=>{
+	  btn.onclick = async ()=>{
+	    const c = btn.dataset.c, p = btn.dataset.p;
+	    const s = svc();
+	    const it = s.items.find(x=>x.id===c); if(!it) return;
+	    const prop = (it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
+	    const comment = (card.querySelector(`.pcmt[data-c="${c}"][data-p="${p}"]`)||{}).value||'';
+	
+	    // UI busy
+	    const old = btn.textContent; btn.textContent='⏳'; btn.disabled=true;
+	    try{
+	      await runSim(it, prop, comment);
+	    }finally{
+	      btn.disabled=false; btn.textContent=old;
+	    }
+	    renderProjectorInline();
+	  };
+	});
 }
 
 
 btnOpenProjector.onclick = ()=>{
-  const url = new URL(location.href);
+  // 1) Aligne le WID sur le service/date affichés
+  if (typeof bindWork==='function') bindWork();
+
+  // 2) Ouvre le projecteur en standalone (avec proxy si dispo)
+  const base = location.href.split('?')[0];
+  const url = new URL(base);
   url.searchParams.set('projecteur','1');
-  window.open(url.toString(),'projecteur_'+(localStorage.getItem(WORK_KEY)||''), 'noopener');
+  const prox = gasUrl(); if (prox) url.searchParams.set('prox', prox);
+  window.open(url.toString(),'projecteur_'+(localStorage.getItem(WORK_KEY)||''),'noopener');
 };
 
 /* ====== SCÉNARIOS ====== */
@@ -1384,6 +1403,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
