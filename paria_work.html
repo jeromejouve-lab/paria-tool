@@ -190,11 +190,11 @@
   </section>
 
   <!-- ANALYSE / DÉCISIONS -->
-  <section id="tab-analyse" class="card hide">
+  <section id="tab-analyse" class="card hide" style="display:flex;flex-direction:column;min-height:calc(100vh - 160px)">
     <div class="row">
       <div class="card">
         <h3>Dernier item (réformulation & PARIA)</h3>
-        <pre id="lastItem" style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;max-height:300px;overflow:auto">—</pre>
+        <pre id="lastItem" style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;min-height:240px;max-height:calc(100vh - 280px);overflow:auto;resize:vertical">—</pre>
         <div class="actions">
           <button data-status="valide"  class="decide">Valider</button>
           <button data-status="a_preciser" class="decide">À préciser</button>
@@ -634,7 +634,11 @@ btnCharterToState.onclick = ()=>{
 btnAnalyze.onclick = async ()=>{
   const u=gasUrl(); if(!u) return alert('Proxy non configuré.');
   const s=svc();
-  const payload={ route:'analyze', secret: proxySecret(), model:MODEL, service_key: currentService(), charter: s.charter, note: note.value||'' };
+  const noteEl = document.getElementById('note');
+	const noteText = noteEl ? noteEl.value : '';
+	const payload = { route:'analyze', secret: proxySecret(), model: MODEL, service_key: currentService(), charter: s.charter, note: noteText };
+	console.log('[analyze] note len=', noteText.length, 'sample=', noteText.slice(0,80));
+
   aiState.textContent='Analyse…';
   try{
     const r=await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
@@ -1282,6 +1286,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
