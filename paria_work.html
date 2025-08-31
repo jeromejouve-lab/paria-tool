@@ -263,7 +263,7 @@ const PROXY_SECRET_KEY = 'paria_proxy_secret';
 function gasUrl(){ return (localStorage.getItem(GAS_KEY)||'').trim(); }
 function setGasUrl(u){ localStorage.setItem(GAS_KEY,u.trim()); }
 function proxySecret(){ return (localStorage.getItem(PROXY_SECRET_KEY)||'').trim(); }
-
+function setProxySecret(v){ localStorage.setItem(PROXY_SECRET_KEY, (v||'').trim()); }
 
 /* ====== ÉTAT LOCAL ====== */
 let db = { services:{} }; // services[key]={ charter:{}, items:[], decisions:[], scenarios:[] }
@@ -505,10 +505,7 @@ startGitTimer();
   document.getElementById('workDate').value = today;
   const wid = localStorage.getItem(WORK_KEY)||'—';
   document.getElementById('workIdHdr').textContent = wid;
-	document.getElementById('PROXY_SECRET').value = localStorage.getItem(PROXY_SECRET_KEY)||'';
-	const ps = localStorage.getItem('paria_proxy_secret') || '';
-	const psEl = document.getElementById('PROXY_SECRET');
-	if (psEl) psEl.value = ps;
+	document.getElementById('PROXY_SECRET').value = proxySecret();
 
   // GH cfg
   gh_owner.value  = localStorage.getItem(GH_OWNER)||'';
@@ -637,7 +634,7 @@ btnCharterToState.onclick = ()=>{
 btnAnalyze.onclick = async ()=>{
   const u=gasUrl(); if(!u) return alert('Proxy non configuré.');
   const s=svc();
-  const payload={ route:'analyze', model:MODEL, service_key: currentService(), charter: s.charter, note: note.value||'' };
+  const payload={ route:'analyze', secret: proxySecret(), model:MODEL, service_key: currentService(), charter: s.charter, note: note.value||'' };
   aiState.textContent='Analyse…';
   try{
     const r=await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
@@ -679,11 +676,12 @@ async function runSim(item, prop, comment){
   const u = gasUrl(); if(!u) return alert('Proxy non configuré.');
   const s = svc();
   const payload = {
-    route:'analyze', model:MODEL,
-    service_key: currentService(),
-    charter: s.charter,
-    note: comment || (item.reformulation||'')  // on base la sim sur le commentaire; fallback = sujet
-  };
+	  route:'analyze', secret: proxySecret(), model:MODEL,
+	  service_key: currentService(),
+	  charter: s.charter,
+	  note: comment || (item.reformulation||'')
+	};
+
   try{
     const r = await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
     const j = await r.json(); if(!j.ok) throw new Error(j.error||'analyse KO');
@@ -1284,6 +1282,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
