@@ -310,20 +310,20 @@ function loadDB(){ try{ db = JSON.parse(localStorage.getItem(DB_KEY)||'{"service
 
 /* ====== ONGLETING ====== */
 const tabs = ['reglages','capture','analyse','projecteur','scenarios'];
-function showTab(name){
-  tabs.forEach(id=>{
-    const el = document.getElementById('tab-'+id);
-    if (el) el.classList.toggle('hide', id!==name);
+function showTab(id){
+  tabs.forEach(t=>{
+    document.getElementById('tab-'+t).classList.toggle('hide', t!==id);
   });
-  if(name==='analyse'){ 
-    renderLastItem(); 
-    renderJournal();          // ← AJOUT : le journal se remplit immédiatement
+  document.querySelectorAll('.tabbtn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.tab===id);
+  });
+  // Render hooks on show
+  if(id==='analyse'){ 
+    if (typeof renderLastItem==='function') renderLastItem();
+    if (typeof renderDecisions==='function') renderDecisions();
   }
-  if(name==='projecteur'){ 
-    renderProjectorInline();
-  }
-  if(name==='scenarios'){
-    renderScList();
+  if(id==='projecteur'){
+    if (typeof renderProjectorInline==='function') renderProjectorInline();
   }
 }
 
@@ -356,6 +356,18 @@ let poller = null;
 function publicBase(){ return (localStorage.getItem('paria_public_base')||'').trim(); }
 
 function selectService(k){ if(document.getElementById('serviceKey')) document.getElementById('serviceKey').value = k; }
+const svcSel = document.getElementById('serviceKey');
+if (svcSel){
+  svcSel.onchange = ()=>{
+    // persist current service selection if you already do so:
+    // localStorage.setItem('paria_service', svcSel.value);
+    if (typeof hydrateCharter==='function') hydrateCharter();
+    if (typeof renderLastItem==='function') renderLastItem();
+    if (typeof renderDecisions==='function') renderDecisions();
+    if (typeof renderProjectorInline==='function') renderProjectorInline();
+    if (typeof refreshDump==='function') refreshDump();
+  };
+}	
 
 async function gasPost(route, payload){
   const u = gasUrl(); if(!u) throw new Error('Proxy non configuré');
@@ -772,6 +784,8 @@ function renderDecisions(){
     return `<div class="pill">${new Date(d.ts).toLocaleString()} — <b>${st}</b> — ${txt}</div>`;
   }).join('');
 }
+/* Alias legacy (certaines zones appellent encore renderJournal) */
+window.renderJournal = window.renderDecisions;
 
 /* ====== EXPORTS ====== */
 btnExportMd.onclick=()=>{
@@ -1370,6 +1384,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
