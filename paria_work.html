@@ -279,6 +279,7 @@
       <button id="btnPromoteScenario">Promouvoir comme version de travail</button>
     </div>
     <div id="scList" style="margin-top:10px"></div>
+		<div id="scPreview" class="card" style="margin-top:10px"><em>Choisis un scénario pour l’aperçu.</em></div>
   </section>
 </main>
 
@@ -389,6 +390,7 @@ async function gasGet(route, qs){
 }
 
 btnStartSess.onclick = async ()=>{
+	await autosaveCloud(); // baseline cloud avant la création de la séance (P0)
   const wid = localStorage.getItem('paria_work_id')||'';
   const j = await gasPost('session_start', {work_id: wid, moderation: false});
   sess.id=j.session_id; sess.operator_token=j.operator_token; sess.guest_token=j.guest_token; sess.last_seq=0; sess.paused=false;
@@ -1176,8 +1178,38 @@ function renderScList(){
     b.onclick = ()=>{
       localStorage.setItem('paria_sel_scenario', b.dataset.id);
       renderScList();
+			if (typeof renderScPreview==='function') renderScPreview();
     };
   });
+	renderScPreview();
+}
+function renderScPreview(){
+  const s = svc();
+  const cur = localStorage.getItem('paria_sel_scenario') || '';
+  const sc  = (s.scenarios||[]).find(x=>x.id===cur);
+  const el  = document.getElementById('scPreview');
+  if(!el){ return; }
+  if(!sc){ el.innerHTML = '<em>Aucun scénario sélectionné.</em>'; return; }
+
+  const items = Array.isArray(sc.items) ? sc.items : [];
+  const decisions = Array.isArray(sc.decisions) ? sc.decisions : [];
+  const itemsHtml = items.map((it,i)=>`
+    <div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:6px">
+      <div style="font-weight:700">${it.title || it.reformulation || '(sujet)'}</div>
+      <div style="opacity:.7">${(it.reformulation||'').slice(0,140)}</div>
+    </div>`).join('') || '<em>Aucun item.</em>';
+
+  const decHtml = decisions.slice(-8).map(d=>`
+    <div style="font-size:13px;opacity:.85">• ${new Date(d.ts).toLocaleString()} — <strong>${d.status||d.type||''}</strong> — ${d.item?.reformulation||d.note||''}</div>
+  `).join('') || '<em>Pas de décisions.</em>';
+
+  el.innerHTML = `
+    <h4 style="margin-top:0">Aperçu scénario ${sc.id}</h4>
+    <div><strong>Items</strong></div>
+    ${itemsHtml}
+    <div style="margin-top:8px"><strong>Journal</strong></div>
+    ${decHtml}
+  `;
 }
 
 /* ====== BOOT ====== */
@@ -1472,6 +1504,7 @@ loadBaselineFromCloud().finally(()=>{
 </script>
 </body>
 </html>
+
 
 
 
