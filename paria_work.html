@@ -42,6 +42,14 @@
   .hide{display:none !important}
 	.tab-col{display:flex;flex-direction:column}
 
+	/* Forcer 2 colonnes “compactes” pour Journal & Projecteur, sauf très petit écran */
+	#tab-analyse .row, #tab-projecteur .row {
+	  grid-template-columns: minmax(280px, 1fr) minmax(380px, 1fr);
+	}
+	@media (max-width: 720px){
+	  #tab-analyse .row, #tab-projecteur .row { grid-template-columns: 1fr; }
+	}
+
   /* Projecteur (onglet) */
 	#projAgenda{
 	  border:1px solid #ddd;border-radius:10px;padding:10px;
@@ -442,7 +450,19 @@ btnCopyGuest.onclick = async ()=>{
 		if (wid) url.searchParams.set('wid', wid);
 		const ps  = proxySecret();
 		if (ps)  url.searchParams.set('ps', ps);
-		navigator.clipboard.writeText(url.toString());
+		try{
+		  await navigator.clipboard.writeText(url.toString());
+		  alert('Lien invité copié.');
+		}catch(e){
+		  // fallback : textarea invisible
+		  const ta = document.createElement('textarea');
+		  ta.value = url.toString();
+		  ta.style.position='fixed'; ta.style.opacity='0';
+		  document.body.appendChild(ta); ta.select();
+		  document.execCommand('copy'); document.body.removeChild(ta);
+		  alert('Lien invité copié (fallback).');
+		}
+
 		alert('Lien invité copié.');
 	} finally {
 		btnCopyGuest.disabled = false;
@@ -740,6 +760,11 @@ btnAnalyze.onclick = async ()=>{
     });
     item.pipeline = item.pipeline || 'pret_projecteur';
     item.priority = item.priority || 'P2';
+
+  	// si le titre renvoyé est court, préfère la reformulation plus complète
+		if ((item.reformulation||'').length > (item.title||'').length) {
+  		item.title = item.reformulation;
+		}
 
     s.items.push(item);
     touch();
@@ -1128,10 +1153,11 @@ function renderProjectorInline(){
 	if (ch) ch.textContent = it?.id || '—';
   const list=document.getElementById('projAgendaList');
   const card=document.getElementById('projCard');
-  if(!it){
-    list.innerHTML = '<li>—</li>';
-    card.innerHTML='<em>Aucun item.</em>'; return;
-  }
+	if(!it){
+	  list.innerHTML = '<li>—</li>';
+	  card.innerHTML='<em>Analyse un item dans “Capture” pour l’afficher ici, ou ouvre le Projecteur.</em>';
+	  return;
+	}
   const chips = (s.charter?.contraintes||'').split(/[;,•\n]/).map(x=>x.trim()).filter(Boolean).slice(0,4).map(chip).join(' ') || chip('—');
   function pill(dec){ 
     const st=(dec?.status)||'a_preciser';
@@ -1197,11 +1223,12 @@ function renderScList(){
   }).join(' ');
 
   el.querySelectorAll('.scPick').forEach(b=>{
-    b.onclick = ()=>{
-      localStorage.setItem('paria_sel_scenario', b.dataset.id);
-      renderScList();
-			openScenario(b.dataset.id);
-    };
+		b.onclick = ()=>{
+		  localStorage.setItem('paria_sel_scenario', b.dataset.id);
+		  renderScList();
+		  document.getElementById('scWork').innerHTML = '';   // évite de “garder” l’ancien rendu
+		  openScenario(b.dataset.id);
+		};
   });
 }
 
@@ -1477,6 +1504,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
