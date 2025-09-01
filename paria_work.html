@@ -84,6 +84,7 @@
   overflow: visible;
   text-overflow: clip;
   word-break: break-word;
+	word-wrap: anywhere;		
 }
 	
 </style>
@@ -787,7 +788,6 @@ function openScenario(sid){
         });
       });
     });
-    (S)=>{ sc.snapshot = S; saveDB(); },
     alert('Simulations insérées depuis '+sc.id);
   };
 
@@ -795,7 +795,6 @@ function openScenario(sid){
     const ref = svc();
     ref.items = JSON.parse(JSON.stringify(snap.items||[]));
     ref.decisions = JSON.parse(JSON.stringify(snap.decisions||[]));
-    (S)=>{ sc.snapshot = S; saveDB(); },
     alert('Scénario '+sc.id+' promu sur la carte de référence.');
   };
 }
@@ -1144,82 +1143,6 @@ function renderProjectorInline(){
 	list.querySelectorAll('a[data-c]').forEach(a=>{
 	  a.onclick=(e)=>{ e.preventDefault(); window._projSel=a.dataset.c; renderProjectorInline(); };
 	});
-
-	const props = (it.propositions||[]).map((p,i)=>{
-		const st = (p.decision?.status)||'a_preciser';
-		const is = s=> (st===s ? 'class="pact active"' : 'class="pact"');
-		const sims = (p.sims||[]).map(sm=>`
-			<div style="border:1px dashed #ddd;border-radius:6px;padding:8px;margin-top:6px">
-				<div style="display:flex;align-items:center;gap:8px;font-size:12px;opacity:.9">
-				  <button class="spick" data-c="${it.id}" data-p="${p.pid}" data-s="${sm.id}" title="Sélectionner cette simulation">
-				    ${sm.picked?'★':'☆'}
-				  </button>
-				  ${originTag(sm.origin||'IA')}
-				  <span>${sm.id} · ${new Date(sm.ts).toLocaleTimeString()}</span>
-				</div>
-				<div style="margin:4px 0">${(sm.note||'').replace(/</g,'&lt;')}</div>
-				<div style="font-size:12px;opacity:.8">impact: coût ${sm.impact?.cout||'—'} · délai ${sm.impact?.delai||'—'} · risque ${sm.impact?.risque||'—'}</div>
-			</div>
-		`).join('');
-
-		// ➜ on définit **notes** ici (JS), juste après sims
-		const notes = (p.notes||[]).slice(-6).map(n=>`
-			<div style="display:flex;gap:8px;align-items:baseline;margin-top:6px">
-				${originTag(n.origin, n.who)}
-				<span style="font-size:12px;opacity:.7">${new Date(n.ts).toLocaleTimeString()}</span>
-				<div>${(n.text||'').replace(/</g,'&lt;')}</div>
-			</div>
-		`).join('') || `<div style="opacity:.6;margin-top:6px">—</div>`;
-
-		return `
-			<div class="proposition" style="border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:12px">
-				<div style="display:flex;justify-content:space-between;align-items:center">
-					<div><strong>${p.pid||('P'+(i+1))}</strong> · ${p.label||''}</div>
-					<div>
-						<button ${(st==='valide'?'class="pact active"':'class="pact"')}      data-c="${it.id}" data-p="${p.pid}" data-act="valide" style="margin-right:6px">Valider</button>
-						${ p.decision?.import_file 
-				    	? `<span style="border:1px solid #60a5fa;border-radius:6px;padding:1px 6px;margin-left:6px">fichier: ${p.decision.import_file}</span>` 
-				    	: '' }
-						<button ${(st==='a_preciser'?'class="pact active"':'class="pact"')}  data-c="${it.id}" data-p="${p.pid}" data-act="a_preciser" style="margin-right:6px">À préciser</button>
-						${ p.decision?.import_file 
-				    	? `<span style="border:1px solid #60a5fa;border-radius:6px;padding:1px 6px;margin-left:6px">fichier: ${p.decision.import_file}</span>` 
-				    	: '' }			
-						<button ${(st==='refuse'?'class="pact active"':'class="pact"')}      data-c="${it.id}" data-p="${p.pid}" data-act="refuse">Refuser</button>
-						${ p.decision?.import_file 
-				    	? `<span style="border:1px solid #60a5fa;border-radius:6px;padding:1px 6px;margin-left:6px">fichier: ${p.decision.import_file}</span>` 
-				    	: '' }			
-					</div>
-				</div>
-
-				<div style="opacity:.8;margin:4px 0">
-					coût:${p.indicateurs?.cout||'—'} · complexité:${p.indicateurs?.complexite||'—'} · embauche:${p.indicateurs?.embauche||'—'} · données:${p.indicateurs?.donnees||'—'}
-				</div>
-
-				<label style="font-size:.9em;opacity:.8">Commentaire</label>
-				<div style="display:flex;gap:6px;align-items:center">
-					<input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid}" value="${p.decision?.comment||''}" style="width:100%">
-					<button class="psim" data-c="${it.id}" data-p="${p.pid}">⚡</button>
-				</div>
-
-				<div class="sims" style="margin-top:8px">
-					${sims}
-				</div>
-
-				<div class="notes" style="margin-top:6px">
-					${notes}
-				</div>
-			</div>`;
-	}).join('');
-
-	card.innerHTML = renderCardCommon(it);
-	attachCardHandlers(
-	  card,
-	  ()=>svc(),
-	  (S)=>{ touch(); },
-	  ()=>{ renderProjectorInline(); }
-	);
-	
-  function block(label,arr){ if(!Array.isArray(arr)||!arr.length) return ''; return `<div><strong>${label}</strong><ul style="margin:6px 0 12px 20px">${arr.slice(0,4).map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
 }
 
 btnOpenProjector.onclick = ()=>{
@@ -1549,5 +1472,6 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
