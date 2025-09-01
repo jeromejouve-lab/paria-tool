@@ -764,15 +764,6 @@ function openScenario(sid){
 	    || (sc.snapshot?.items||[])[0] || {propositions:[]}
 	  )}
 	`;
-	attachCardHandlers(
-	  el,
-	  ()=> (sc.snapshot ||= {items:[], decisions:[]}),
-	  (S)=>{ sc.snapshot = S; saveDB(); },
-	  ()=>{ openScenario(sc.id); }
-	);
-	// actions spécifiques
-	document.getElementById('btnScInsert').onclick = ()=>{ /* insertion des sims pickées dans la card de ref */ };
-	document.getElementById('btnScPromote').onclick = ()=>{ /* promotion du snapshot vers la card de ref */ };
 
   // handlers card dans le snapshot (édition dans le snapshot)
   attachCardHandlers(
@@ -1062,7 +1053,10 @@ function renderCardCommon(it){
       </div>
       <div style="opacity:.8;margin:4px 0">coût:${htmlEscape(p.indicateurs?.cout??'—')} · complexité:${htmlEscape(p.indicateurs?.complexite??'—')} · embauche:${htmlEscape(p.indicateurs?.embauche??'—')} · données:${htmlEscape(p.indicateurs?.donnees??'—')}</div>
       <label style="font-size:.9em;opacity:.8">Commentaire</label>
-      <input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid}" value="${htmlEscape(p.decision?.comment||'')}" style="width:100%">
+      <div style="display:flex;gap:6px;align-items:center">
+			  <input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid}" value="${htmlEscape(p.decision?.comment||'')}" style="width:100%">
+			  <button class="psim" data-c="${it.id}" data-p="${p.pid}">⚡</button>
+			</div>
       <div style="margin-top:8px">${simsHtml(it,p)}</div>
       <div style="margin-top:6px">${notesHtml(p)}</div>
     </div>`;
@@ -1097,6 +1091,18 @@ function attachCardHandlers(root, getState, setState, onChange){
       setState(S); onChange && onChange();
     };
   });
+	// simulation IA (⚡) : prend le commentaire courant comme note source
+	root.querySelectorAll('.psim').forEach(btn=>{
+	  btn.onclick = async ()=>{
+	    const c = btn.getAttribute('data-c'); const pid = btn.getAttribute('data-p');
+	    const S = getState(); const it = (S.items||[]).find(x=>String(x.id)===String(c)); if(!it) return;
+	    const p = (it.propositions||[]).find(pp=>String(pp.pid)===String(pid)); if(!p) return;
+	    const cmt = root.querySelector(`.pcmt[data-c="${c}"][data-p="${pid}"]`)?.value || '';
+	    await runSim(it, p, cmt);
+	    setState(S); onChange && onChange();
+	  };
+	});
+
   // sélection simu ☆/★
   root.querySelectorAll('.spick').forEach(btn=>{
     btn.onclick = ()=>{
@@ -1209,7 +1215,7 @@ function renderProjectorInline(){
 	attachCardHandlers(
 	  card,
 	  ()=>svc(),
-	  (S)=>{ sc.snapshot = S; saveDB(); },
+	  (S)=>{ touch(); },
 	  ()=>{ renderProjectorInline(); }
 	);
 	
@@ -1543,3 +1549,4 @@ loadBaselineFromCloud().finally(()=>{
 </script>
 </body>
 </html>
+
