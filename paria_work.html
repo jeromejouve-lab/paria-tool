@@ -1521,13 +1521,13 @@ function renderScList(){
 		hdr.textContent = `Service projeté : ${state.svcKey} · Card #${cid} · INVITÉ · LIVE`;
     renderAgenda(); renderCard();
   }
-loadBaselineFromCloud().finally(()=>{
-  renderAll();
-  if(isGuestMode()){
-    readGuestParams();
-    startGuestPoll();
-  }
-});
+	loadBaselineFromCloud().finally(()=>{
+	  renderAll();
+	  if(isGuestMode()){
+	    readGuestParams();
+	    startGuestPoll();
+	  }
+	});
 
   // sync via storage et contrôles
   window.addEventListener('storage', (e)=>{ if(e.key===DB_KEY || e.key==='paria_touch' || e.key===WORK_KEY) renderAll(); });
@@ -1549,4 +1549,5 @@ loadBaselineFromCloud().finally(()=>{
 </script>
 </body>
 </html>
+
 
