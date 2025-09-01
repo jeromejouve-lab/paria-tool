@@ -1174,6 +1174,14 @@ function renderProjectorInline(){
 	list.querySelectorAll('a[data-c]').forEach(a=>{
 	  a.onclick=(e)=>{ e.preventDefault(); window._projSel=a.dataset.c; renderProjectorInline(); };
 	});
+	  // ---- Rendu card + handlers (page type)
+	  card.innerHTML = renderCardCommon(it);
+	  attachCardHandlers(
+	    card,
+	    ()=>svc(),
+	    (S)=>{ touch(); },
+	    ()=>{ renderProjectorInline(); }
+	  );
 }
 
 btnOpenProjector.onclick = ()=>{
@@ -1504,6 +1512,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
