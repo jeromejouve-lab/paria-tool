@@ -287,7 +287,6 @@
     </div>
     <div id="scList" style="margin-top:10px"></div>
 	<div id="scWork" class="card" style="margin-top:10px"></div>
-	<div id="scPreview" class="card" style="margin-top:10px"><em>Choisis un scénario pour l’aperçu.</em></div>
   </section>
 </main>
 
@@ -338,6 +337,9 @@ function showTab(id){
   if(id==='projecteur'){
     if (typeof renderProjectorInline==='function') renderProjectorInline();
   }
+	if(id==='scenarios'){
+	  if (typeof renderScList==='function') renderScList();
+	}
 }
 
 document.querySelectorAll('.tabbtn').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
@@ -765,7 +767,7 @@ function openScenario(sid){
 	attachCardHandlers(
 	  el,
 	  ()=> (sc.snapshot ||= {items:[], decisions:[]}),
-	  (S)=>{ sc.snapshot = S; saveLocal(state.db); },
+	  (S)=>{ sc.snapshot = S; saveDB(); },
 	  ()=>{ openScenario(sc.id); }
 	);
 	// actions spécifiques
@@ -776,7 +778,7 @@ function openScenario(sid){
   attachCardHandlers(
     el,
     ()=>snap,
-    (S)=>{ sc.snapshot = S; saveLocal(state.db); },
+    (S)=>{ sc.snapshot = S; saveDB(); },
     ()=>{ openScenario(sid); }
   );
 
@@ -794,7 +796,7 @@ function openScenario(sid){
         });
       });
     });
-    saveLocal(state.db);
+    (S)=>{ sc.snapshot = S; saveDB(); },
     alert('Simulations insérées depuis '+sc.id);
   };
 
@@ -802,7 +804,7 @@ function openScenario(sid){
     const ref = svc();
     ref.items = JSON.parse(JSON.stringify(snap.items||[]));
     ref.decisions = JSON.parse(JSON.stringify(snap.decisions||[]));
-    saveLocal(state.db);
+    (S)=>{ sc.snapshot = S; saveDB(); },
     alert('Scénario '+sc.id+' promu sur la carte de référence.');
   };
 }
@@ -1207,92 +1209,12 @@ function renderProjectorInline(){
 	attachCardHandlers(
 	  card,
 	  ()=>svc(),
-	  (S)=>{ saveLocal(state.db); },
+	  (S)=>{ sc.snapshot = S; saveDB(); },
 	  ()=>{ renderProjectorInline(); }
 	);
 	
   function block(label,arr){ if(!Array.isArray(arr)||!arr.length) return ''; return `<div><strong>${label}</strong><ul style="margin:6px 0 12px 20px">${arr.slice(0,4).map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
-
-	function renderProjectorInlineSelect(cardId){
-	  const s = svc();
-	  const it = (s.items||[]).find(x=>x.id===cardId) || (s.items||[])[0];
-	  if(!it){ rightCol.innerHTML = `<div style="opacity:.6">Aucune card.</div>`; return; }
-	
-	  // ... ici, réutilise EXACTEMENT le code que tu as déjà pour construire la card à droite ...
-	  // Ex.: const props = (it.propositions||[]).map(...); etc.
-	
-	  rightCol.innerHTML = `
-	    <div class="proj-card">
-	      <h3 style="margin:0 0 8px 0">${it.title || it.reformulation || '—'}</h3>
-	      <div style="opacity:.7;margin-bottom:8px">${it.reformulation || ''}</div>
-	      <div>${/* insère ton HTML de propositions ici (avec boutons pact, pcmt, psim) */''}</div>
-	    </div>
-	  `;
-	
-	  // rebrancher les listeners sur .pact / .pcmt / .psim comme tu le fais déjà
-	  // (tu peux copier/coller les 3 forEach(b => b.onclick=...) que tu as dans renderProjectorInline)
-	}
-
-  // Listeners
-  card.querySelectorAll('.pact').forEach(b=>{
-		b.onclick=()=>{
-			const act=b.dataset.act, c=b.dataset.c, pid=b.dataset.p;
-			const s=svc(); const it=s.items.find(x=>x.id===c); if(!it) return;
-			const prop=(it.propositions||[]).find(x=>x.pid===pid); if(!prop) return;
-			prop.decision = prop.decision || {status:'a_preciser',comment:''};
-			prop.decision.status=act;
-
-			// INFORMER la séance (invité) si active
-			pushDecision(it.id, pid, act, prop.decision.comment);
-
-			const all=(it.propositions||[]).every(x=>x.decision && x.decision.status && x.decision.status!=='pending');
-			it.pipeline = recomputePipelineForItem(it);
-			touch();
-			renderProjectorInline();
-		};
-	});
-
-	card.querySelectorAll('.pcmt').forEach(inp=>{
-		inp.onchange=()=>{
-			const c=inp.dataset.c, pid=inp.dataset.p;
-			const s=svc(); const it=s.items.find(x=>x.id===c); if(!it) return;
-			const prop=(it.propositions||[]).find(x=>x.pid===pid); if(!prop) return;
-			prop.decision = prop.decision || {status:'a_preciser',comment:''};
-			prop.decision.comment = inp.value;
-
-			// Historiser la note (origine opérateur/SenIAr)
-			(prop.notes||(prop.notes=[])).push({
-				ts: Date.now(), origin:'SenIAr', who:'operator', text: inp.value
-			});
-
-			// INFORMER la séance (invité) si active
-			pushComment(it.id, pid, prop.decision.comment || '');
-
-			touch();
-		};
-	});
-
-  // Simulateur ⚡
-	card.querySelectorAll('.psim').forEach(btn=>{
-	  btn.onclick = async ()=>{
-	    const c = btn.dataset.c, p = btn.dataset.p;
-	    const s = svc();
-	    const it = s.items.find(x=>x.id===c); if(!it) return;
-	    const prop = (it.propositions||[]).find(x=>x.pid===p); if(!prop) return;
-	    const comment = (card.querySelector(`.pcmt[data-c="${c}"][data-p="${p}"]`)||{}).value||'';
-	
-	    // UI busy
-	    const old = btn.textContent; btn.textContent='⏳'; btn.disabled=true;
-	    try{
-	      await runSim(it, prop, comment);
-	    }finally{
-	      btn.disabled=false; btn.textContent=old;
-	    }
-	    renderProjectorInline();
-	  };
-	});
 }
-
 
 btnOpenProjector.onclick = ()=>{
   // 1) Aligne le WID sur le service/date affichés
@@ -1344,42 +1266,10 @@ function renderScList(){
     b.onclick = ()=>{
       localStorage.setItem('paria_sel_scenario', b.dataset.id);
       renderScList();
-			openScenario(selectedId);
-			if (typeof renderScPreview==='function') renderScPreview();
+			openScenario(b.dataset.id);
     };
   });
-	renderScPreview();
 }
-function renderScPreview(){
-  const s = svc();
-  const cur = localStorage.getItem('paria_sel_scenario') || '';
-  const sc  = (s.scenarios||[]).find(x=>x.id===cur);
-  const el  = document.getElementById('scPreview');
-  if(!el){ return; }
-  if(!sc){ el.innerHTML = '<em>Aucun scénario sélectionné.</em>'; return; }
-	const items = Array.isArray(sc.snapshot?.items) ? sc.snapshot.items : [];
-	const decisions = Array.isArray(sc.snapshot?.decisions) ? sc.snapshot.decisions : [];
-  const itemsHtml = items.map((it,i)=>`
-    <div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:6px">
-      <div style="font-weight:700">${it.title || it.reformulation || '(sujet)'}</div>
-      <div style="opacity:.7">${(it.reformulation||'').slice(0,140)}</div>
-    </div>`).join('') || '<em>Aucun item.</em>';
-
-  const decHtml = decisions.slice(-8).map(d=>`
-    <div style="font-size:13px;opacity:.85">• ${new Date(d.ts).toLocaleString()} — <strong>${d.status||d.type||''}</strong> — ${d.item?.reformulation||d.note||''}</div>
-  `).join('') || '<em>Pas de décisions.</em>';
-
-  el.innerHTML = `
-    <h4 style="margin-top:0">Aperçu scénario ${sc.id}</h4>
-    <div><strong>Items</strong></div>
-    ${itemsHtml}
-    <div style="margin-top:8px"><strong>Journal</strong></div>
-    ${decHtml}
-  `;
-}
-
-/* ====== BOOT ====== */
-
 
 /* ====== Projecteur standalone interactif (plein écran) ====== */
 (function maybeStandaloneProjector(){
@@ -1611,8 +1501,6 @@ function renderScPreview(){
 		  ()=>{ renderCard(); }
 		);
 
-    card.querySelectorAll('.pact').forEach(b=>{ b.onclick = ()=> decide(b.dataset.c, b.dataset.p, b.dataset.act); });
-    card.querySelectorAll('.pcmt').forEach(inp=>{ inp.onchange = ()=> decide(inp.dataset.c, inp.dataset.p, null, inp.value); });
     document.getElementById('p_prev2').onclick = ()=> { state.idx=Math.max(0,state.idx-1); renderCard(); };
     document.getElementById('p_next2').onclick = ()=> { state.idx=Math.min(state.agendaIds.length-1,state.idx+1); renderCard(); };
   }
@@ -1655,32 +1543,3 @@ loadBaselineFromCloud().finally(()=>{
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
