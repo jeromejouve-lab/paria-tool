@@ -428,7 +428,6 @@ btnStartSess.onclick = async ()=>{
     try { const pu = new URL(prox); pu.search = ''; u.searchParams.set('prox', pu.toString()); }
     catch { u.searchParams.set('prox', prox.split('?')[0]); }
   }
-  const wid = localStorage.getItem('paria_work_id') || '';
   if (wid) u.searchParams.set('wid', wid);
   const ps  = proxySecret();
   if (ps)  u.searchParams.set('ps', ps);
@@ -1514,6 +1513,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
