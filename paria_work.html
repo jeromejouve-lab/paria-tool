@@ -351,13 +351,8 @@ function showTab(id){
 	}
 }
 	
-// --- Si on est en mode Projecteur (invité), ne pas booter l'app à onglets
+// Ne pas booter l'UI à onglets si on est en mode Projecteur (plein écran invité)
 const __IS_PROJECTOR = new URL(location.href).searchParams.get('projecteur') === '1';
-if (__IS_PROJECTOR) {
-  // masquer l'UI par défaut jusqu'à ce que le projecteur standalone remplace <body>
-  document.body.innerHTML = '<div style="padding:16px;font-size:16px">Chargement du projecteur…</div>';
-}
-
 if (!__IS_PROJECTOR) {
   document.querySelectorAll('.tabbtn').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
   loadDB();
@@ -1523,6 +1518,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
