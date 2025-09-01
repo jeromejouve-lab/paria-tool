@@ -426,22 +426,27 @@ btnRotateGuest.onclick = async ()=>{
   sess.guest_token = j.guest_token;
   alert('Nouveau lien invité généré.');
 };
-btnCopyGuest.onclick = ()=>{
+btnCopyGuest.onclick = async ()=>{
   if(!sess.id) return;
-	await saveCloudNow(); // on pousse l’état actuel avant d’envoyer le lien
-	const base = publicBase() || location.href.split('?')[0];
-	const url = new URL(base);
-  url.searchParams.set('projecteur','1');       // <- ajoute ce paramètre
-  url.searchParams.set('session', sess.id);
-  url.searchParams.set('role', 'guest');
-  url.searchParams.set('token', sess.guest_token);
-  const prox = gasUrl(); if (prox) url.searchParams.set('prox', prox);
-	const wid = localStorage.getItem('paria_work_id') || '';
-	if (wid) url.searchParams.set('wid', wid);
-	const ps  = proxySecret();
-	if (ps)  url.searchParams.set('ps', ps);
-  navigator.clipboard.writeText(url.toString());
-  alert('Lien invité copié.');
+  try{
+    btnCopyGuest.disabled = true;            // (optionnel) évite double-clic
+    await saveCloudNow();    
+		const base = publicBase() || location.href.split('?')[0];
+		const url = new URL(base);
+		url.searchParams.set('projecteur','1');       // <- ajoute ce paramètre
+		url.searchParams.set('session', sess.id);
+		url.searchParams.set('role', 'guest');
+		url.searchParams.set('token', sess.guest_token);
+		const prox = gasUrl(); if (prox) url.searchParams.set('prox', prox);
+		const wid = localStorage.getItem('paria_work_id') || '';
+		if (wid) url.searchParams.set('wid', wid);
+		const ps  = proxySecret();
+		if (ps)  url.searchParams.set('ps', ps);
+		navigator.clipboard.writeText(url.toString());
+		alert('Lien invité copié.');
+	} finally {
+		btnCopyGuest.disabled = false;
+  }
 };
 
 btnPushGh.onclick = async ()=>{
@@ -1472,6 +1477,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
