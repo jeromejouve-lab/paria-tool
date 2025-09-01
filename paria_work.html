@@ -414,8 +414,31 @@ btnStartSess.onclick = async ()=>{
   const j = await gasPost('session_start', {work_id: wid, moderation: false});
   sess.id=j.session_id; sess.operator_token=j.operator_token; sess.guest_token=j.guest_token; sess.last_seq=0; sess.paused=false;
   liveState.textContent='live'; btnCopyGuest.disabled=btnPauseSess.disabled=btnRotateGuest.disabled=btnEndSess.disabled=false;
+
+	// -- construire et mémoriser le lien invité (propre) --
+  const base = publicBase() || location.href.split('?')[0];
+  const u = new URL(base);
+  u.searchParams.set('projecteur','1');
+  u.searchParams.set('session', sess.id);
+  u.searchParams.set('role','guest');
+  u.searchParams.set('token', sess.guest_token);
+
+  const prox = gasUrl();
+  if (prox) {
+    try { const pu = new URL(prox); pu.search = ''; u.searchParams.set('prox', pu.toString()); }
+    catch { u.searchParams.set('prox', prox.split('?')[0]); }
+  }
+  const wid = localStorage.getItem('paria_work_id') || '';
+  if (wid) u.searchParams.set('wid', wid);
+  const ps  = proxySecret();
+  if (ps)  u.searchParams.set('ps', ps);
+
+  window._guest_url = u.toString();      // <- lien prêt à copier
+  btnCopyGuest.disabled = false;         // activé
+  btnCopyGuest.style.background = '#f59e0b'; // orange
+  btnCopyGuest.style.color = '#fff';
+
   startPoll();
-  alert('Séance démarrée.');
 };
 btnEndSess.onclick = async ()=>{
   if(!sess.id) return;
@@ -435,46 +458,16 @@ btnRotateGuest.onclick = async ()=>{
   alert('Nouveau lien invité généré.');
 };
 btnCopyGuest.onclick = async ()=>{
-  if(!sess.id) return;
-  try{
-    btnCopyGuest.disabled = true;            // (optionnel) évite double-clic
-    await saveCloudNow();    
-		const base = publicBase() || location.href.split('?')[0];
-		const url = new URL(base);
-		url.searchParams.set('projecteur','1');       // <- ajoute ce paramètre
-		url.searchParams.set('session', sess.id);
-		url.searchParams.set('role', 'guest');
-		url.searchParams.set('token', sess.guest_token);
-		const prox = gasUrl();
-		if (prox) {
-		  try {
-		    const pu = new URL(prox);
-		    pu.search = ''; // on supprime toute query héritée (ex. ?wid=…)
-		    url.searchParams.set('prox', pu.toString());
-		  } catch {
-		    // si prox n'est pas une URL absolue, on coupe à '?' au pire
-		    url.searchParams.set('prox', prox.split('?')[0]);
-		  }
-		}
-
-		const wid = localStorage.getItem('paria_work_id') || '';
-		if (wid) url.searchParams.set('wid', wid);
-		const ps  = proxySecret();
-		if (ps)  url.searchParams.set('ps', ps);
-		try{
-		  await navigator.clipboard.writeText(url.toString());
-		  alert('Lien invité copié.');
-		}catch(e){
-		  // fallback : textarea invisible
-		  const ta = document.createElement('textarea');
-		  ta.value = url.toString();
-		  ta.style.position='fixed'; ta.style.opacity='0';
-		  document.body.appendChild(ta); ta.select();
-		  document.execCommand('copy'); document.body.removeChild(ta);
-		  alert('Lien invité copié (fallback).');
-		}
-	} finally {
-		btnCopyGuest.disabled = false;
+  if (!window._guest_url) return;
+  try {
+    await navigator.clipboard.writeText(window._guest_url);
+  } catch {
+    // fallback silencieux (pas d'alert)
+    const ta = document.createElement('textarea');
+    ta.value = window._guest_url;
+    ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
   }
 };
 
@@ -1521,6 +1514,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
