@@ -1283,6 +1283,7 @@ function renderScList(){
 	const qp = new URL(location.href).searchParams;
 	const qpSec = qp.get('ps');  if (qpSec) setProxySecret(qpSec);
 	const qpWid = qp.get('wid'); if (qpWid) localStorage.setItem(WORK_KEY, qpWid);
+	const qpProx = qp.get('prox'); if (qpProx) setGasUrl(qpProx);
 
 	// --- SYNC INVITÉ (session events) ---
 	let guest = { session:null, role:null, token:null, last_seq:0, poll:null };
@@ -1513,6 +1514,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
