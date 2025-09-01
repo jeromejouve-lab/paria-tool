@@ -305,6 +305,8 @@ const MODEL   = 'gpt-4o-mini';
 const GAS_KEY = 'paria_gas_url';
 const DB_KEY  = 'paria_db';
 const WORK_KEY= 'paria_work_id'; // "ACME|Compta|2025-08-28"
+window.DEBUG = true; // passe à false pour couper
+const D = (...args)=> window.DEBUG && console.log(...args);
 
 /* ====== GitHub cfg ====== */
 const GH_OWNER='paria_gh_owner', GH_REPO='paria_gh_repo', GH_BRANCH='paria_gh_branch',
@@ -1475,9 +1477,8 @@ function renderScList(){
 		  (S)=>{ state.svc = S; saveLocal(state.db); },
 		  ()=>{ renderCard(); }
 		);
-
-    document.getElementById('p_prev2').onclick = ()=> { state.idx=Math.max(0,state.idx-1); renderCard(); };
-    document.getElementById('p_next2').onclick = ()=> { state.idx=Math.min(state.agendaIds.length-1,state.idx+1); renderCard(); };
+    const __p = document.getElementById('p_prev2'); if (__p) __p.onclick = ()=> { state.idx=Math.max(0,state.idx-1); renderCard(); };
+    const __n = document.getElementById('p_next2'); if (__n) __n.onclick = ()=> { state.idx=Math.min(state.agendaIds.length-1,state.idx+1); renderCard(); };
   }
   function renderAll(){
     state.db = loadLocal();
@@ -1518,6 +1519,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
