@@ -1091,7 +1091,7 @@ function renderCardCommon(it){
       <label style="font-size:.9em;opacity:.8">Commentaire</label>
       <div style="display:flex;gap:6px;align-items:center">
 			  <input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid}" value="${htmlEscape(p.decision?.comment||'')}" style="width:100%">
-			  <button class="psim" data-c="${it.id}" data-p="${p.pid}">⚡</button>
+			  <button class="psim" data-c="${it.id}" data-p="${p.pid}">⚡</button><button class="ppick" data-c="${it.id}" data-p="${p.pid}" title="Sélectionner sans IA">${(p.decision?.star)?'★':'☆'}</button>
 			</div>
       <div style="margin-top:8px">${simsHtml(it,p)}</div>
       <div style="margin-top:6px">${notesHtml(p)}</div>
@@ -1134,7 +1134,21 @@ function attachCardHandlers(root, getState, setState, onChange){
 	    const S = getState(); const it = (S.items||[]).find(x=>String(x.id)===String(c)); if(!it) return;
 	    const p = (it.propositions||[]).find(pp=>String(pp.pid)===String(pid)); if(!p) return;
 	    const cmt = root.querySelector(`.pcmt[data-c="${c}"][data-p="${pid}"]`)?.value || '';
-	    await runSim(it, p, cmt);
+	    const old = btn.textContent; btn.textContent='⚡…'; btn.disabled=true;
+	    try { await runSim(it, p, cmt); setState(S); onChange && onChange(); }
+	    finally { btn.disabled=false; btn.textContent=old; }
+	  };
+	});
+
+	// sélection directe (☆/★) de la proposition, même sans simu
+	root.querySelectorAll('.ppick').forEach(btn=>{
+	  btn.onclick = ()=>{
+	    const c = btn.getAttribute('data-c'); const pid = btn.getAttribute('data-p');
+	    const S = getState(); const it = (S.items||[]).find(x=>String(x.id)===String(c)); if(!it) return;
+	    const p = (it.propositions||[]).find(pp=>String(pp.pid)===String(pid)); if(!p) return;
+	    p.decision = p.decision || {}; 
+	    p.decision.star = !p.decision.star; 
+	    p.decision.ts = Date.now();
 	    setState(S); onChange && onChange();
 	  };
 	});
@@ -1228,24 +1242,80 @@ btnPromoteScenario.onclick = ()=>{
 };
 
 function renderScList(){
-  const s=svc(); const el=document.getElementById('scList');
+  const s = svc(); const el = document.getElementById('scList');
   if(!s.scenarios?.length){ el.innerHTML='<em>Aucun scénario.</em>'; return; }
 
-  const cur = localStorage.getItem('paria_sel_scenario') || '';
-  el.innerHTML = s.scenarios.map(sc=>{
-    const sel = (sc.id===cur) ? 'style="font-weight:700"' : '';
-    return `<button class="pill scPick" data-id="${sc.id}" ${sel}>${sc.id} — ${new Date(sc.ts).toLocaleString()}</button>`;
-  }).join(' ');
+  // bornes: lundi de la semaine courante (S0) + lundi de S-1
+  const today = new Date(); const day = (today.getDay()+6)%7; // 0=lundi
+  const monday0 = new Date(today); monday0.setDate(today.getDate()-day);
+  const mondaym1 = new Date(monday0); mondaym1.setDate(monday0.getDate()-7);
+  const days = [...Array(14)].map((_,i)=> {
+    const d = new Date(mondaym1); d.setDate(mondaym1.getDate()+i);
+    return d;
+  });
 
-  el.querySelectorAll('.scPick').forEach(b=>{
-		b.onclick = ()=>{
-		  localStorage.setItem('paria_sel_scenario', b.dataset.id);
-		  renderScList();
-		  document.getElementById('scWork').innerHTML = '';   // évite de “garder” l’ancien rendu
-		  openScenario(b.dataset.id);
-		};
+  // indexer les scénarios par jour (YYYY-MM-DD)
+  const keyOf = d => d.toISOString().slice(0,10);
+  const buckets = {}; (s.scenarios||[]).forEach(sc=>{
+    const k = keyOf(new Date(sc.ts||Date.now()));
+    (buckets[k]||(buckets[k]=[])).push(sc);
+  });
+
+  // rendu grille: 2 lignes de 7 colonnes
+  const cell = (d)=>{
+    const k = keyOf(d);
+    const list = (buckets[k]||[]).map(sc=>{
+      const time = new Date(sc.ts).toLocaleTimeString().slice(0,5);
+      return `
+        <button class="scDot" data-id="${sc.id}" title="${time}">
+          ${sc.id}
+          <span class="scDel" data-id="${sc.id}" title="Supprimer">✕</span>
+        </button>`;
+    }).join('');
+    const dd = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    return `<div class="scCell"><div class="scDate">${dd}</div><div class="scList">${list||''}</div></div>`;
+  };
+
+  el.innerHTML = `
+    <div class="scGrid">
+      ${days.slice(0,7).map(cell).join('')}
+      ${days.slice(7).map(cell).join('')}
+    </div>
+    <style>
+      .scGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+      .scCell{background:#fff;border:1px solid #eee;border-radius:8px;padding:8px;min-height:64px}
+      .scDate{font-size:12px;opacity:.7;margin-bottom:6px}
+      .scList{display:flex;flex-wrap:wrap;gap:6px}
+      .scDot{position:relative;border:1px solid #ddd;border-radius:12px;padding:2px 6px;background:#fafafa;cursor:pointer}
+      .scDot .scDel{display:none;position:absolute;top:-8px;right:-8px;background:#ef4444;color:#fff;
+                    border-radius:50%;width:18px;height:18px;line-height:18px;text-align:center;font-size:12px}
+      .scDot:hover .scDel{display:inline-block}
+    </style>
+  `;
+
+  // ouvrir scénario
+  el.querySelectorAll('.scDot').forEach(b=>{
+    b.onclick = (e)=>{
+      if (e.target.classList.contains('scDel')) return; // laisser le delete gérer
+      localStorage.setItem('paria_sel_scenario', b.dataset.id);
+      document.getElementById('scWork').innerHTML = '';
+      openScenario(b.dataset.id);
+    };
+  });
+
+  // supprimer scénario
+  el.querySelectorAll('.scDel').forEach(x=>{
+    x.onclick = (e)=>{
+      e.stopPropagation();
+      const id = x.dataset.id;
+      const i = (s.scenarios||[]).findIndex(z=>z.id===id);
+      if (i>=0) s.scenarios.splice(i,1);
+      touch(); renderScList();
+      document.getElementById('scWork').innerHTML = '';
+    };
   });
 }
+
 
 /* ====== Projecteur standalone interactif (plein écran) ====== */
 (function maybeStandaloneProjector(){
@@ -1519,6 +1589,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
