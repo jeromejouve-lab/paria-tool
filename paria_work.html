@@ -337,7 +337,7 @@ function showTab(id){
   tabs.forEach(t=>{
     document.getElementById('tab-'+t).classList.toggle('hide', t!==id);
   });
-  document.querySelectorAll('.tabbtn').forEach(b=>{
+  document'.tabbtn').forEach(b=>{
     b.classList.toggle('active', b.dataset.tab===id);
   });
   // Render hooks on show
@@ -356,7 +356,7 @@ function showTab(id){
 // Ne pas booter l'UI à onglets si on est en mode Projecteur (plein écran invité)
 const __IS_PROJECTOR = new URL(location.href).searchParams.get('projecteur') === '1';
 if (!__IS_PROJECTOR) {
-  document.querySelectorAll('.tabbtn').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+  document'.tabbtn').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
   loadDB();
   showTab('reglages');
 }
@@ -884,7 +884,7 @@ function renderLastItem(){
     id: it.id, title: it.title||it.reformulation||'', paria: it.paria||{}, propositions: it.propositions||[], questions: it.questions||[]
   },null,2);
 }
-document.querySelectorAll('.decide').forEach(b=>{
+document'.decide').forEach(b=>{
   b.onclick=()=>{
     const s=svc(); const it=(s.items||[])[(s.items||[]).length-1]; if(!it) return;
     (s.decisions||(s.decisions=[])).push({ ts:Date.now(), status:b.dataset.status, item:{ id:it.id, reformulation: it.reformulation||it.title||'' }});
@@ -1006,7 +1006,7 @@ function makeClientHtml(pack){
   <script>
     document.getElementById('dl').onclick = ()=>{
       const picks = [];
-      document.querySelectorAll('select[data-pid]').forEach(sel=>{
+      document'select[data-pid]').forEach(sel=>{
         const pid=sel.getAttribute('data-pid');
         const cid=sel.getAttribute('data-card');
         const decision=sel.value;
@@ -1143,18 +1143,20 @@ function attachCardHandlers(root, getState, setState, onChange){
 	// sélection directe (☆/★) de la proposition, même sans simu
 	root.querySelectorAll('.ppick').forEach(btn=>{
 	  btn.onclick = ()=>{
-	    const c = btn.getAttribute('data-c'); const pid = btn.getAttribute('data-p');
-	    const S = getState(); const it = (S.items||[]).find(x=>String(x.id)===String(c)); if(!it) return;
+	    const c = btn.dataset.c, pid = btn.dataset.p;
+	    const S = getState();
+	    const it = (S.items||[]).find(x=>String(x.id)===String(c)); if(!it) return;
 	    const p = (it.propositions||[]).find(pp=>String(pp.pid)===String(pid)); if(!p) return;
-	    p.decision = p.decision || {}; 
-	    p.decision.star = !p.decision.star; 
+	    p.decision = p.decision || {};
+	    p.decision.star = !p.decision.star;
 	    p.decision.ts = Date.now();
-	    setState(S); onChange && onChange();
+	    setState(S);
+	    onChange && onChange();
 	  };
 	});
 
   // sélection simu ☆/★
-  root.querySelectorAll('.spick').forEach(btn=>{
+  root'.spick').forEach(btn=>{
     btn.onclick = ()=>{
       const c = btn.getAttribute('data-c'); const pid = btn.getAttribute('data-p'); const sid = btn.getAttribute('data-s');
       const S = getState(); const it = (S.items||[]).find(x=>String(x.id)===String(c)); if(!it) return;
@@ -1192,7 +1194,7 @@ function renderProjectorInline(){
 	  return `<li style="margin:6px 0"><a href="#" data-c="${x.id}" style="${cur}">${label}</a></li>`;
 	}).join('') || '<li>—</li>';
 	
-	list.querySelectorAll('a[data-c]').forEach(a=>{
+	list'a[data-c]').forEach(a=>{
 	  a.onclick=(e)=>{ e.preventDefault(); window._projSel=a.dataset.c; renderProjectorInline(); };
 	});
 	  // ---- Rendu card + handlers (page type)
@@ -1294,7 +1296,7 @@ function renderScList(){
   `;
 
   // ouvrir scénario
-  el.querySelectorAll('.scDot').forEach(b=>{
+  el'.scDot').forEach(b=>{
     b.onclick = (e)=>{
       if (e.target.classList.contains('scDel')) return; // laisser le delete gérer
       localStorage.setItem('paria_sel_scenario', b.dataset.id);
@@ -1304,7 +1306,7 @@ function renderScList(){
   });
 
   // supprimer scénario
-  el.querySelectorAll('.scDel').forEach(x=>{
+  el'.scDel').forEach(x=>{
     x.onclick = (e)=>{
       e.stopPropagation();
       const id = x.dataset.id;
@@ -1473,7 +1475,7 @@ function renderScList(){
       return `<li style="margin:6px 0"><a href="#" data-i="${i}" style="${cur}">${label}</a></li>`;
     }).join('');
     agenda.innerHTML = `<h4 style="margin:0 0 8px 0">Agenda</h4><ol style="margin:0;padding-left:18px">${html||'<li>—</li>'}</ol>`;
-    agenda.querySelectorAll('a[data-i]').forEach(a=>{
+    agenda'a[data-i]').forEach(a=>{
       a.onclick=(e)=>{ e.preventDefault(); state.idx=parseInt(a.dataset.i,10)||0; renderCard(); };
     });
   }
@@ -1589,6 +1591,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
