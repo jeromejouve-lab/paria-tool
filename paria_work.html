@@ -286,7 +286,8 @@
       <button id="btnPromoteScenario">Promouvoir comme version de travail</button>
     </div>
     <div id="scList" style="margin-top:10px"></div>
-		<div id="scPreview" class="card" style="margin-top:10px"><em>Choisis un scénario pour l’aperçu.</em></div>
+	<div id="scWork" class="card" style="margin-top:10px"></div>
+	<div id="scPreview" class="card" style="margin-top:10px"><em>Choisis un scénario pour l’aperçu.</em></div>
   </section>
 </main>
 
@@ -743,6 +744,69 @@ btnAnalyze.onclick = async ()=>{
   }
 };
 
+function openScenario(sid){
+  const s = svc(); const sc=(s.scenarios||[]).find(x=>x.id===sid); 
+  const el=document.getElementById('scWork'); if(!el){return;}
+  if(!sc){ el.innerHTML='<em>Aucun scénario sélectionné.</em>'; return; }
+  const snap = sc.snapshot || { items:[], decisions:[] };
+  const it = (snap.items||[]).find(x=>String(x.id)===String(s._lastCard || (s.items||[])[(s.items||[]).length-1]?.id)) || snap.items[0];
+  if(!it){ el.innerHTML='<em>Scénario vide.</em>'; return; }
+
+	el.innerHTML = `
+	  <div style="display:flex;gap:8px;margin-bottom:8px">
+	    <button id="btnScInsert">Insérer sims sélectionnées (${htmlEscape(sc.id)})</button>
+	    <button id="btnScPromote">Promouvoir ${htmlEscape(sc.id)}</button>
+	  </div>
+	  ${renderCardCommon(
+	    (sc.snapshot?.items||[]).find(x=>String(x.id)===String((svc()._lastCard)||((svc().items||[]).slice(-1)[0]?.id))) 
+	    || (sc.snapshot?.items||[])[0] || {propositions:[]}
+	  )}
+	`;
+	attachCardHandlers(
+	  el,
+	  ()=> (sc.snapshot ||= {items:[], decisions:[]}),
+	  (S)=>{ sc.snapshot = S; saveLocal(state.db); },
+	  ()=>{ openScenario(sc.id); }
+	);
+	// actions spécifiques
+	document.getElementById('btnScInsert').onclick = ()=>{ /* insertion des sims pickées dans la card de ref */ };
+	document.getElementById('btnScPromote').onclick = ()=>{ /* promotion du snapshot vers la card de ref */ };
+
+  // handlers card dans le snapshot (édition dans le snapshot)
+  attachCardHandlers(
+    el,
+    ()=>snap,
+    (S)=>{ sc.snapshot = S; saveLocal(state.db); },
+    ()=>{ openScenario(sid); }
+  );
+
+  // actions spécifiques
+  document.getElementById('btnScInsert').onclick = ()=>{
+    const ref = svc(); // modèle projecteur
+    // pour chaque proposition pickée du snapshot, on l’insère/maj dans la card de ref
+    (snap.items||[]).forEach(si=>{
+      const ti = (ref.items||[]).find(x=>String(x.id)===String(si.id)); if(!ti) return;
+      (si.propositions||[]).forEach(sp=>{
+        (sp.sims||[]).filter(sm=>sm.picked).forEach(sm=>{
+          const tp=(ti.propositions||[]).find(pp=>String(pp.pid)===String(sp.pid)); if(!tp) return;
+          tp.sims = Array.isArray(tp.sims)? tp.sims : [];
+          tp.sims.push({ ...sm, origin:(sm.origin||'IA'), who:'scenario', scenario: sc.id, id: (tp.sims.length+1) });
+        });
+      });
+    });
+    saveLocal(state.db);
+    alert('Simulations insérées depuis '+sc.id);
+  };
+
+  document.getElementById('btnScPromote').onclick = ()=>{
+    const ref = svc();
+    ref.items = JSON.parse(JSON.stringify(snap.items||[]));
+    ref.decisions = JSON.parse(JSON.stringify(snap.decisions||[]));
+    saveLocal(state.db);
+    alert('Scénario '+sc.id+' promu sur la carte de référence.');
+  };
+}
+	
 function recomputePipelineForItem(it){
   const statuses = (it.propositions||[]).map(p=> (p.decision?.status)||'a_preciser');
   const hasAny = statuses.some(s => s==='valide' || s==='refuse');
@@ -950,6 +1014,99 @@ function originTag(origin, who){
 
   return `<span style="display:inline-block;background:${col};color:#fff;border-radius:999px;padding:2px 8px;font-size:12px;line-height:18px">${text}</span>`;
 }
+// -- helpers communs
+function htmlEscape(s){ return (s??'').toString().replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function labelOf(it){ return htmlEscape(it?.title || it?.reformulation || '(sujet)'); }
+function importBadge(dec){ return (dec?.import_file) ? `<span style="border:1px solid #60a5fa;border-radius:6px;padding:1px 6px;margin-left:6px">fichier: ${htmlEscape(dec.import_file)}</span>` : ''; }
+function simsHtml(it,p){
+  const sims=(p.sims||[]);
+  return sims.map(sm=>`
+    <div style="border:1px dashed #ddd;border-radius:6px;padding:8px;margin-top:6px">
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;opacity:.9">
+        <button class="spick" data-c="${it.id}" data-p="${p.pid}" data-s="${sm.id}" title="Sélectionner cette simulation">${sm.picked?'★':'☆'}</button>
+        ${originTag(sm.origin||'IA')}
+        <span>${htmlEscape(sm.id||'S')}</span>
+        <span>${sm.ts? new Date(sm.ts).toLocaleTimeString(): ''}</span>
+      </div>
+      <div style="margin:4px 0">${htmlEscape(sm.note||'')}</div>
+      <div style="font-size:12px;opacity:.8">impact: coût ${htmlEscape(sm.impact?.cout??'—')} · délai ${htmlEscape(sm.impact?.delai??'—')} · risque ${htmlEscape(sm.impact?.risque??'—')}</div>
+    </div>`).join('');
+}
+function notesHtml(p){
+  return (p.notes||[]).slice(-6).map(n=>`
+    <div style="display:flex;gap:8px;align-items:baseline;margin-top:6px">
+      ${originTag(n.origin, n.who)}
+      <span style="font-size:12px;opacity:.7">${n.ts? new Date(n.ts).toLocaleTimeString(): ''}</span>
+      <div>${htmlEscape(n.text||'')}</div>
+    </div>`).join('');
+}
+
+// -- rendu projeteur commun (card)
+function renderCardCommon(it){
+  const props=(it.propositions||[]);
+  const propsHtml = props.map((p,i)=>{
+    const st=(p.decision?.status)||'a_preciser';
+    const is = s=> (st===s ? 'class="pact active"' : 'class="pact"');
+    return `
+    <div style="border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div><strong>${htmlEscape(p.pid||('P'+(i+1)))}</strong> · ${htmlEscape(p.label||'')}</div>
+        <div>
+          <button ${is('valide')}      data-c="${it.id}" data-p="${p.pid}" data-act="valide" style="margin-right:6px">Valider</button>
+          <button ${is('a_preciser')}  data-c="${it.id}" data-p="${p.pid}" data-act="a_preciser" style="margin-right:6px">À préciser</button>
+          <button ${is('refuse')}      data-c="${it.id}" data-p="${p.pid}" data-act="refuse">Refuser</button>
+          ${importBadge(p.decision)}
+        </div>
+      </div>
+      <div style="opacity:.8;margin:4px 0">coût:${htmlEscape(p.indicateurs?.cout??'—')} · complexité:${htmlEscape(p.indicateurs?.complexite??'—')} · embauche:${htmlEscape(p.indicateurs?.embauche??'—')} · données:${htmlEscape(p.indicateurs?.donnees??'—')}</div>
+      <label style="font-size:.9em;opacity:.8">Commentaire</label>
+      <input type="text" class="pcmt" data-c="${it.id}" data-p="${p.pid}" value="${htmlEscape(p.decision?.comment||'')}" style="width:100%">
+      <div style="margin-top:8px">${simsHtml(it,p)}</div>
+      <div style="margin-top:6px">${notesHtml(p)}</div>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="card">
+    <div style="font-weight:700;font-size:16px;margin-bottom:6px">${labelOf(it)}</div>
+    <div id="propList">${propsHtml || '<em>Aucune proposition.</em>'}</div>
+  </div>`;
+}
+
+// -- handlers communs (Valider/À préciser/Refuser, commentaire, sélection simu)
+function attachCardHandlers(root, getState, setState, onChange){
+  // décisions
+  root.querySelectorAll('.pact').forEach(b=>{
+    b.onclick = ()=>{
+      const c = b.getAttribute('data-c'); const pid = b.getAttribute('data-p'); const act = b.getAttribute('data-act');
+      const S = getState(); const it = (S.items||[]).find(x=>String(x.id)===String(c)); if(!it) return;
+      const p = (it.propositions||[]).find(pp=>String(pp.pid)===String(pid)); if(!p) return;
+      p.decision = p.decision||{}; p.decision.status = act; p.decision.ts = Date.now();
+      setState(S); onChange && onChange();
+    };
+  });
+  // commentaire
+  root.querySelectorAll('.pcmt').forEach(inp=>{
+    inp.onchange = ()=>{
+      const c = inp.getAttribute('data-c'); const pid = inp.getAttribute('data-p');
+      const S = getState(); const it = (S.items||[]).find(x=>String(x.id)===String(c)); if(!it) return;
+      const p = (it.propositions||[]).find(pp=>String(pp.pid)===String(pid)); if(!p) return;
+      p.decision = p.decision||{}; p.decision.comment = inp.value; p.decision.ts = Date.now();
+      setState(S); onChange && onChange();
+    };
+  });
+  // sélection simu ☆/★
+  root.querySelectorAll('.spick').forEach(btn=>{
+    btn.onclick = ()=>{
+      const c = btn.getAttribute('data-c'); const pid = btn.getAttribute('data-p'); const sid = btn.getAttribute('data-s');
+      const S = getState(); const it = (S.items||[]).find(x=>String(x.id)===String(c)); if(!it) return;
+      const p = (it.propositions||[]).find(pp=>String(pp.pid)===String(pid)); if(!p) return;
+      const sm = (p.sims||[]).find(s=>String(s.id)===String(sid)); if(!sm) return;
+      sm.picked = !sm.picked; sm.ts_pick = Date.now();
+      setState(S); onChange && onChange();
+    };
+  });
+}
 
 function renderProjectorInline(){
   const s=svc();
@@ -1046,24 +1203,13 @@ function renderProjectorInline(){
 			</div>`;
 	}).join('');
 
-  card.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <div>
-        <div style="font-size:18px;font-weight:700">${it.title||it.reformulation||'(sujet à nommer)'}</div>
-        <div style="opacity:.8">${chip('Objectif: '+(it.objectif||'—'))} ${chip('Question: '+(it.question||'—'))}</div>
-      </div>
-      <div>${stateBadge(it.pipeline||'discovery')}</div>
-    </div>
-    <div style="margin:6px 0">${chips}</div>
-    <div style="margin-top:10px;border-top:1px dashed #ddd;padding-top:8px">
-      ${block('Problèmes', it.paria?.problemes)}
-      ${block('Améliorations', it.paria?.ameliorations)}
-      ${block('Reconfigurations', it.paria?.reconfigurations)}
-      ${block('Intégration IA', it.paria?.integration_ia)}
-      ${block('Actions (brouillon)', it.paria?.actions)}
-    </div>
-    <h4 style="margin-top:10px">Propositions</h4>
-    ${props}`;
+	card.innerHTML = renderCardCommon(it);
+	attachCardHandlers(
+	  card,
+	  ()=>svc(),
+	  (S)=>{ saveLocal(state.db); },
+	  ()=>{ renderProjectorInline(); }
+	);
 	
   function block(label,arr){ if(!Array.isArray(arr)||!arr.length) return ''; return `<div><strong>${label}</strong><ul style="margin:6px 0 12px 20px">${arr.slice(0,4).map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
 
@@ -1198,6 +1344,7 @@ function renderScList(){
     b.onclick = ()=>{
       localStorage.setItem('paria_sel_scenario', b.dataset.id);
       renderScList();
+			openScenario(selectedId);
 			if (typeof renderScPreview==='function') renderScPreview();
     };
   });
@@ -1456,29 +1603,14 @@ function renderScPreview(){
 		    <div style="margin-top:6px">${notes}</div>
 		  </div>`; 
     }).join('');
-    card.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div>
-          <div style="font-size:22px;font-weight:700">${it.title||it.reformulation||'(sujet à nommer)'}</div>
-          <div style="opacity:.8">${chip('Objectif: '+(it.objectif||'—'))} ${chip('Question: '+(it.question||'—'))}</div>
-        </div>
-        <div>${stateBadge(it.pipeline||'discovery')}</div>
-      </div>
-      <div style="margin:6px 0">${chips}</div>
-      <div style="margin-top:10px;border-top:1px dashed #ddd;padding-top:8px">
-        ${block('Problèmes', it.paria?.problemes)}
-        ${block('Améliorations', it.paria?.ameliorations)}
-        ${block('Reconfigurations', it.paria?.reconfigurations)}
-        ${block('Intégration IA', it.paria?.integration_ia)}
-        ${block('Actions (brouillon)', it.paria?.actions)}
-      </div>
-      <h3 style="margin-top:10px">Propositions</h3>
-      ${props}
-      <div style="display:flex;justify-content:space-between;margin-top:8px">
-        <button id="p_prev2">◀ Précédent</button>
-        <div>${state.idx+1}/${state.agendaIds.length}</div>
-        <button id="p_next2">Suivant ▶</button>
-      </div>`;
+    card.innerHTML = renderCardCommon(it);
+		attachCardHandlers(
+		  card,
+		  ()=>state.svc,
+		  (S)=>{ state.svc = S; saveLocal(state.db); },
+		  ()=>{ renderCard(); }
+		);
+
     card.querySelectorAll('.pact').forEach(b=>{ b.onclick = ()=> decide(b.dataset.c, b.dataset.p, b.dataset.act); });
     card.querySelectorAll('.pcmt').forEach(inp=>{ inp.onchange = ()=> decide(inp.dataset.c, inp.dataset.p, null, inp.value); });
     document.getElementById('p_prev2').onclick = ()=> { state.idx=Math.max(0,state.idx-1); renderCard(); };
@@ -1523,6 +1655,7 @@ loadBaselineFromCloud().finally(()=>{
 </script>
 </body>
 </html>
+
 
 
 
