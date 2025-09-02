@@ -933,65 +933,85 @@ document.querySelectorAll('.decide').forEach(b=>{
 });
 
 
+
 function renderDecisions(){
-  const S=svc(), el=document.getElementById('decisions');
-  const list = S.decisions||[];
-  if(!el){ return; }
-  if(!list.length){ el.innerHTML='<em>Aucune entrée.</em>'; const det=document.getElementById('journalDetail'); if(det) det.textContent=''; return; }
-  el.innerHTML = list.map(d=>{
-    const when = new Date(d.ts||Date.now()).toLocaleString();
+  const S = svc();
+  const el = document.getElementById('decisions');
+  if (!el) return;
+  const list = S.decisions || [];
+  if (!list.length){
+    el.innerHTML = '<em>Aucune entrée.</em>';
+    const det0 = document.getElementById('journalDetail');
+    if (det0) det0.textContent = '';
+    return;
+  }
+
+  el.innerHTML = list.map(d => {
+    const when = new Date(d.ts || Date.now()).toLocaleString();
     const type = d.type || d.status || d.action || 'log';
     const card = d.card_id ? ` data-card="${String(d.card_id)}"` : '';
     const sid  = d.sid ? ` data-sid="${String(d.sid)}"` : '';
     const ver  = d.version_id ? ` data-version="${String(d.version_id)}"` : '';
-    const txt  = d.note || d.item?.reformulation || d.label || d.card_id || d.sid || '';
+    const txt  = d.note || (d.item && d.item.reformulation) || d.label || d.card_id || d.sid || '';
     let actionHtml = '';
-    if (d.type==='scenario_deleted' && d.sid){
+    if (d.type === 'scenario_deleted' && d.sid){
       actionHtml = ` <button class="ev-restore-scenario" data-sid="${d.sid}">Restaurer</button>`;
     }
-    if (d.type==='card_deleted' && d.card_id){
+    if (d.type === 'card_deleted' && d.card_id){
       actionHtml = ` <button class="ev-restore-card" data-cid="${d.card_id}">Restaurer</button>`;
     }
     return `<div class="pill" data-type="${type}"${card}${sid}${ver}>${when} — <b>${type}</b> — ${txt}${actionHtml}</div>`;
   }).reverse().join('');
 
   const det = document.getElementById('journalDetail');
-  if(det) det.textContent = '';
+  if (det) det.textContent = '';
 
-  el.querySelectorAll('.ev-restore-scenario').forEach(b=>{
-    b.onclick=(ev)=>{ ev.stopPropagation(); const sid=b.getAttribute('data-sid'); if(!sid) return;
-      if(restoreScenarioById(sid)){ renderScList && renderScList(); renderDecisions(); }
+  el.querySelectorAll('.ev-restore-scenario').forEach(b => {
+    b.onclick = (ev) => {
+      ev.stopPropagation();
+      const sid = b.getAttribute('data-sid');
+      if (!sid) return;
+      if (restoreScenarioById(sid)){
+        if (typeof renderScList === 'function') renderScList();
+        renderDecisions();
+      }
     };
   });
-  el.querySelectorAll('.ev-restore-card').forEach(b=>{
-    b.onclick=(ev)=>{ ev.stopPropagation(); const cid=b.getAttribute('data-cid'); if(!cid) return;
-      if(restoreCardById(cid)){ renderProjectorInline && renderProjectorInline(); renderDecisions(); }
+
+  el.querySelectorAll('.ev-restore-card').forEach(b => {
+    b.onclick = (ev) => {
+      ev.stopPropagation();
+      const cid = b.getAttribute('data-cid');
+      if (!cid) return;
+      if (restoreCardById(cid)){
+        if (typeof renderProjectorInline === 'function') renderProjectorInline();
+        renderDecisions();
+      }
     };
   });
 
-  el.querySelectorAll('.pill').forEach(p=>{
-    p.onclick=(ev)=>{
-      if(ev.target && (ev.target.closest('.ev-restore-scenario') || ev.target.closest('.ev-restore-card'))) return;
+  el.querySelectorAll('.pill').forEach(p => {
+    p.onclick = (ev) => {
+      if (ev.target && (ev.target.closest('.ev-restore-scenario') || ev.target.closest('.ev-restore-card'))) return;
       const card = p.getAttribute('data-card');
       const sid  = p.getAttribute('data-sid');
       const ver  = p.getAttribute('data-version');
-      const S=svc();
-      if(card){
-        const it = (S.items||[]).find(x=>String(x.id)===String(card));
-        const det = document.getElementById('journalDetail');
-        if(it && det){ det.textContent = JSON.stringify(it, null, 2); }
-      }else if(sid){
-        const sc = (S.scenarios||[]).find(x=>String(x.id)===String(sid));
-        const det = document.getElementById('journalDetail');
-        if(sc && det){ det.textContent = JSON.stringify(sc, null, 2); }
-      }else if(ver){
-        const evline = (S.decisions||[]).find(d=>d.version_id===ver);
-        const det = document.getElementById('journalDetail');
-        if(evline && det){ det.textContent = JSON.stringify(evline, null, 2); }
+      const S = svc();
+      const det = document.getElementById('journalDetail');
+      if (card){
+        const it = (S.items || []).find(x => String(x.id) === String(card));
+        if (it && det) det.textContent = JSON.stringify(it, null, 2);
+      } else if (sid){
+        const sc = (S.scenarios || []).find(x => String(x.id) === String(sid));
+        if (sc && det) det.textContent = JSON.stringify(sc, null, 2);
+      } else if (ver){
+        const evline = (S.decisions || []).find(d => d.version_id === ver);
+        if (evline && det) det.textContent = JSON.stringify(evline, null, 2);
       }
     };
   });
 }
+
 /* Alias legacy (certaines zones appellent encore renderJournal) */
 
   el.innerHTML = list.map(d=>{
@@ -1052,7 +1072,7 @@ function renderDecisions(){
       }
     };
   });
-
+}
 
 /* Alias legacy (certaines zones appellent encore renderJournal) */
 /* Alias legacy (certaines zones appellent encore renderJournal) */
@@ -1934,7 +1954,6 @@ ${(it.propositions||[]).map(p=>`- ${p.pid||''} — ${p.label||''}`).join('\\n')|
 
 </body>
 </html>
-
 
 
 
