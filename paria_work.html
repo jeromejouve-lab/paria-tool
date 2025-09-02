@@ -106,6 +106,14 @@
 	word-wrap: anywhere;		
 }
 	
+
+/* --- Journal layout tweaks --- */
+#tab-analyse .row{ display:flex; gap:16px; align-items:flex-start; }
+#tab-analyse .row > .card{ flex:1; }
+#tab-analyse .row > .card:first-child{ order:1; } /* decisions left */
+#tab-analyse .row > .card:nth-child(2){ order:2; } /* detail right */
+/* Hide Journal export/import buttons */
+#tab-analyse button[id*="Export"], #tab-analyse button[id*="Import"]{ display:none !important; }
 </style>
 </head>
 <body>
@@ -114,7 +122,7 @@
   <div class="tabs" id="tabbar">
     <button class="tabbtn active" data-tab="reglages">Réglages</button>
     <button class="tabbtn" data-tab="capture">Charter</button>
-    <button class="tabbtn" data-tab="analyse">Journal</button>
+    <button class="tabbtn" data-tab="analyse">Journal</button> <button class="tabbtn" data-tab="cards">Cards</button>
     <button class="tabbtn" data-tab="projecteur">Projecteur</button>
     <button class="tabbtn" data-tab="scenarios">Scénarios</button>
     <button id="btnStartSess">Démarrer séance</button>
@@ -1729,7 +1737,145 @@ function syncPinState(root){
     btn.setAttribute('aria-pressed', String(sel && String(sel)===String(c)));
   });
 }
+
+/* ===== Cards Tab (atelier) ===== */
+let _cardsSelId = null;
+
+function cardsFiltered(){
+  const S = svc();
+  const q = (document.getElementById('cardsSearch')?.value||'').toLowerCase();
+  const st = (document.getElementById('cardsStatus')?.value||'').toLowerCase();
+  return (S.items||[]).filter(x=>!x.deleted_at).filter(x=>{
+    const t = (x.title||x.reformulation||'').toLowerCase();
+    const okQ = !q || t.includes(q);
+    const okS = !st || (String(x.status||'').toLowerCase()===st);
+    return okQ && okS;
+  });
+}
+
+function renderCardsList(){
+  const listEl = document.getElementById('cardsList'); if(!listEl) return;
+  const L = cardsFiltered();
+  if(!L.length){ listEl.innerHTML='<div style="padding:8px;color:#888">Aucune card.</div>'; return; }
+  listEl.innerHTML = L.map(it=>{
+    const badge = it.status ? `<span class="pill" style="margin-left:6px">${it.status}</span>` : '';
+    const sel = (_cardsSelId && String(_cardsSelId)===String(it.id)) ? ' style="background:#eef"' : '';
+    return `<div class="rowItem"${sel} data-id="${it.id}" style="padding:8px;border-bottom:1px solid #eee;cursor:pointer">
+      <div style="font-weight:600">${(it.title||it.reformulation||it.id||'—')}</div>
+      <div style="font-size:.85em;color:#666">${it.id}${badge}</div>
+    </div>`;
+  }).join('');
+  listEl.querySelectorAll('.rowItem').forEach(r=>{
+    r.onclick=()=>{ _cardsSelId = r.getAttribute('data-id'); renderCardDetail(_cardsSelId); };
+  });
+}
+
+function renderCardDetail(id){
+  const S = svc();
+  const it = (S.items||[]).find(x=>String(x.id)===String(id));
+  const view = document.getElementById('cardView');
+  const pre = document.getElementById('cardJson');
+  if(!it){ if(view) view.innerHTML='<em>Non trouvé.</em>'; if(pre) pre.textContent=''; return; }
+  if(view){
+    const propList = (it.propositions||[]).map(p=>`<li>${p.pid||''} — ${p.label||''}</li>`).join('') || '<li>—</li>';
+    view.innerHTML = `
+      <div style="font-weight:700;margin-bottom:6px">${it.title||it.reformulation||it.id}</div>
+      <div style="font-size:.9em;color:#666;margin-bottom:6px">ID: ${it.id} — statut: ${it.status||'—'}</div>
+      <div><b>PARIA</b>: ${ (it.paria? Object.keys(it.paria).join(', ') : '—') }</div>
+      <div style="margin-top:4px"><b>Propositions</b>: <ul style="margin:6px 0 0 18px">${propList}</ul></div>
+    `;
+  }
+  if(pre) pre.textContent = JSON.stringify(it, null, 2);
+
+  // wire actions
+  const openBtn = document.getElementById('btnCardOpenProj');
+  if(openBtn) openBtn.onclick=()=>{ window._projSel = id; renderProjectorInline && renderProjectorInline(); };
+  const delBtn = document.getElementById('btnCardDel');
+  if(delBtn) delBtn.onclick=()=>{ if(deleteCardById(id)){ renderCardsList(); renderDecisions && renderDecisions(); if(_cardsSelId===id) _cardsSelId=null; } };
+  const mdBtn = document.getElementById('btnCardExportMd');
+  if(mdBtn) mdBtn.onclick=()=>{ exportCardAs('md', it); };
+  const hBtn = document.getElementById('btnCardExportHtml');
+  if(hBtn) hBtn.onclick=()=>{ exportCardAs('html', it); };
+  const jBtn = document.getElementById('btnCardExportJson');
+  if(jBtn) jBtn.onclick=()=>{ exportCardAs('json', it); };
+}
+
+function renderCardsTab(){
+  renderCardsList();
+  if(_cardsSelId){ renderCardDetail(_cardsSelId); }
+  const sch = document.getElementById('cardsSearch');
+  const ss = document.getElementById('cardsStatus');
+  if(sch) sch.oninput = ()=>renderCardsList();
+  if(ss) ss.onchange = ()=>renderCardsList();
+}
+
+// Exports (client-side download)
+function downloadText(filename, text){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type:'text/plain;charset=utf-8'}));
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function exportCardAs(fmt, it){
+  if(!it) return;
+  if(fmt==='json'){ return downloadText(`card_${it.id}.json`, JSON.stringify(it, null, 2)); }
+  if(fmt==='md'){
+    const md = `# ${it.title||it.reformulation||it.id}
+
+**ID:** ${it.id}
+**Statut:** ${it.status||'-'}
+
+## PARIA
+${Object.entries(it.paria||{}).map(([k,v])=>`- **${k}**: ${(v||[]).join('; ')}`).join('
+')}
+
+## Propositions
+${(it.propositions||[]).map(p=>`- ${p.pid||''} — ${p.label||''}`).join('
+')||'- —'}`;
+    return downloadText(`card_${it.id}.md`, md);
+  }
+  if(fmt==='html'){
+    const html = `<!doctype html><meta charset="utf-8"><title>Card ${it.id}</title><style>body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.4;padding:24px;max-width:900px;margin:auto}</style><h1>${it.title||it.reformulation||it.id}</h1><p><b>ID:</b> ${it.id} — <b>Statut:</b> ${it.status||'-'}</p><h2>PARIA</h2><ul>${Object.entries(it.paria||{}).map(([k,v])=>`<li><b>${k}</b>: ${(v||[]).join('; ')}</li>`).join('')}</ul><h2>Propositions</h2><ul>${(it.propositions||[]).map(p=>`<li>${p.pid||''} — ${p.label||''}</li>`).join('')}</ul>`;
+    return downloadText(`card_${it.id}.html`, html);
+  }
+}
+
 </script>
+
+<div id="tab-cards" class="tab" style="display:none">
+  <div class="row" style="display:flex; gap:16px; align-items:flex-start">
+    <div class="card" style="flex:1; min-width:280px">
+      <h4 style="margin-top:0">Cards</h4>
+      <div style="display:flex; gap:8px; margin:6px 0">
+        <input id="cardsSearch" type="text" placeholder="Recherche..." style="flex:1">
+        <select id="cardsStatus">
+          <option value="">Tous statuts</option>
+          <option value="ok">Validé</option>
+          <option value="maybe">À préciser</option>
+          <option value="ko">Refusé</option>
+        </select>
+      </div>
+      <div id="cardsList" style="max-height:calc(100vh - 320px);overflow:auto;border:1px solid #eee;border-radius:8px"></div>
+    </div>
+    <div class="card" style="flex:1.2; min-width:340px">
+      <h4 style="margin-top:0">Détail</h4>
+      <div id="cardView" style="min-height:120px">—</div>
+      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+        <button id="btnCardOpenProj">Ouvrir dans Projecteur</button>
+        <button id="btnCardDel">Supprimer (soft)</button>
+        <button id="btnCardExportMd">Exporter MD</button>
+        <button id="btnCardExportHtml">Exporter HTML</button>
+        <button id="btnCardExportJson">Exporter JSON</button>
+      </div>
+    </div>
+    <div class="card" style="flex:1; min-width:320px">
+      <h4 style="margin-top:0">JSON</h4>
+      <pre id="cardJson" style="white-space:pre-wrap; min-height:260px; max-height:calc(100vh - 320px); overflow:auto">—</pre>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
 
