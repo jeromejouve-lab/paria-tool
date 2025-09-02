@@ -365,7 +365,7 @@ function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
 function loadDB(){ try{ db = JSON.parse(localStorage.getItem(DB_KEY)||'{"services":{}}'); }catch(e){ db={services:{}}; } }
 
 /* ====== ONGLETING ====== */
-const tabs = ['reglages','capture','analyse','projecteur','scenarios'];
+const tabs = ['reglages','capture','analyse','projecteur','scenarios', 'cards'];
 function showTab(id){
   tabs.forEach(t=>{
     document.getElementById('tab-'+t).classList.toggle('hide', t!==id);
@@ -1966,6 +1966,7 @@ ${(it.propositions||[]).map(p=>`- ${p.pid||''} — ${p.label||''}`).join('\\n')|
 
 </body>
 </html>
+
 
 
 
