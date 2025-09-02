@@ -1010,7 +1010,7 @@ function renderDecisions(){
       }
     };
   });
-
+}
 
 /* Alias legacy (certaines zones appellent encore renderJournal) */
 
@@ -1087,27 +1087,48 @@ btnExportMd.onclick=()=>{
   a.download=`audit_${key}_${new Date().toISOString().slice(0,10)}.md`; a.click();
   expState.textContent='Exporté ✔';
 };
+
 function makeMarkdown(key,s){
-  const L=[]; L.push(`# Audit ${key} — PARIA`,'','## Service Charter');
-  for(const [k,v] of Object.entries(s.charter||{})) L.push(`- **${k}**: ${v||'-'}`);
+  const L=[]; 
+  L.push(`# Audit ${key} — PARIA`,'','## Service Charter');
+  for (const [k,v] of Object.entries(s.charter||{})){
+    L.push(`- **${k}**: ${v||'-'}`);
+  }
   L.push('','## Analyses');
   (s.items||[]).forEach((it,i)=>{
     L.push(`### Item #${i+1} (${it.id})`);
-    if(it.reformulation) L.push(`Reformulation: ${it.reformulation}`);
-    const b=it.paria||{};
-    for(const k of ['problemes','ameliorations','reconfigurations','integration_ia','actions']){
-      if(b[k]?.length){ L.push(`- **${k}**:`); b[k].forEach(x=>L.push(`  - ${x}`)); }
+    if (it.reformulation) L.push(`Reformulation: ${it.reformulation}`);
+    const b = it.paria||{};
+    for (const k of ['problemes','ameliorations','reconfigurations','integration_ia','actions']){
+      if (Array.isArray(b[k]) && b[k].length){
+        L.push(`- **${k}**:`);
+        b[k].forEach(x=>L.push(`  - ${x}`));
+      }
     }
-    if(it.questions?.length){ L.push(`- **Questions**:`); it.questions.forEach(q=>L.push(`  - ${q}`)); }
-    if(it.propositions?.length){
-      L.push(`- **Propositions**:`); it.propositions.forEach(p=>L.push(`  - ${p.pid||''} ${p.label} — ${p.type} [${p.indicateurs?.cout||'-'}/${p.indicateurs?.complexite||'-'}]`));
+    if (Array.isArray(it.questions) && it.questions.length){
+      L.push(`- **Questions**:`);
+      it.questions.forEach(q=>L.push(`  - ${q}`));
+    }
+    if (Array.isArray(it.propositions) && it.propositions.length){
+      L.push(`- **Propositions**:`);
+      it.propositions.forEach(p=>{
+        const cout = (p && p.indicateurs && p.indicateurs.cout) ?? '-';
+        const cx   = (p && p.indicateurs && p.indicateurs.complexite) ?? '-';
+        L.push(`  - ${p?.pid||''} — ${p?.label||''} [${cout}/${cx}]`);
+      });
     }
     L.push('');
   });
   L.push('## Décisions');
-  (s.decisions||[]).forEach(d=>L.push(`- ${new Date(d.ts).toLocaleString()} — **${d.status||d.type||''}** — ${d.item?.reformulation||d.note||''}`));
+  (s.decisions||[]).forEach(d=>{
+    const when = new Date(d.ts||Date.now()).toLocaleString();
+    const status = d.status || d.type || '';
+    const txt = (d.item && d.item.reformulation) || d.note || '';
+    L.push(`- ${when} — **${status}** — ${txt}`);
+  });
   return L.join('\n');
 }
+
 
 /* ====== Export HTML client + Import JSON ====== */
 btnExportClientHtml.onclick = ()=>{
@@ -1954,7 +1975,6 @@ ${(it.propositions||[]).map(p=>`- ${p.pid||''} — ${p.label||''}`).join('\\n')|
 
 </body>
 </html>
-
 
 
 
