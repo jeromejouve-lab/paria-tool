@@ -337,7 +337,7 @@ function showTab(id){
   tabs.forEach(t=>{
     document.getElementById('tab-'+t).classList.toggle('hide', t!==id);
   });
-  document'.tabbtn').forEach(b=>{
+  document.querySelectorAll('.tabbtn').forEach(b=>{
     b.classList.toggle('active', b.dataset.tab===id);
   });
   // Render hooks on show
@@ -884,7 +884,7 @@ function renderLastItem(){
     id: it.id, title: it.title||it.reformulation||'', paria: it.paria||{}, propositions: it.propositions||[], questions: it.questions||[]
   },null,2);
 }
-document'.decide').forEach(b=>{
+document.querySelectorAll('.decide').forEach(b=>{
   b.onclick=()=>{
     const s=svc(); const it=(s.items||[])[(s.items||[]).length-1]; if(!it) return;
     (s.decisions||(s.decisions=[])).push({ ts:Date.now(), status:b.dataset.status, item:{ id:it.id, reformulation: it.reformulation||it.title||'' }});
@@ -1006,7 +1006,7 @@ function makeClientHtml(pack){
   <script>
     document.getElementById('dl').onclick = ()=>{
       const picks = [];
-      document'select[data-pid]').forEach(sel=>{
+      document.querySelectorAll('select[data-pid]').forEach(sel=>{
         const pid=sel.getAttribute('data-pid');
         const cid=sel.getAttribute('data-card');
         const decision=sel.value;
@@ -1156,7 +1156,7 @@ function attachCardHandlers(root, getState, setState, onChange){
 	});
 
   // sélection simu ☆/★
-  root'.spick').forEach(btn=>{
+  root.querySelectorAll('.spick').forEach(btn=>{
     btn.onclick = ()=>{
       const c = btn.getAttribute('data-c'); const pid = btn.getAttribute('data-p'); const sid = btn.getAttribute('data-s');
       const S = getState(); const it = (S.items||[]).find(x=>String(x.id)===String(c)); if(!it) return;
@@ -1194,7 +1194,7 @@ function renderProjectorInline(){
 	  return `<li style="margin:6px 0"><a href="#" data-c="${x.id}" style="${cur}">${label}</a></li>`;
 	}).join('') || '<li>—</li>';
 	
-	list'a[data-c]').forEach(a=>{
+	list.querySelectorAll('a[data-c]').forEach(a=>{
 	  a.onclick=(e)=>{ e.preventDefault(); window._projSel=a.dataset.c; renderProjectorInline(); };
 	});
 	  // ---- Rendu card + handlers (page type)
@@ -1296,7 +1296,7 @@ function renderScList(){
   `;
 
   // ouvrir scénario
-  el'.scDot').forEach(b=>{
+  el.querySelectorAll('.scDot').forEach(b=>{
     b.onclick = (e)=>{
       if (e.target.classList.contains('scDel')) return; // laisser le delete gérer
       localStorage.setItem('paria_sel_scenario', b.dataset.id);
@@ -1306,7 +1306,7 @@ function renderScList(){
   });
 
   // supprimer scénario
-  el'.scDel').forEach(x=>{
+  el.querySelectorAll('.scDel').forEach(x=>{
     x.onclick = (e)=>{
       e.stopPropagation();
       const id = x.dataset.id;
@@ -1591,6 +1591,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
