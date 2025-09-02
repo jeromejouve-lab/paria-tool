@@ -110,10 +110,15 @@
 	
 
 /* --- Journal layout tweaks --- */
-#tab-analyse .row{ display:flex; gap:16px; align-items:flex-start; }
-#tab-analyse .row > .card{ flex:1; }
-#tab-analyse .row > .card:first-child{ order:1; } /* decisions left */
-#tab-analyse .row > .card:nth-child(2){ order:2; } /* detail right */
+#tab-analyse .row{
+  display:grid;
+  grid-template-columns: minmax(320px,1fr) 1fr;
+  gap:16px;
+  align-items:start;
+}
+#tab-analyse .row > .card:not(#journalDetailCard){ grid-column: 1; } /* left stack */
+#tab-analyse #journalDetailCard{ grid-column: 2; }                  /* right panel */
+
 /* Hide Journal export/import buttons */
 #tab-analyse button[id*="Export"], #tab-analyse button[id*="Import"]{ display:none !important; }
 </style>
@@ -124,7 +129,8 @@
   <div class="tabs" id="tabbar">
     <button class="tabbtn active" data-tab="reglages">Réglages</button>
     <button class="tabbtn" data-tab="capture">Charter</button>
-    <button class="tabbtn" data-tab="analyse">Journal</button> <button class="tabbtn" data-tab="cards">Cards</button>
+    <button class="tabbtn" data-tab="analyse">Journal</button> 
+		<button class="tabbtn" data-tab="cards">Cards</button>
     <button class="tabbtn" data-tab="projecteur">Projecteur</button>
     <button class="tabbtn" data-tab="scenarios">Scénarios</button>
     <button id="btnStartSess">Démarrer séance</button>
@@ -287,6 +293,12 @@
           <span id="expState" class="pill">—</span>
         </div>
       </div>
+			<div class="card" id="journalDetailCard">
+			  <h4 style="margin:0 0 8px 0">Contenu sélectionné</h4>
+			  <pre id="journalDetail"
+			       style="white-space:pre-wrap;border:1px solid #ddd;border-radius:8px;padding:8px;
+			              min-height:160px;max-height:calc(100vh - 320px);overflow:auto">—</pre>
+			</div>
     </div>
   </section>
 
@@ -371,6 +383,9 @@ function showTab(id){
   }
 	if(id==='scenarios'){
 	  if (typeof renderScList==='function') renderScList();
+	}
+	if(id==='cards'){
+	  if (typeof renderCardsTab==='function') renderCardsTab();
 	}
 }
 	
@@ -939,20 +954,48 @@ document.querySelectorAll('.decide').forEach(b=>{
 
 
 
+function renderLastItem(){
+  const s = svc();
+  const it = (s.items||[])[(s.items||[]).length-1];
+  if(!it){ lastItem.textContent='—'; return; }
+  lastItem.textContent = JSON.stringify({
+    id: it.id,
+    title: it.title||it.reformulation||'',
+    paria: it.paria||{},
+    propositions: it.propositions||[],
+    questions: it.questions||[]
+  }, null, 2);
+}
+
+document.querySelectorAll('.decide').forEach(b=>{
+  b.onclick = ()=>{
+    const s=svc(); const it=(s.items||[])[(s.items||[]).length-1]; if(!it) return;
+    (s.decisions||(s.decisions=[])).push({
+      ts: Date.now(),
+      status: b.dataset.status,
+      item: { id: it.id, reformulation: it.reformulation||it.title||'' }
+    });
+    touch();
+    renderDecisions();
+    decState.textContent='Noté ✔';
+  };
+});
+
 function renderDecisions(){
   const S = svc();
   const el = document.getElementById('decisions');
   if (!el) return;
+
   const list = S.decisions || [];
   if (!list.length){
     el.innerHTML = '<em>Aucune entrée.</em>';
     const det0 = document.getElementById('journalDetail');
-    if (det0) det.textContent = '';
+    if (det0) det0.textContent = '';
     return;
   }
 
-  el.innerHTML = list.map(d => {
-    const when = new Date(d.ts || Date.now()).toLocaleString();
+  el.innerHTML = list.map(d=>{
+    const when = new Date(d.ts||Date.now()).toLocaleString();
     const type = d.type || d.status || d.action || 'log';
     const card = d.card_id ? ` data-card="${String(d.card_id)}"` : '';
     const sid  = d.sid ? ` data-sid="${String(d.sid)}"` : '';
@@ -968,55 +1011,58 @@ function renderDecisions(){
     return `<div class="pill" data-type="${type}"${card}${sid}${ver}>${when} — <b>${type}</b> — ${txt}${actionHtml}</div>`;
   }).reverse().join('');
 
-  const det = document.getElementById('journalDetail');
-  if (det) det.textContent = '';
+  // panneau détail (colonne droite)
+  let det = document.getElementById('journalDetail');
+  if(!det){
+    det = document.createElement('pre');
+    det.id = 'journalDetail';
+    det.style.whiteSpace = 'pre-wrap';
+    det.style.border = '1px solid #ddd';
+    det.style.borderRadius = '8px';
+    det.style.padding = '8px';
+    det.style.marginTop = '8px';
+    el.parentNode && el.parentNode.appendChild(det);
+  } else {
+    det.textContent = '';
+  }
 
-  el.querySelectorAll('.ev-restore-scenario').forEach(b => {
-    b.onclick = (ev) => {
-      ev.stopPropagation();
-      const sid = b.getAttribute('data-sid');
-      if (!sid) return;
-      if (restoreScenarioById(sid)){
-        if (typeof renderScList === 'function') renderScList();
-        renderDecisions();
-      }
+  el.querySelectorAll('.ev-restore-scenario').forEach(b=>{
+    b.onclick=(ev)=>{ ev.stopPropagation();
+      const sid=b.getAttribute('data-sid'); if(!sid) return;
+      if(restoreScenarioById(sid)){ if(typeof renderScList==='function') renderScList(); renderDecisions(); }
+    };
+  });
+  el.querySelectorAll('.ev-restore-card').forEach(b=>{
+    b.onclick=(ev)=>{ ev.stopPropagation();
+      const cid=b.getAttribute('data-cid'); if(!cid) return;
+      if(restoreCardById(cid)){ if(typeof renderProjectorInline==='function') renderProjectorInline(); renderDecisions(); }
     };
   });
 
-  el.querySelectorAll('.ev-restore-card').forEach(b => {
-    b.onclick = (ev) => {
-      ev.stopPropagation();
-      const cid = b.getAttribute('data-cid');
-      if (!cid) return;
-      if (restoreCardById(cid)){
-        if (typeof renderProjectorInline === 'function') renderProjectorInline();
-        renderDecisions();
-      }
-    };
-  });
-
-  el.querySelectorAll('.pill').forEach(p => {
-    p.onclick = (ev) => {
-      if (ev.target && (ev.target.closest('.ev-restore-scenario') || ev.target.closest('.ev-restore-card'))) return;
+  el.querySelectorAll('.pill').forEach(p=>{
+    p.onclick=(ev)=>{
+      if(ev.target && (ev.target.closest('.ev-restore-scenario') || ev.target.closest('.ev-restore-card'))) return;
       const card = p.getAttribute('data-card');
       const sid  = p.getAttribute('data-sid');
       const ver  = p.getAttribute('data-version');
-      const S = svc();
-      const det = document.getElementById('journalDetail');
-      if (card){
-        const it = (S.items || []).find(x => String(x.id) === String(card));
-        if (it && det) det.textContent = JSON.stringify(it, null, 2);
-      } else if (sid){
-        const sc = (S.scenarios || []).find(x => String(x.id) === String(sid));
-        if (sc && det) det.textContent = JSON.stringify(sc, null, 2);
-      } else if (ver){
-        const evline = (S.decisions || []).find(d => d.version_id === ver);
-        if (evline && det) det.textContent = JSON.stringify(evline, null, 2);
+      if(card){
+        const it = (S.items||[]).find(x=>String(x.id)===String(card));
+        if(it){ det.textContent = JSON.stringify(it, null, 2); }
+      }else if(sid){
+        const sc = (S.scenarios||[]).find(x=>String(x.id)===String(sid));
+        if(sc){ det.textContent = JSON.stringify(sc, null, 2); }
+      }else if(ver){
+        const evline = (S.decisions||[]).find(d=>d.version_id===ver);
+        if(evline){ det.textContent = JSON.stringify(evline, null, 2); }
       }
     };
   });
 }
 
+// Alias legacy (certaines zones appellent encore renderJournal)
+window.renderJournal = window.renderDecisions;
+
+  
 window.renderJournal = window.renderDecisions;
 
 /* ====== EXPORTS ====== */
@@ -1920,6 +1966,7 @@ ${(it.propositions||[]).map(p=>`- ${p.pid||''} — ${p.label||''}`).join('\\n')|
 
 </body>
 </html>
+
 
 
 
