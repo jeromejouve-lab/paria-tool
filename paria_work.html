@@ -861,7 +861,7 @@ btnAnalyze.onclick = async ()=>{
 
     s.items.push(item);
     touch();
-    analysis.textContent logEvent('analyze_created', { card_id: String(item.id) }); pushEventLive({ type:'analyze_created', card_id:String(item.id) });  = JSON.stringify(item,null,2);
+    analysis.textContent = JSON.stringify(item,null,2); logEvent('analyze_created', { card_id: String(item.id) }); pushEventLive({ type:'analyze_created', card_id: String(item.id) });
     aiState.textContent='OK ✔';
     touch();
   }catch(e){
