@@ -604,6 +604,72 @@ async function saveCloudNow(){
 // À appeler après CHAQUE action clé :
 function touch(){ saveDB(); localStorage.setItem('paria_touch', String(Date.now())); autosaveCloud(); }
 
+/* ====== JOURNAL EVENTS (generic) ====== */
+function logEvent(type, payload){
+  try{
+    const S = svc();
+    const evt = Object.assign({ ts: Date.now(), type, service: currentService() }, payload||{});
+    (S.decisions||(S.decisions=[])).push(evt);
+    touch();
+  }catch(_){}
+}
+async function pushEventLive(eventObj){
+  if(!sess.id) return;
+  try{
+    await gasPost('event_push', {
+      session_id: sess.id, token: sess.operator_token, role:'operator',
+      event: Object.assign({ service: currentService() }, eventObj||{})
+    });
+  }catch(_){}
+}
+
+/* Cards soft delete / restore (logic only) */
+function deleteCardById(card_id){
+  const S = svc();
+  const it = (S.items||[]).find(x=>String(x.id)===String(card_id)); if(!it) return false;
+  if (it.deleted_at) return true;
+  it.deleted_at = Date.now();
+  if (window._projSel && String(window._projSel)===String(card_id)) window._projSel = null;
+  logEvent('card_deleted', { card_id:String(card_id) });
+  pushEventLive({ type:'card_deleted', card_id:String(card_id) });
+  touch();
+  return true;
+}
+function restoreCardById(card_id){
+  const S = svc();
+  const it = (S.items||[]).find(x=>String(x.id)===String(card_id)); if(!it) return false;
+  if (!it.deleted_at) return true;
+  it.deleted_at = null;
+  logEvent('card_restored', { card_id:String(card_id) });
+  pushEventLive({ type:'card_restored', card_id:String(card_id) });
+  touch();
+  return true;
+}
+
+/* Scenarios soft delete / restore */
+function deleteScenarioById(sid){
+  const S = svc();
+  const sc = (S.scenarios||[]).find(x=>String(x.id)===String(sid)); if(!sc) return false;
+  if (sc.deleted_at) return true;
+  sc.deleted_at = Date.now();
+  logEvent('scenario_deleted', { sid:String(sid) });
+  pushEventLive({ type:'scenario_deleted', sid:String(sid) });
+  touch();
+  return true;
+}
+function restoreScenarioById(sid){
+  const S = svc();
+  const sc = (S.scenarios||[]).find(x=>String(x.id)===String(sid)); if(!sc) return false;
+  if (!sc.deleted_at) return true;
+  sc.deleted_at = null;
+  logEvent('scenario_restored', { sid:String(sid) });
+  pushEventLive({ type:'scenario_restored', sid:String(sid) });
+  touch();
+  return true;
+}
+
+
+
 /* ====== SNAPSHOT GIT AUTO (10 min) ====== */
 let _gitTimer = null, _lastGitTs = 0;
 async function snapshotGitAuto(reason='auto-10min'){
@@ -795,7 +861,7 @@ btnAnalyze.onclick = async ()=>{
 
     s.items.push(item);
     touch();
-    analysis.textContent = JSON.stringify(item,null,2);
+    analysis.textContent logEvent('analyze_created', { card_id: String(item.id) }); pushEventLive({ type:'analyze_created', card_id:String(item.id) });  = JSON.stringify(item,null,2);
     aiState.textContent='OK ✔';
     touch();
   }catch(e){
@@ -806,7 +872,7 @@ btnAnalyze.onclick = async ()=>{
 
 function openScenario(sid){
   const s = svc(); const sc=(s.scenarios||[]).find(x=>x.id===sid); 
-  const el=document.getElementById('scWork'); if(!el){return;}
+   if(sc && sc.deleted_at){ const el=document.getElementById('scWork'); if(el) el.innerHTML='<em>Scénario supprimé (restaurable depuis Journal).</em>'; return; } const el=document.getElementById('scWork'); if(!el){return;}
   if(!sc){ el.innerHTML='<em>Aucun scénario sélectionné.</em>'; return; }
   const snap = sc.snapshot || { items:[], decisions:[] };
   const it = (snap.items||[]).find(x=>String(x.id)===String(s._lastCard || (s.items||[])[(s.items||[]).length-1]?.id)) || snap.items[0];
@@ -912,15 +978,37 @@ document.querySelectorAll('.decide').forEach(b=>{
     touch();
   };
 });
+
 function renderDecisions(){
-  const s=svc(), el=document.getElementById('decisions');
-  if(!s.decisions?.length){ el.innerHTML='<em>Aucune décision.</em>'; return; }
-  el.innerHTML = s.decisions.slice().reverse().map(d=>{
-    const txt = d.item?.reformulation || d.note || '';
-    const st  = d.status || d.type || '';
-    return `<div class="pill">${new Date(d.ts).toLocaleString()} — <b>${st}</b> — ${txt}</div>`;
+  const S=svc(), el=document.getElementById('decisions');
+  const list = S.decisions||[];
+  if(!list.length){ el.innerHTML='<em>Aucune entrée.</em>'; return; }
+  el.innerHTML = list.slice().reverse().map(d=>{
+    const when = new Date(d.ts||Date.now()).toLocaleString();
+    const type = d.type || d.status || d.action || 'log';
+    let actionHtml = '';
+    if (d.type==='scenario_deleted' && d.sid){
+      actionHtml = ` <button class="ev-restore-scenario" data-sid="${d.sid}">Restaurer</button>`;
+    }
+    if (d.type==='card_deleted' && d.card_id){
+      actionHtml = ` <button class="ev-restore-card" data-cid="${d.card_id}">Restaurer</button>`;
+    }
+    const text = d.note || d.item?.reformulation || d.label || d.card_id || d.sid || '';
+    return `<div class="pill" data-type="${type}">${when} — <b>${type}</b> — ${text}${actionHtml}</div>`;
   }).join('');
+
+  el.querySelectorAll('.ev-restore-scenario').forEach(b=>{
+    b.onclick = ()=>{ const sid=b.getAttribute('data-sid'); if(!sid) return;
+      if(restoreScenarioById(sid)){ renderScList && renderScList(); renderDecisions(); }
+    };
+  });
+  el.querySelectorAll('.ev-restore-card').forEach(b=>{
+    b.onclick = ()=>{ const cid=b.getAttribute('data-cid'); if(!cid) return;
+      if(restoreCardById(cid)){ renderProjectorInline && renderProjectorInline(); renderDecisions(); }
+    };
+  });
 }
+
 
 /* Alias legacy (certaines zones appellent encore renderJournal) */
 window.renderJournal = window.renderDecisions;
@@ -1137,7 +1225,7 @@ function attachCardHandlers(root, getState, setState, onChange){
       const S = getState(); const it = (S.items||[]).find(x=>String(x.id)===String(c)); if(!it) return;
       const p = (it.propositions||[]).find(pp=>String(pp.pid)===String(pid)); if(!p) return;
       p.decision = p.decision||{}; p.decision.status = act; p.decision.ts = Date.now();
-      setState(S); onChange && onChange();
+      setState(S); onChange && onChange(); try{ pushDecision(c, pid, act, p.decision.comment||''); }catch(_){} 
     };
   });
   // commentaire
@@ -1210,7 +1298,7 @@ function attachCardHandlers(root, getState, setState, onChange){
 
 function renderProjectorInline(){
   const s=svc();
-  const items=(s.items||[]);
+  const items = (s.items||[]).filter(x=>!x.deleted_at);
 	const it = items.find(x=>x.id===window._projSel) || items[items.length-1];
 	const ch = document.getElementById('cardHdr'); 
 	if (ch) ch.textContent = it?.id || '—';
@@ -1333,7 +1421,14 @@ function renderScList(){
                     border-radius:50%;width:18px;height:18px;line-height:18px;text-align:center;font-size:12px}
       .scDot:hover .scDel{display:inline-block}
     </style>
-  `;
+  `
+  // handlers delete scenario
+  el.querySelectorAll('.scDel').forEach(x=>{
+    x.onclick=(ev)=>{ ev.stopPropagation(); const sid=x.getAttribute('data-id'); if(!sid) return;
+      if(deleteScenarioById(sid)){ renderScList(); }
+    };
+  });
+;
 
   // ouvrir scénario
   el.querySelectorAll('.scDot').forEach(b=>{
