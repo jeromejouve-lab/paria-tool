@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>PARIA — Workbench</title>
 <style>
-.ppin.active{ transform: rotate(-90deg); }
+.ppin.active{ transform: none; opacity: 1; }
 
   :root{--line:#e6e6e6;--bg:#f7f7f8;--ink:#222}
   *{box-sizing:border-box}
@@ -97,6 +97,12 @@
 	word-wrap: anywhere;		
 }
 	
+
+/* Swap columns in Journal: put decisions list on the left, detail on the right */
+#tab-analyse .row > .card:nth-child(1){ order:2; }
+#tab-analyse .row > .card:nth-child(2){ order:1; }
+/* Hide Journal export/import buttons (kept in DOM to avoid JS errors) */
+#btnExportMd, #btnExportClientHtml, #btnImportClientJson { display:none !important; }
 </style>
 </head>
 <body>
@@ -245,8 +251,10 @@
   <section id="tab-analyse" class="card hide tab-col" style="min-height:calc(100vh - 160px)">
     <div class="row">
       <div class="card">
-        <h3>Dernier item (réformulation & PARIA)</h3>
-        <pre id="lastItem" style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;min-height:240px;max-height:calc(100vh - 280px);overflow:auto;resize:vertical">—</pre>
+        <h3>Contenu sélectionné</h3>
+        <pre id="lastItem" style="display:none; white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;min-height:240px;max-height:calc(100vh - 280px);overflow:auto;resize:vertical">—</pre>
+<pre id="journalDetail" style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;min-height:240px;max-height:calc(100vh - 280px);overflow:auto;resize:vertical">—</pre>
+
         <div class="actions">
           <button data-status="valide"  class="decide">Valider</button>
           <button data-status="a_preciser" class="decide">À préciser</button>
