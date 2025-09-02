@@ -356,7 +356,7 @@ function showTab(id){
 // Ne pas booter l'UI à onglets si on est en mode Projecteur (plein écran invité)
 const __IS_PROJECTOR = new URL(location.href).searchParams.get('projecteur') === '1';
 if (!__IS_PROJECTOR) {
-  document'.tabbtn').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+  document.querySelectorAll('.tabbtn').forEach(b=> b.onclick = ()=> showTab(b.dataset.tab));
   loadDB();
   showTab('reglages');
 }
@@ -1591,6 +1591,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
