@@ -1827,12 +1827,10 @@ function exportCardAs(fmt, it){
 **Statut:** ${it.status||'-'}
 
 ## PARIA
-${Object.entries(it.paria||{}).map(([k,v])=>`- **${k}**: ${(v||[]).join('; ')}`).join('
-')}
+${Object.entries(it.paria||{}).map(([k,v])=>`- **${k}**: ${(v||[]).join('; ')}`).join('\n')}
 
 ## Propositions
-${(it.propositions||[]).map(p=>`- ${p.pid||''} — ${p.label||''}`).join('
-')||'- —'}`;
+${(it.propositions||[]).map(p=>`- ${p.pid||''} — ${p.label||''}`).join('\\n')||'- —'}`;
     return downloadText(`card_${it.id}.md`, md);
   }
   if(fmt==='html'){
