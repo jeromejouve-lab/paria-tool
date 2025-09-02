@@ -934,6 +934,7 @@ document.querySelectorAll('.decide').forEach(b=>{
 
 
 
+
 function renderDecisions(){
   const S = svc();
   const el = document.getElementById('decisions');
@@ -1011,7 +1012,6 @@ function renderDecisions(){
     };
   });
 }
-
 /* Alias legacy (certaines zones appellent encore renderJournal) */
 
   el.innerHTML = list.map(d=>{
@@ -1088,6 +1088,7 @@ btnExportMd.onclick=()=>{
   expState.textContent='Exporté ✔';
 };
 
+
 function makeMarkdown(key,s){
   const L=[]; 
   L.push(`# Audit ${key} — PARIA`,'','## Service Charter');
@@ -1128,6 +1129,7 @@ function makeMarkdown(key,s){
   });
   return L.join('\n');
 }
+
 
 
 /* ====== Export HTML client + Import JSON ====== */
