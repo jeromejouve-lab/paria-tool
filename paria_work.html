@@ -5,7 +5,16 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>PARIA — Workbench</title>
 <style>
-.ppin.active{ transform: none; opacity: 1; }
+/* PIN DOT STYLE */
+.ppin{
+  width:18px;height:18px;display:inline-block;vertical-align:middle;
+  border:2px solid currentColor;border-radius:50%;
+  background:transparent;opacity:.7;cursor:pointer;transition:opacity .2s ease;
+}
+.ppin[aria-pressed="true"]{ background: currentColor; opacity:1; }
+#viewer .ppin{ cursor:default; pointer-events:none; opacity:.5; }
+
+.ppin.active{ transform: rotate(-90deg); }
 
   :root{--line:#e6e6e6;--bg:#f7f7f8;--ink:#222}
   *{box-sizing:border-box}
@@ -97,12 +106,6 @@
 	word-wrap: anywhere;		
 }
 	
-
-/* Swap columns in Journal: put decisions list on the left, detail on the right */
-#tab-analyse .row > .card:nth-child(1){ order:2; }
-#tab-analyse .row > .card:nth-child(2){ order:1; }
-/* Hide Journal export/import buttons (kept in DOM to avoid JS errors) */
-#btnExportMd, #btnExportClientHtml, #btnImportClientJson { display:none !important; }
 </style>
 </head>
 <body>
@@ -251,10 +254,8 @@
   <section id="tab-analyse" class="card hide tab-col" style="min-height:calc(100vh - 160px)">
     <div class="row">
       <div class="card">
-        <h3>Contenu sélectionné</h3>
-        <pre id="lastItem" style="display:none; white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;min-height:240px;max-height:calc(100vh - 280px);overflow:auto;resize:vertical">—</pre>
-<pre id="journalDetail" style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;min-height:240px;max-height:calc(100vh - 280px);overflow:auto;resize:vertical">—</pre>
-
+        <h3>Dernier item (réformulation & PARIA)</h3>
+        <pre id="lastItem" style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px;min-height:240px;max-height:calc(100vh - 280px);overflow:auto;resize:vertical">—</pre>
         <div class="actions">
           <button data-status="valide"  class="decide">Valider</button>
           <button data-status="a_preciser" class="decide">À préciser</button>
@@ -1246,21 +1247,26 @@ function attachCardHandlers(root, getState, setState, onChange){
 	
   // épingler la carte courante dans la séance (et forcer l’affichage local)
   
+
 root.querySelectorAll('.ppin').forEach(btn=>{
-  const isInlineProjector = (root && root.id === 'projCard');
+  const isInlineProjector = (root && root.id === 'projCard'); // operator inline vs viewer
   const c = btn.getAttribute('data-c');
-  const pinned = (typeof window._projSel !== 'undefined') ? String(window._projSel) : null;
+  const pinned = (typeof window._projSel !== 'undefined') ? (window._projSel===null? null : String(window._projSel)) : null;
   const isPinned = (pinned && String(c)===String(pinned));
-  btn.classList.toggle('active', !!isPinned);
-  if (!isInlineProjector) {
+  // reflect state
+  btn.setAttribute('aria-pressed', String(!!isPinned));
+  if (!isInlineProjector){
+    // viewer: passive
     btn.setAttribute('aria-disabled','true');
-    btn.style.pointerEvents = 'none';
-    btn.style.cursor = 'default';
     return;
   }
+  // operator: toggle on click
   btn.onclick = ()=>{
-    try{ window._projSel = c; renderProjectorInline && renderProjectorInline(); }catch(_){}
-    try{ pushPin && pushPin(c); }catch(_){}
+    const next = isPinned ? null : c;
+    window._projSel = next;
+    try{ renderProjectorInline && renderProjectorInline(); }catch(_){}
+    try{ logEvent && logEvent('pin_card', { card_id: next }); }catch(_){}
+    try{ pushEventLive && pushEventLive({ type:'pin_card', service: currentService(), card_id: next }); }catch(_){}
   };
 });
 // sélection simu ☆/★
@@ -1527,7 +1533,8 @@ function renderScList(){
 	function stopGuestPoll(){ if(guest.poll){ clearInterval(guest.poll); guest.poll=null; } }
 
 	// Applique un event reçu sur l'état local du projecteur
-	function applyIncomingEventToLocal(ev){
+	function applyIncomingEventToLocal(ev){  if(ev && ev.type==='pin_card'){ window._projSel = ev.card_id || null; try{ renderProjectorInline && renderProjectorInline(); }catch(_){} return; }
+
 		const e = ev.event||{};
 		const items = state.svc.items || [];
 		if(e.type==='prop_decision'){
@@ -1713,6 +1720,15 @@ function renderScList(){
     }
   });
 })();
+
+function syncPinState(root){
+  if(!root) return;
+  const sel = (typeof window._projSel!=='undefined') ? window._projSel : null;
+  root.querySelectorAll('.ppin').forEach(btn=>{
+    const c = btn.getAttribute('data-c');
+    btn.setAttribute('aria-pressed', String(sel && String(sel)===String(c)));
+  });
+}
 </script>
 </body>
 </html>
