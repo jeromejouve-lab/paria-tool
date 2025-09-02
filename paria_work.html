@@ -549,7 +549,6 @@ function applyEvent(ev){
       window._projSel = e.card_id;
       if (typeof renderProjectorInline === 'function') renderProjectorInline();
     }catch(_){}
-    touch();
   }
 	
   // plus tard: sim_create (Sx) -> ajouter à it.propositions[i].sims
@@ -577,7 +576,7 @@ async function pushPin(card_id){
       session_id: sess.id,
       token: sess.operator_token,
       role: 'operator',
-      event: { type: 'pin_card', card_id }
+      event: { type: 'pin_card', service: currentService(), card_id }
     });
   }catch(_){}
 }
@@ -1178,20 +1177,24 @@ function attachCardHandlers(root, getState, setState, onChange){
 	    onChange && onChange();
 	  };
 	});
+	
   // épingler la carte courante dans la séance (et forcer l’affichage local)
   root.querySelectorAll('.ppin').forEach(btn=>{
-    btn.onclick = ()=>{
-      const c = btn.getAttribute('data-c');
-      try{
-        // UX local — projecteur inline : on pointe sur cette carte
-        window._projSel = c;
-        if (typeof renderProjectorInline === 'function') renderProjectorInline();
-      }catch(_){}
-      // diffusion vers la séance / viewer
-      try{ pushPin(c); }catch(_){}
-    };
-  });
-
+	  const isInlineProjector = (root && root.id === 'projCard');
+	  if (!isInlineProjector) {
+	    // lecture seule (séance ou viewer) : pas de click
+	    btn.setAttribute('aria-disabled','true');
+	    btn.style.opacity = '1';
+	    btn.style.cursor = 'default';
+	    return;
+	  }
+	  btn.onclick = ()=>{
+	    const c = btn.getAttribute('data-c');
+	    try{ window._projSel = c; renderProjectorInline && renderProjectorInline(); }catch(_){}
+	    try{ pushPin(c); }catch(_){}
+	  };
+	});
+	
   // sélection simu ☆/★
   root.querySelectorAll('.spick').forEach(btn=>{
     btn.onclick = ()=>{
@@ -1468,19 +1471,23 @@ function renderScList(){
 			it.pipeline = recomputePipelineForItem(it);
 			saveLocal(state.db); renderCard();
 		}
-	    if(e.type==='pin_card'){
-	      try{
-	        // Recalcule l’agenda et pointe l’index sur la carte ciblée
-	        state.agendaIds = computeAgenda();
-	        const id = e.card_id;
-	        const idx = (state.agendaIds||[]).indexOf(id);
-	        if (idx >= 0) state.idx = idx;
-	        // Pour l’underline dans la liste
-	        window._projSel = id;
-	        renderProjectorInline();
-	      }catch(_){}
-	      return;
-	    }
+		
+		if(e.type==='pin_card'){
+		  try{
+		    if (e.service && e.service !== state.svcKey) {
+		      state.svcKey = e.service;
+		      state.svc = (state.db.services||{})[e.service] || {items:[],decisions:[],scenarios:[],charter:{}};
+		    }
+		    state.agendaIds = computeAgenda();
+		    const id = e.card_id;
+		    const idx = (state.agendaIds||[]).indexOf(id);
+		    if (idx >= 0) state.idx = idx;
+		    window._projSel = id;
+		    renderProjectorInline();
+		  }catch(_){}
+		  return;
+		}
+
 		if(e.type==='comment'){
 			const it = (s.items||[]).find(x=>x.id===e.card_id); if(!it) return;
 			const prop = (it.propositions||[]).find(pp=>pp.pid===e.pid); if(!prop) return;
@@ -1641,6 +1648,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
