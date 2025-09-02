@@ -948,11 +948,6 @@ document.querySelectorAll('.decide').forEach(b=>{
   };
 });
 
-
-
-
-
-
 function renderLastItem(){
   const s = svc();
   const it = (s.items||[])[(s.items||[]).length-1];
@@ -1098,8 +1093,6 @@ btnExportMd.onclick=()=>{
   expState.textContent='Exporté ✔';
 };
 
-
-
 function makeMarkdown(key,s){
   const L=[]; 
   L.push(`# Audit ${key} — PARIA`,'','## Service Charter');
@@ -1140,9 +1133,6 @@ function makeMarkdown(key,s){
   });
   return L.join('\n');
 }
-
-
-
 
 /* ====== Export HTML client + Import JSON ====== */
 btnExportClientHtml.onclick = ()=>{
@@ -2083,7 +2073,83 @@ function toHtml(it){
   const pariaLines = Object.entries(paria).map(([k,v])=>`<li><b>${k}</b>: ${(v||[]).join('; ')}</li>`).join('');
   return `<!doctype html><meta charset="utf-8"><title>${t}</title><h1>${t}</h1><h2>PARIA</h2><ul>${pariaLines}</ul>`;
 }
-	
+// === CARDS – module minimal (guardé) ===
+if (typeof renderCardsTab !== 'function') {
+  window.openCardDetail = function(id){
+    const s = svc(); const it = (s.items||[]).find(x=>String(x.id)===String(id));
+    const v = document.getElementById('cardView');
+    const j = document.getElementById('cardJson');
+    if (!it || !v || !j) return;
+    const title = it.title || it.reformulation || ('Card '+it.id);
+    v.innerHTML   = `<strong>${title}</strong>`;
+    j.textContent = JSON.stringify(it, null, 2);
+
+    // actions
+    const bOpen = document.getElementById('btnCardOpenProj');
+    const bDel  = document.getElementById('btnCardDel');
+    const bJ    = document.getElementById('btnCardExportJson');
+    const bMd   = document.getElementById('btnCardExportMd');
+    const bHtml = document.getElementById('btnCardExportHtml');
+
+    if (bOpen) bOpen.onclick = ()=>{ s.pinned_card = String(id); touch(); if (typeof renderProjectorInline==='function') renderProjectorInline(); };
+    if (bDel)  bDel.onclick  = ()=>{ const it=(s.items||[]).find(x=>String(x.id)===String(id)); if(it){ it.deleted_ts=Date.now(); touch(); renderCardsList(); document.getElementById('cardView').textContent='—'; document.getElementById('cardJson').textContent='—'; } };
+    if (bJ)    bJ.onclick    = ()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(it,null,2)],{type:'application/json'})); a.download=`card_${id}.json`; a.click(); URL.revokeObjectURL(a.href); };
+    if (bMd)   bMd.onclick   = ()=>{ const md = `# ${title}\n\n## PARIA\n${Object.entries(it.paria||{}).map(([k,v])=>`- **${k}**: ${(v||[]).join('; ')}`).join('\n')}`; const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([md],{type:'text/markdown;charset=utf-8'})); a.download=`card_${id}.md`; a.click(); URL.revokeObjectURL(a.href); };
+    if (bHtml) bHtml.onclick = ()=>{ const html = `<!doctype html><meta charset="utf-8"><title>${title}</title><h1>${title}</h1><h2>PARIA</h2><ul>${Object.entries(it.paria||{}).map(([k,v])=>`<li><b>${k}</b>: ${(v||[]).join('; ')}</li>`).join('')}</ul>`; const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'})); a.download=`card_${id}.html`; a.click(); URL.revokeObjectURL(a.href); };
+  };
+
+  window.renderCardsList = function(){
+    const s = svc(); const listEl = document.getElementById('cardsList'); if(!listEl) return;
+    const q  = (document.getElementById('cardsSearch')?.value||'').toLowerCase();
+    const st = (document.getElementById('cardsStatus')?.value||'').toLowerCase();
+
+    const items = (s.items||[])
+      .filter(it => !it?.deleted_ts)
+      .filter(it => !st || String(it.decision?.status||it.status||'').toLowerCase()===st)
+      .filter(it => {
+        if(!q) return true;
+        const txt = [it.title, it.reformulation].filter(Boolean).join(' ').toLowerCase();
+        return txt.includes(q);
+      });
+
+    if(!items.length){
+      listEl.innerHTML = '<div style="padding:8px;opacity:.7"><em>Aucune card.</em></div>';
+      document.getElementById('cardView')?.replaceChildren(document.createTextNode('—'));
+      document.getElementById('cardJson')?.replaceChildren(document.createTextNode('—'));
+      return;
+    }
+    listEl.innerHTML = items.map(it=>{
+      const label = it.title || it.reformulation || ('Card '+it.id);
+      return `<a href="#" data-id="${String(it.id)}" class="pill" style="display:block;margin:6px">${label}</a>`;
+    }).join('');
+
+    listEl.querySelectorAll('a[data-id]').forEach(a=>{
+      a.onclick=(e)=>{ e.preventDefault(); openCardDetail(a.dataset.id); };
+    });
+  };
+
+  window.renderCardsTab = function(){
+    const sch = document.getElementById('cardsSearch');
+    const ss  = document.getElementById('cardsStatus');
+    if (sch && !sch._bound){ sch._bound = true; sch.addEventListener('input', renderCardsList); }
+    if (ss  && !ss._bound){  ss._bound  = true; ss.addEventListener('change', renderCardsList); }
+    renderCardsList();
+  };
+}
+(function(){
+  const orig = window.showTab || function(){};
+  window.showTab = function(id){
+    ['reglages','capture','analyse','projecteur','scenarios','cards'].forEach(t=>{
+      const el = document.getElementById('tab-'+t);
+      if (el) el.classList.toggle('hide', t!==id);
+    });
+    if(id==='cards' && typeof renderCardsTab==='function') renderCardsTab();
+    if(id==='analyse' && typeof renderDecisions==='function') renderDecisions();
+    if(id==='projecteur' && typeof renderProjectorInline==='function') renderProjectorInline();
+    if(id==='scenarios' && typeof renderScList==='function') renderScList();
+  };
+})();
+
 </script>
 
 <div id="tab-cards" class="tab" style="display:none">
@@ -2121,6 +2187,7 @@ function toHtml(it){
 
 </body>
 </html>
+
 
 
 
