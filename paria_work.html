@@ -368,14 +368,14 @@ function loadDB(){ try{ db = JSON.parse(localStorage.getItem(DB_KEY)||'{"service
 const tabs = ['reglages','capture','analyse','projecteur','scenarios', 'cards'];
 function showTab(id){
   tabs.forEach(t=>{
-    document.getElementById('tab-'+t).classList.toggle('hide', t!==id);
+    const el = document.getElementById('tab-'+t);
+  	if (el) el.classList.toggle('hide', t!==id);
   });
   document.querySelectorAll('.tabbtn').forEach(b=>{
     b.classList.toggle('active', b.dataset.tab===id);
   });
   // Render hooks on show
   if(id==='analyse'){ 
-    if (typeof renderLastItem==='function') renderLastItem();
     if (typeof renderDecisions==='function') renderDecisions();
   }
   if(id==='projecteur'){
@@ -428,7 +428,6 @@ if (svcSel){
     // persist current service selection if you already do so:
     // localStorage.setItem('paria_service', svcSel.value);
     if (typeof hydrateCharter==='function') hydrateCharter();
-    if (typeof renderLastItem==='function') renderLastItem();
     if (typeof renderDecisions==='function') renderDecisions();
     if (typeof renderProjectorInline==='function') renderProjectorInline();
     if (typeof refreshDump==='function') refreshDump();
@@ -1966,6 +1965,7 @@ ${(it.propositions||[]).map(p=>`- ${p.pid||''} — ${p.label||''}`).join('\\n')|
 
 </body>
 </html>
+
 
 
 
