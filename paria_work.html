@@ -1061,8 +1061,32 @@ function renderDecisions(){
 // Alias legacy (certaines zones appellent encore renderJournal)
 window.renderJournal = window.renderDecisions;
 
-  
-window.renderJournal = window.renderDecisions;
+// --- JOURNAL: rebinder à l'ouverture + au besoin ---
+(function(){
+  // 1) Forcer un render du Journal quand on affiche l'onglet
+  if (typeof window.showTab === 'function') {
+    const _origShowTab = window.showTab;
+    window.showTab = function(id){
+      _origShowTab(id);
+      if (id === 'analyse' && typeof window.renderDecisions === 'function') {
+        window.renderDecisions();
+      }
+      if (id === 'cards' && typeof window.renderCardsTab === 'function') {
+        window.renderCardsTab();
+      }
+    };
+  }
+
+  // 2) Option UX: masquer le panneau "Dernier item" dans le Journal
+  // (on garde le HTML mais on le cache pour ne garder QUE la liste + le détail)
+  const journal = document.getElementById('tab-analyse');
+  if (journal) {
+    const firstCard = journal.querySelector('.card h3');
+    if (firstCard && /Dernier item/i.test(firstCard.textContent||'')) {
+      firstCard.closest('.card').style.display = 'none';
+    }
+  }
+})();
 
 /* ====== EXPORTS ====== */
 btnExportMd.onclick=()=>{
@@ -1912,15 +1936,15 @@ function exportCardAs(fmt, it){
   if(fmt==='md'){
     const md = `# ${it.title||it.reformulation||it.id}
 
-**ID:** ${it.id}
-**Statut:** ${it.status||'-'}
-
-## PARIA
-${Object.entries(it.paria||{}).map(([k,v])=>`- **${k}**: ${(v||[]).join('; ')}`).join('\n')}
-
-## Propositions
-${(it.propositions||[]).map(p=>`- ${p.pid||''} — ${p.label||''}`).join('\\n')||'- —'}`;
-    return downloadText(`card_${it.id}.md`, md);
+		**ID:** ${it.id}
+		**Statut:** ${it.status||'-'}
+		
+		## PARIA
+		${Object.entries(it.paria||{}).map(([k,v])=>`- **${k}**: ${(v||[]).join('; ')}`).join('\n')}
+		
+		## Propositions
+		${(it.propositions||[]).map(p=>`- ${p.pid||''} — ${p.label||''}`).join('\\n')||'- —'}`;
+	  return downloadText(`card_${it.id}.md`, md);
   }
   if(fmt==='html'){
     const html = `<!doctype html><meta charset="utf-8"><title>Card ${it.id}</title><style>body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.4;padding:24px;max-width:900px;margin:auto}</style><h1>${it.title||it.reformulation||it.id}</h1><p><b>ID:</b> ${it.id} — <b>Statut:</b> ${it.status||'-'}</p><h2>PARIA</h2><ul>${Object.entries(it.paria||{}).map(([k,v])=>`<li><b>${k}</b>: ${(v||[]).join('; ')}</li>`).join('')}</ul><h2>Propositions</h2><ul>${(it.propositions||[]).map(p=>`<li>${p.pid||''} — ${p.label||''}</li>`).join('')}</ul>`;
@@ -1928,6 +1952,138 @@ ${(it.propositions||[]).map(p=>`- ${p.pid||''} — ${p.label||''}`).join('\\n')|
   }
 }
 
+// ---------- Helpers sûrs ----------
+function safeLog(type, payload){
+  try { if (typeof logEvent === 'function') logEvent(type, payload||{}); } catch(e){}
+  try { if (typeof pushEventLive === 'function') pushEventLive({ type, ...(payload||{}) }); } catch(e){}
+}
+function download(name, content){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], {type:'text/plain;charset=utf-8'}));
+  a.download = name; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ---------- Pinned ----------
+function isPinned(id){ const s=svc(); return String(s.pinned_card||'')===String(id); }
+function pinCardInProjector(id){
+  const s=svc(); s.pinned_card = String(id); touch();
+  safeLog('pin_card', {card_id:String(id)});
+  if (typeof renderProjectorInline==='function') renderProjectorInline();
+}
+
+// ---------- Restore/Delete ----------
+function softDeleteCard(id){
+  const s=svc(); const it=(s.items||[]).find(x=>String(x.id)===String(id)); if(!it) return;
+  if (!it.deleted_ts){ it.deleted_ts = Date.now(); touch(); }
+  (s.decisions||(s.decisions=[])).push({ ts:Date.now(), type:'card_deleted', card_id:String(id) });
+  safeLog('card_deleted', {card_id:String(id)});
+  touch(); if (typeof renderDecisions==='function') renderDecisions();
+  if (typeof renderCardsList==='function') renderCardsList();
+}
+function restoreCardById(id){
+  const s=svc(); const it=(s.items||[]).find(x=>String(x.id)===String(id)); if(!it) return false;
+  if (it.deleted_ts){ delete it.deleted_ts; touch(); }
+  (s.decisions||(s.decisions=[])).push({ ts:Date.now(), type:'card_restored', card_id:String(id) });
+  safeLog('card_restored', {card_id:String(id)});
+  touch(); return true;
+}
+window.restoreCardById = restoreCardById; // utilisé par Journal (bouton "Restaurer")
+
+// ---------- Cards: rendering ----------
+function renderCardsTab(){
+  // guards si l'onglet n'est pas dans le DOM
+  const root = document.getElementById('tab-cards'); if (!root) return;
+  const q = document.getElementById('cardsSearch');
+  const st= document.getElementById('cardsStatus');
+  // listeners uniques
+  if (q && !q._bound){ q._bound = true; q.addEventListener('input', renderCardsList); }
+  if (st && !st._bound){ st._bound = true; st.addEventListener('change', renderCardsList); }
+  renderCardsList();
+}
+
+function renderCardsList(){
+  const s=svc();
+  const listEl = document.getElementById('cardsList'); if(!listEl) return;
+  const q = (document.getElementById('cardsSearch')?.value||'').toLowerCase();
+  const st= (document.getElementById('cardsStatus')?.value||'');
+
+  const items = (s.items||[])
+    .filter(it => !it?.deleted_ts)
+    .filter(it => !st || (it.decision?.status===st || it.status===st))
+    .filter(it => {
+      if(!q) return true;
+      const text = [it.title, it.reformulation].filter(Boolean).join(' ').toLowerCase();
+      return text.includes(q);
+    });
+
+  if(!items.length){
+    listEl.innerHTML = '<div style="padding:8px;opacity:.7"><em>Aucune card.</em></div>';
+    document.getElementById('cardView')?.replaceChildren(document.createTextNode('—'));
+    document.getElementById('cardJson')?.replaceChildren(document.createTextNode('—'));
+    return;
+  }
+
+  listEl.innerHTML = items.map(it=>{
+    const label = it.title || it.reformulation || ('Card '+it.id);
+    const pin = isPinned(it.id) ? ' (pinned)' : '';
+    return `<a href="#" data-id="${String(it.id)}" class="pill" style="display:block;margin:6px">${label}${pin}</a>`;
+  }).join('');
+
+  listEl.querySelectorAll('a[data-id]').forEach(a=>{
+    a.onclick=(e)=>{ e.preventDefault(); openCardDetail(a.getAttribute('data-id')); };
+  });
+}
+
+function openCardDetail(id){
+  const s=svc(); const it=(s.items||[]).find(x=>String(x.id)===String(id)); if(!it) return;
+  const view = document.getElementById('cardView');
+  const jpre = document.getElementById('cardJson');
+  if (view) {
+    const label = it.title || it.reformulation || ('Card '+it.id);
+    const pinned = isPinned(id);
+    view.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <strong>${label}</strong>
+        <button class="ppin" aria-pressed="${pinned?'true':'false'}" title="${pinned?'Épinglée':'Épingler'}"></button>
+      </div>
+      <div style="margin-top:8px"><pre style="white-space:pre-wrap">${(it.title||it.reformulation||'').trim()}</pre></div>
+    `;
+    const pinBtn = view.querySelector('.ppin');
+    if (pinBtn && !pinBtn._bound){
+      pinBtn._bound = true;
+      pinBtn.onclick=()=>{ pinCardInProjector(id); openCardDetail(id); };
+    }
+  }
+  if (jpre) jpre.textContent = JSON.stringify(it,null,2);
+
+  // Boutons actions
+  const bOpen = document.getElementById('btnCardOpenProj');
+  const bDel  = document.getElementById('btnCardDel');
+  const bJ    = document.getElementById('btnCardExportJson');
+  const bMd   = document.getElementById('btnCardExportMd');
+  const bHtml = document.getElementById('btnCardExportHtml');
+
+  if (bOpen){ bOpen.onclick=()=>{ pinCardInProjector(id); }; }
+  if (bDel){  bDel.onclick =()=>{ softDeleteCard(id); renderCardsList(); }; }
+  if (bJ){    bJ.onclick   =()=>{ download(`card_${id}.json`, JSON.stringify(it,null,2)); }; }
+  if (bMd){   bMd.onclick  =()=>{ download(`card_${id}.md`, toMd(it)); }; }
+  if (bHtml){ bHtml.onclick=()=>{ download(`card_${id}.html`, toHtml(it)); }; }
+}
+
+// --- exports minimalistes ---
+function toMd(it){
+  const t = it.title || it.reformulation || ('Card '+it.id);
+  const paria = it.paria||{};
+  const pariaLines = Object.entries(paria).map(([k,v])=>`- **${k}**: ${(v||[]).join('; ')}`).join('\n');
+  return `# ${t}\n\n## PARIA\n${pariaLines}\n`;
+}
+function toHtml(it){
+  const t = it.title || it.reformulation || ('Card '+it.id);
+  const paria = it.paria||{};
+  const pariaLines = Object.entries(paria).map(([k,v])=>`<li><b>${k}</b>: ${(v||[]).join('; ')}</li>`).join('');
+  return `<!doctype html><meta charset="utf-8"><title>${t}</title><h1>${t}</h1><h2>PARIA</h2><ul>${pariaLines}</ul>`;
+}
+	
 </script>
 
 <div id="tab-cards" class="tab" style="display:none">
@@ -1965,6 +2121,7 @@ ${(it.propositions||[]).map(p=>`- ${p.pid||''} — ${p.label||''}`).join('\\n')|
 
 </body>
 </html>
+
 
 
 
