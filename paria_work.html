@@ -1475,7 +1475,7 @@ function renderScList(){
       return `<li style="margin:6px 0"><a href="#" data-i="${i}" style="${cur}">${label}</a></li>`;
     }).join('');
     agenda.innerHTML = `<h4 style="margin:0 0 8px 0">Agenda</h4><ol style="margin:0;padding-left:18px">${html||'<li>—</li>'}</ol>`;
-    agenda'a[data-i]').forEach(a=>{
+    agenda.querySelectorAll('a[data-i]').forEach(a=>{
       a.onclick=(e)=>{ e.preventDefault(); state.idx=parseInt(a.dataset.i,10)||0; renderCard(); };
     });
   }
@@ -1591,6 +1591,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
