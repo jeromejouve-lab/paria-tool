@@ -543,6 +543,15 @@ function applyEvent(ev){
     (it.comments||(it.comments=[])).push({ts:ev.ts, who: ev.role, pid: e.pid, text:e.text});
     touch();
   }
+  if(e.type==='pin_card'){
+    // Sélectionner la carte côté opérateur et rafraîchir le projecteur inline
+    try{
+      window._projSel = e.card_id;
+      if (typeof renderProjectorInline === 'function') renderProjectorInline();
+    }catch(_){}
+    touch();
+  }
+	
   // plus tard: sim_create (Sx) -> ajouter à it.propositions[i].sims
   touch();
 }
@@ -559,6 +568,18 @@ async function pushComment(card_id, pid, text){
   try{
     await gasPost('event_push', {session_id: sess.id, token: sess.operator_token, role:'operator', event:{type:'comment', card_id, pid, text}});
   }catch(e){}
+}
+// --- pin: épingler un item dans la séance (et le viewer)
+async function pushPin(card_id){
+  if(!sess.id) return;
+  try{
+    await gasPost('event_push', {
+      session_id: sess.id,
+      token: sess.operator_token,
+      role: 'operator',
+      event: { type: 'pin_card', card_id }
+    });
+  }catch(_){}
 }
 
 let _saveTimer=null, _lastSaveTs=0;
@@ -1100,7 +1121,10 @@ function renderCardCommon(it){
 
   return `
   <div class="card">
-    <div style="font-weight:700;font-size:16px;margin-bottom:6px">${labelOf(it)}</div>
+ 		<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+			<div style="font-weight:700;font-size:16px">${labelOf(it)}</div>
+			<button class="ppin" data-c="${it.id}" title="Épingler dans la séance">📌</button>
+		</div>
     <div id="propList">${propsHtml || '<em>Aucune proposition.</em>'}</div>
   </div>`;
 }
@@ -1154,6 +1178,19 @@ function attachCardHandlers(root, getState, setState, onChange){
 	    onChange && onChange();
 	  };
 	});
+  // épingler la carte courante dans la séance (et forcer l’affichage local)
+  root.querySelectorAll('.ppin').forEach(btn=>{
+    btn.onclick = ()=>{
+      const c = btn.getAttribute('data-c');
+      try{
+        // UX local — projecteur inline : on pointe sur cette carte
+        window._projSel = c;
+        if (typeof renderProjectorInline === 'function') renderProjectorInline();
+      }catch(_){}
+      // diffusion vers la séance / viewer
+      try{ pushPin(c); }catch(_){}
+    };
+  });
 
   // sélection simu ☆/★
   root.querySelectorAll('.spick').forEach(btn=>{
@@ -1431,6 +1468,19 @@ function renderScList(){
 			it.pipeline = recomputePipelineForItem(it);
 			saveLocal(state.db); renderCard();
 		}
+	    if(e.type==='pin_card'){
+	      try{
+	        // Recalcule l’agenda et pointe l’index sur la carte ciblée
+	        state.agendaIds = computeAgenda();
+	        const id = e.card_id;
+	        const idx = (state.agendaIds||[]).indexOf(id);
+	        if (idx >= 0) state.idx = idx;
+	        // Pour l’underline dans la liste
+	        window._projSel = id;
+	        renderProjectorInline();
+	      }catch(_){}
+	      return;
+	    }
 		if(e.type==='comment'){
 			const it = (s.items||[]).find(x=>x.id===e.card_id); if(!it) return;
 			const prop = (it.propositions||[]).find(pp=>pp.pid===e.pid); if(!prop) return;
@@ -1591,6 +1641,7 @@ function renderScList(){
 </script>
 </body>
 </html>
+
 
 
 
