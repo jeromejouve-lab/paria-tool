@@ -385,10 +385,10 @@ function showTab(id){
   if(id==='scenarios'  && typeof renderScList==='function') renderScList();
 }
 	
-// Ne pas booter l'UI à onglets si on est en mode Projecteur (plein écran invité)
+// Ne pas booter l'UI complète en mode Projecteur, mais binder les onglets quand même
 const __IS_PROJECTOR = new URL(location.href).searchParams.get('projecteur') === '1';
+document.querySelectorAll('.tabbtn').forEach(b=> b.onclick = ()=> showTab(b.dataset.tab)); // <= toujours bind
 if (!__IS_PROJECTOR) {
-  document.querySelectorAll('.tabbtn').forEach(b=> b.onclick = ()=> showTab(b.dataset.tab));
   loadDB();
   showTab('reglages');
 }
@@ -2183,6 +2183,7 @@ if (typeof renderCardsTab !== 'function') {
 
 </body>
 </html>
+
 
 
 
