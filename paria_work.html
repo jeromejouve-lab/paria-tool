@@ -369,32 +369,38 @@ function loadDB(){ try{ db = JSON.parse(localStorage.getItem(DB_KEY)||'{"service
 const tabs = ['reglages','capture','analyse','projecteur','scenarios', 'cards'];
 	
 function showTab(id){
-  const tabs = ['reglages','capture','analyse','projecteur','scenarios','cards']; // si cards existe
-	tabs.forEach(t=>{
-	  const el = document.getElementById('tab-'+t);
-	  if (!el) return;
-	  el.classList.toggle('hide', t!==id);
-		if (el.style) el.style.removeProperty('display'); // <-- NEUTRALISE tout display inline
-	});
+  const tabs = ['reglages','capture','analyse','projecteur','scenarios','cards'];
+  tabs.forEach(t=>{
+    const el = document.getElementById('tab-'+t);
+    if (!el) return;
+    el.classList.toggle('hide', t!==id);
+    if (el.style) el.style.removeProperty('display'); // nettoie tout display inline résiduel
+  });
 
-	// forcer un seul actif, et au bon endroit (#tabbar)
-	const bar = document.getElementById('tabbar');
-	if (bar) {
-	  const prev = bar.querySelector('.tabbtn.active');
-	  if (prev) prev.classList.remove('active');
-	  const cur = bar.querySelector(`.tabbtn[data-tab="${id}"]`);
-	  if (cur) cur.classList.add('active');
-	}
+  // Active = sur le vrai conteneur d’onglets (#tabbar)
+  const bar = document.getElementById('tabbar');
+  if (bar){
+    bar.querySelector('.tabbtn.active')?.classList.remove('active');
+    bar.querySelector(`.tabbtn[data-tab="${id}"]`)?.classList.add('active');
+  }
 
-  if(id==='cards'      && typeof renderCardsTab==='function') renderCardsTab();
-  if(id==='analyse'    && typeof renderDecisions==='function') renderDecisions();
-  if(id==='projecteur' && typeof renderProjectorInline==='function') renderProjectorInline();
-  if(id==='scenarios'  && typeof renderScList==='function') renderScList();
+  // Hooks d’affichage
+  if(id==='cards'      && typeof renderCardsTab==='function')       renderCardsTab();
+  if(id==='analyse'    && typeof renderDecisions==='function')      renderDecisions();
+  if(id==='projecteur' && typeof renderProjectorInline==='function')renderProjectorInline();
+  if(id==='scenarios'  && typeof renderScList==='function')         renderScList();
 }
 	
 // Ne pas booter l'UI complète en mode Projecteur, mais binder les onglets quand même
 const __IS_PROJECTOR = new URL(location.href).searchParams.get('projecteur') === '1';
-document.querySelectorAll('.tabbtn').forEach(b=> b.onclick = ()=> showTab(b.dataset.tab));
+
+// délégation unique sur #tabbar (survit aux re-rendus)
+document.getElementById('tabbar')?.addEventListener('click', (e)=>{
+  const btn = e.target.closest('.tabbtn');
+  if (!btn) return;
+  showTab(btn.dataset.tab);
+});
+
 if (!__IS_PROJECTOR) {
   loadDB();
   showTab('reglages');
@@ -2139,19 +2145,6 @@ if (typeof renderCardsTab !== 'function') {
     renderCardsList();
   };
 }
-(function(){
-  const orig = window.showTab || function(){};
-  window.showTab = function(id){
-    ['reglages','capture','analyse','projecteur','scenarios','cards'].forEach(t=>{
-      const el = document.getElementById('tab-'+t);
-      if (el) el.classList.toggle('hide', t!==id);
-    });
-    if(id==='cards' && typeof renderCardsTab==='function') renderCardsTab();
-    if(id==='analyse' && typeof renderDecisions==='function') renderDecisions();
-    if(id==='projecteur' && typeof renderProjectorInline==='function') renderProjectorInline();
-    if(id==='scenarios' && typeof renderScList==='function') renderScList();
-  };
-})();
 
 </script>
 
@@ -2190,6 +2183,7 @@ if (typeof renderCardsTab !== 'function') {
 
 </body>
 </html>
+
 
 
 
