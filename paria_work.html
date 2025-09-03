@@ -2146,167 +2146,266 @@ if (typeof renderCardsTab !== 'function') {
   };
 }
 	
-/* ==== JOURNAL CORE (non-invasif) ============================================
-   - N’ajoute que des events dans svc().decisions
-   - N’écrase aucune fonction existante
-   - N’empêche aucune propagation (no preventDefault/stopPropagation)
-   - Appelle renderDecisions() si dispo (sinon no-op)
-============================================================================= */
-
+/* ===================== JOURNAL — CORE (non-invasif) =======================
+   - Append-only dans svc().decisions
+   - Aucune fonction existante n'est modifiée/écrasée
+   - Décorateur auto des lignes du Journal pour pouvoir cliquer/ouvrir
+=========================================================================== */
 (function(){
-  const safe = (fn)=>{ try{ return fn(); }catch(_){ return undefined; } };
+  const safe = (fn, d)=>{ try{ return fn(); }catch(_){ return d; } };
   const now  = ()=> Date.now();
-  const gid  = ()=> Math.random().toString(36).slice(2,8).toUpperCase();
+  const uid  = ()=> Math.random().toString(36).slice(2,8).toUpperCase();
 
-  function svcSafe(){ return safe(()=>svc()) || {}; }
-  function pushDecision(e){
+  // Petites aides, sans dépendre d’impl détail
+  function svcSafe(){ return safe(()=>svc(), {}); }
+  function curService(){
+    return safe(()=>svc().service, '') ||
+           safe(()=>document.getElementById('serviceKey')?.value, '');
+  }
+  function curWorkId(){
+    return safe(()=>svc().work_id, '') ||
+           safe(()=>document.getElementById('workIdHdr')?.textContent.trim(), '');
+  }
+  function curSession(){ return safe(()=>svc().__live?.session_id, null); }
+  function curActor(){ return safe(()=>svc().__live?.role, 'operator'); }
+
+  // Append-only
+  function pushDecision(entry){
     const S = svcSafe();
     if (!Array.isArray(S.decisions)) S.decisions = [];
-    S.decisions.push(e);
-    safe(()=> typeof touch==='function' && touch());          // garde le cycle habituel
+    S.decisions.push(entry);
+    // cycle de persistance "habituel" si dispo
+    safe(()=> typeof touch==='function' && touch());
     safe(()=> typeof renderDecisions==='function' && renderDecisions());
+    // après rendu, on annote les lignes du journal (voir décorateur plus bas)
+    setTimeout(decorateDecisionsList, 0);
   }
 
-  function logEvent(action, payload){
-    const S = svcSafe();
-    const entry = {
-      id: `E${new Date().toISOString().replace(/[-:TZ.]/g,'')}_${gid()}`,
-      ts: now(),
-      action: String(action||'').trim(),
-      actor: safe(()=>S.__live?.role) || 'operator',
-      service: safe(()=>S.service) || safe(()=>currentService && currentService()) || '',
-      work_id: safe(()=>S.work_id) || safe(()=>currentWorkId && currentWorkId()) || '',
-      session: safe(()=>S.__live?.session_id) || null,
-      refs: Object.assign({}, payload && payload.refs || {}),
-      info: Object.assign({}, payload && payload.info || {}),
-      snap: Object.assign({}, payload && payload.snap || {}),
+  // API centrale (n’écrase pas une éventuelle version existante)
+  if (!window.logEvent){
+    window.logEvent = function(action, {refs={}, info={}, snap={}}={}){
+      const entry = {
+        id: `E${new Date().toISOString().replace(/[-:TZ.]/g,'')}_${uid()}`,
+        ts: now(),
+        action: String(action||'').trim(),
+        actor: curActor(),
+        service: curService(),
+        work_id: curWorkId(),
+        session: curSession(),
+        refs: {...refs},
+        info: {...info},
+        snap: {...snap}
+      };
+      pushDecision(entry);
     };
-    pushDecision(entry);
   }
 
-  // -------- Mapping d’actions (affichage journal, sans impact logique) -----
-  // (Optionnel : utile si tu veux une ligne lisible sans ouvrir le détail)
-  window.JOURNAL_ACTIONS = {
-    config_loaded:        (e)=>`Réglages chargés (Google)`,
-    workid_bound:         (e)=>`WorkID lié: ${e.work_id||''}`,
-    charter_analyzed:     (e)=>`Analyse IA → Card #${e.refs?.card_id||'?'}`,
-    charter_saved:        (e)=>`Charter → État`,
-    card_exported:        (e)=>`Export card #${e.refs?.card_id||'?'} (${e.info?.format||'?'})`,
-    card_deleted:         (e)=>`Card #${e.refs?.card_id||'?'} supprimée (soft)`,
-    projector_opened:     (e)=>`Projecteur: card #${e.refs?.card_id||'?'}`,
-    projector_card_set:   (e)=>`Projection → card #${e.refs?.card_id||'?'}`,
-    scenario_created:     (e)=>`Scénario créé: ${e.refs?.sid||'?'}`,
-    scenario_promoted:    (e)=>`Scénario promu: ${e.refs?.sid||'?'}`,
-    scenario_deleted:     (e)=>`Scénario supprimé: ${e.refs?.sid||'?'}`,
-    session_started:      (e)=>`Séance démarrée`,
-    session_paused:       (e)=>`Séance ${e.info?.paused?'en pause':'reprise'}`,
-    session_rotated:      (e)=>`Lien invité changé`,
-    session_ended:        (e)=>`Séance terminée`,
-    proposal_validated:   (e)=>`Proposition ${e.refs?.prop_pid||'?'} validée (card #${e.refs?.card_id||'?'})`,
-    proposal_pending:     (e)=>`Proposition ${e.refs?.prop_pid||'?'} à préciser (card #${e.refs?.card_id||'?'})`,
-    proposal_rejected:    (e)=>`Proposition ${e.refs?.prop_pid||'?'} refusée (card #${e.refs?.card_id||'?'})`,
+  // Table “routes” (utilisé à l’ouverture depuis le journal)
+  window.JOURNAL_ROUTES = window.JOURNAL_ROUTES || {
+    config_loaded:        { view:'config' },
+    workid_bound:         { view:'config' },
+    charter_analyzed:     { view:'card',     pick:(e)=>({card_id:e.refs?.card_id}) },
+    charter_saved:        { view:'charter' },
+    card_exported:        { view:'card',     pick:(e)=>({card_id:e.refs?.card_id}) },
+    card_deleted:         { view:'card',     pick:(e)=>({card_id:e.refs?.card_id}) },
+    projector_opened:     { view:'card',     pick:(e)=>({card_id:e.refs?.card_id}) },
+    projector_card_set:   { view:'card',     pick:(e)=>({card_id:e.refs?.card_id}) },
+    scenario_created:     { view:'scenario', pick:(e)=>({sid:e.refs?.sid}) },
+    scenario_promoted:    { view:'scenario', pick:(e)=>({sid:e.refs?.sid}) },
+    scenario_deleted:     { view:'scenario', pick:(e)=>({sid:e.refs?.sid}) },
+    session_started:      { view:'session' },
+    session_paused:       { view:'session' },
+    session_rotated:      { view:'session' },
+    session_ended:        { view:'session' },
+    proposal_validated:   { view:'card',     pick:(e)=>({card_id:e.refs?.card_id}) },
+    proposal_pending:     { view:'card',     pick:(e)=>({card_id:e.refs?.card_id}) },
+    proposal_rejected:    { view:'card',     pick:(e)=>({card_id:e.refs?.card_id}) },
   };
 
-  // ---------- ÉCOUTEURS NON-INVASIFS (addEventListener, no override) -------
-  // Réglages
-  document.getElementById('btnLoad')?.addEventListener('click', ()=> {
-    setTimeout(()=> logEvent('config_loaded', {info:{source:'google'}}), 0);
-  });
-  document.getElementById('btnBindWork')?.addEventListener('click', ()=> {
-    setTimeout(()=> logEvent('workid_bound', {info:{}, snap:{}}), 0);
-  });
+  // Décorateur : annote #decisions avec data-eid/action/sid/card (sans toucher au renderer)
+  function decorateDecisionsList(){
+    const cont = document.getElementById('decisions');
+    if (!cont) return;
+    const S = svcSafe();
+    const arr = Array.isArray(S.decisions) ? S.decisions : [];
+    const nodes = Array.from(cont.children).filter(n=>n.nodeType===1);
+    // hypothèse par défaut : rendu anti-chronologique (dernier en haut)
+    const order = window.__journalListOrder || 'desc'; // 'desc'|'asc'
+    nodes.forEach((node, i)=>{
+      // calcule l’index correspondant dans S.decisions
+      const idx = (order==='desc') ? (arr.length - 1 - i) : i;
+      const e = arr[idx];
+      if (!e) return;
+      if (!node.dataset.eid){
+        node.dataset.eid = e.id;
+        node.dataset.action = e.action || '';
+        if (e.refs){
+          if (e.refs.sid) node.dataset.sid = e.refs.sid;
+          if (e.refs.card_id) node.dataset.card = e.refs.card_id;
+        }
+      }
+    });
+  }
 
-  // Charter
-  document.getElementById('btnAnalyze')?.addEventListener('click', ()=> {
-    setTimeout(()=> {
-      const S=svcSafe(); const it=(S.items||[]).slice(-1)[0];
-      if (it?.id) logEvent('charter_analyzed', {refs:{card_id:String(it.id)}, snap:{title:it.title||it.reformulation||''}});
-    }, 0);
-  });
-  document.getElementById('btnCharterToState')?.addEventListener('click', ()=> {
-    setTimeout(()=> logEvent('charter_saved', {}), 0);
-  });
+  // Observer le conteneur du journal pour décorer à chaque re-render
+  (function(){
+    const cont = document.getElementById('decisions');
+    if (!cont) return;
+    const mo = new MutationObserver(()=>decorateDecisionsList());
+    mo.observe(cont, {childList:true, subtree:false});
+    // premier passage
+    decorateDecisionsList();
+  })();
 
-  // Cards (si l’onglet existe)
-  document.getElementById('btnOpenProjector')?.addEventListener('click', ()=> {
-    setTimeout(()=> {
-      const S=svcSafe(); const cur=S.__projected_card || S.__last_card || (S.items||[]).slice(-1)[0];
-      if (cur?.id) logEvent('projector_opened', {refs:{card_id:String(cur.id)}});
-    }, 0);
-  });
-  document.getElementById('btnCardExportHtml')?.addEventListener('click', ()=> {
-    setTimeout(()=> {
-      const id = safe(()=>document.querySelector('#cardView [data-card-id]')?.dataset.cardId) || safe(()=>S.__last_card?.id);
-      if (id) logEvent('card_exported', {refs:{card_id:String(id)}, info:{format:'html'}});
-    }, 0);
-  });
-  document.getElementById('btnCardExportJson')?.addEventListener('click', ()=> {
-    setTimeout(()=> {
-      const id = safe(()=>document.querySelector('#cardView [data-card-id]')?.dataset.cardId) || safe(()=>S.__last_card?.id);
-      if (id) logEvent('card_exported', {refs:{card_id:String(id)}, info:{format:'json'}});
-    }, 0);
-  });
-  document.getElementById('btnCardExportMd')?.addEventListener('click', ()=> {
-    setTimeout(()=> {
-      const id = safe(()=>document.querySelector('#cardView [data-card-id]')?.dataset.cardId) || safe(()=>S.__last_card?.id);
-      if (id) logEvent('card_exported', {refs:{card_id:String(id)}, info:{format:'md'}});
-    }, 0);
-  });
-  document.getElementById('btnCardDel')?.addEventListener('click', ()=> {
-    setTimeout(()=> {
-      const S=svcSafe(); const id = safe(()=>S.__last_card?.id);
-      if (id) logEvent('card_deleted', {refs:{card_id:String(id)}});
-    }, 0);
-  });
+  // Ouverture depuis journal (clic ligne → bonne vue)
+  (function(){
+    const cont = document.getElementById('decisions');
+    if (!cont) return;
+    cont.addEventListener('click', (e)=>{
+      const row = e.target.closest('[data-eid]');
+      if (!row) return;
+      const eid = row.dataset.eid;
+      const S = svcSafe();
+      const ev = (S.decisions||[]).find(x=>x.id===eid);
+      if (!ev) return;
 
-  // Scénarios
-  document.getElementById('btnForkScenario')?.addEventListener('click', ()=> {
-    setTimeout(()=> {
-      const S=svcSafe(); const sc=(S.scenarios||[]).slice(-1)[0];
-      if (sc?.id||sc?.sid) logEvent('scenario_created', {refs:{sid:String(sc.id||sc.sid)}});
-    }, 0);
-  });
-  document.getElementById('btnPromoteScenario')?.addEventListener('click', ()=> {
-    setTimeout(()=> {
-      const S=svcSafe(); const cur= safe(()=>S.scenario_working||S.scenarios?.find(x=>x.working));
-      if (cur?.id||cur?.sid) logEvent('scenario_promoted', {refs:{sid:String(cur.id||cur.sid)}});
-    }, 0);
-  });
+      const route = (window.JOURNAL_ROUTES||{})[ev.action] || {};
+      const args  = route.pick ? (route.pick(ev)||{}) : {};
+      const v = route.view;
 
-  // Séance
+      if (v==='card' && args.card_id){
+        showTab('cards');
+        if (typeof renderCardDetail==='function') renderCardDetail(String(args.card_id));
+        const pane = document.getElementById('journalDetail');
+        if (pane){
+          const it = (svc().items||[]).find(x=>String(x.id)===String(args.card_id));
+          pane.textContent = it ? JSON.stringify(it, null, 2) : '—';
+        }
+      } else if (v==='scenario' && args.sid){
+        showTab('scenarios');
+        const sc = (svc().scenarios||[]).find(x=>String(x.id||x.sid)===String(args.sid));
+        const pane = document.getElementById('journalDetail');
+        if (pane) pane.textContent = sc ? JSON.stringify(sc, null, 2) : '—';
+        // (si tu as une fonction dédiée pour ouvrir un scénario, tu peux l’appeler ici)
+      } else if (v==='charter'){
+        showTab('capture');
+      } else if (v==='config'){
+        showTab('reglages');
+      } else if (v==='session'){
+        showTab('projecteur');
+      } else {
+        // fallback : afficher l’entrée brute
+        const pane = document.getElementById('journalDetail');
+        if (pane) pane.textContent = JSON.stringify(ev, null, 2);
+      }
+    });
+  })();
+})();
+
+/* ===================== JOURNAL — COLLECTEURS ============================== */
+(function(){
+  const safe = (fn,d)=>{ try{ return fn(); }catch(_){ return d; } };
+  const SVC  = ()=> safe(()=>svc(), {});
+  const lastItem = ()=> (SVC().items||[]).slice(-1)[0];
+
+  // --- Réglages ---
+  document.getElementById('btnLoad')?.addEventListener('click', ()=>
+    setTimeout(()=> logEvent('config_loaded', { info:{source:'google'} }), 0)
+  );
+  document.getElementById('btnBindWork')?.addEventListener('click', ()=>
+    setTimeout(()=> logEvent('workid_bound', {}), 0)
+  );
+
+  // --- Charter ---
+  document.getElementById('btnAnalyze')?.addEventListener('click', ()=>
+    setTimeout(()=> {
+      const it = lastItem();
+      if (it?.id) logEvent('charter_analyzed', { refs:{card_id:String(it.id)}, snap:{title:it.title||it.reformulation||''} });
+    }, 0)
+  );
+  document.getElementById('btnCharterToState')?.addEventListener('click', ()=>
+    setTimeout(()=> logEvent('charter_saved', {}), 0)
+  );
+
+  // --- Cards ---
+  document.getElementById('btnOpenProjector')?.addEventListener('click', ()=>
+    setTimeout(()=> {
+      const cur = SVC().__projected_card || SVC().__last_card || lastItem();
+      if (cur?.id) logEvent('projector_opened', { refs:{card_id:String(cur.id)} });
+    }, 0)
+  );
+  document.getElementById('btnCardExportHtml')?.addEventListener('click', ()=>
+    setTimeout(()=> {
+      const id = safe(()=>document.querySelector('#cardView [data-card-id]')?.dataset.cardId, SVC().__last_card?.id);
+      if (id) logEvent('card_exported', { refs:{card_id:String(id)}, info:{format:'html'} });
+    }, 0)
+  );
+  document.getElementById('btnCardExportJson')?.addEventListener('click', ()=>
+    setTimeout(()=> {
+      const id = safe(()=>document.querySelector('#cardView [data-card-id]')?.dataset.cardId, SVC().__last_card?.id);
+      if (id) logEvent('card_exported', { refs:{card_id:String(id)}, info:{format:'json'} });
+    }, 0)
+  );
+  document.getElementById('btnCardExportMd')?.addEventListener('click', ()=>
+    setTimeout(()=> {
+      const id = safe(()=>document.querySelector('#cardView [data-card-id]')?.dataset.cardId, SVC().__last_card?.id);
+      if (id) logEvent('card_exported', { refs:{card_id:String(id)}, info:{format:'md'} });
+    }, 0)
+  );
+  document.getElementById('btnCardDel')?.addEventListener('click', ()=>
+    setTimeout(()=> {
+      const id = safe(()=>SVC().__last_card?.id);
+      if (id) logEvent('card_deleted', { refs:{card_id:String(id)} });
+    }, 0)
+  );
+
+  // --- Scénarios (mutations : créations/suppressions via diff d’IDs) ---
+  (function(){
+    const zone = document.getElementById('tab-scenarios');
+    if (!zone) return;
+    const getIds = ()=> (SVC().scenarios||[]).map(x=> String(x.id||x.sid));
+    let prev = getIds();
+    zone.addEventListener('click', ()=>{
+      setTimeout(()=>{
+        const now = getIds();
+        // créations
+        now.filter(id => !prev.includes(id)).forEach(id=> logEvent('scenario_created', { refs:{sid:id} }));
+        // suppressions
+        prev.filter(id => !now.includes(id)).forEach(id=> logEvent('scenario_deleted', { refs:{sid:id} }));
+        prev = now;
+      }, 0);
+    });
+  })();
+
+  // --- Séance ---
   document.getElementById('btnStartSess')?.addEventListener('click', ()=> setTimeout(()=> logEvent('session_started', {}), 0));
-  document.getElementById('btnPauseSess')?.addEventListener('click', ()=> {
-    setTimeout(()=> { const S=svcSafe(); logEvent('session_paused', {info:{paused:!!safe(()=>S.__live?.paused)}}); }, 0);
-  });
+  document.getElementById('btnPauseSess')?.addEventListener('click', ()=> setTimeout(()=> {
+    const paused = !!safe(()=>SVC().__live?.paused, false);
+    logEvent('session_paused', { info:{paused} });
+  }, 0));
   document.getElementById('btnRotateGuest')?.addEventListener('click', ()=> setTimeout(()=> logEvent('session_rotated', {}), 0));
   document.getElementById('btnEndSess')?.addEventListener('click', ()=> setTimeout(()=> logEvent('session_ended', {}), 0));
 
-  // Décisions (Valider / À préciser / Refuser) — délégation
+  // --- Décisions propositions (Valider / À préciser / Refuser) ---
   document.getElementById('tab-analyse')?.addEventListener('click', (e)=>{
     const b = e.target.closest('.decide'); if(!b) return;
-    setTimeout(()=> {
-      const S=svcSafe();
-      const last = (S.items||[]).slice(-1)[0]; // card ciblée par l’UI “Dernier item”
-      const pid  = safe(()=>document.querySelector('.prop .active')?.dataset.pid) || null;
-      const type = b.dataset.status;
+    setTimeout(()=>{
+      const last = lastItem();
+      const pid  = (document.querySelector('[data-pid].active')?.dataset.pid) || null;
       const map  = { 'valide':'proposal_validated', 'a_preciser':'proposal_pending', 'refuse':'proposal_rejected' };
-      const evt  = map[type] || 'proposal_pending';
+      const evt  = map[b.dataset.status] || 'proposal_pending';
       if (last?.id) logEvent(evt, { refs:{ card_id:String(last.id), prop_pid: pid } });
     }, 0);
   });
 
-  // Projection (si tu as un bouton/contrôle de pin → remonte l’ID)
+  // --- Projection (si un contrôle de “pin” expose l’ID) ---
   document.getElementById('projCard')?.addEventListener('click', (e)=>{
-    const pin = e.target.closest('[data-pin-card-id]');
-    if(!pin) return;
+    const pin = e.target.closest('[data-pin-card-id]'); if(!pin) return;
     const cid = pin.dataset.pinCardId;
     setTimeout(()=> logEvent('projector_card_set', { refs:{ card_id:String(cid) } }), 0);
   });
-
-  // Expose logEvent si besoin ailleurs
-  window.logEvent = window.logEvent || logEvent;
 })();
-
+	
 </script>
 
 <div id="tab-cards" class="tab">
@@ -2344,6 +2443,7 @@ if (typeof renderCardsTab !== 'function') {
 
 </body>
 </html>
+
 
 
 
