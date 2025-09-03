@@ -369,12 +369,13 @@ const tabs = ['reglages','capture','analyse','projecteur','scenarios', 'cards'];
 	
 function showTab(id){
   const tabs = ['reglages','capture','analyse','projecteur','scenarios','cards']; // si cards existe
-  tabs.forEach(t=>{
-    const el = document.getElementById('tab-'+t);
-    if (!el) return;
-    el.classList.toggle('hide', t!==id);
-    el.style.removeProperty('display');   // <= neutralise tout display inline résiduel
-  });
+	tabs.forEach(t=>{
+	  const el = document.getElementById('tab-'+t);
+	  if (!el) return;
+	  el.classList.toggle('hide', t!==id);
+		if (el.style) el.style.removeProperty('display'); // <-- NEUTRALISE tout display inline
+	});
+
   document.querySelectorAll('.tabbtn').forEach(b=>{
     b.classList.toggle('active', b.dataset.tab===id);
   });
@@ -2147,7 +2148,7 @@ if (typeof renderCardsTab !== 'function') {
 
 </script>
 
-<div id="tab-cards" class="tab" style="display:none">
+<div id="tab-cards" class="tab">
   <div class="row" style="display:flex; gap:16px; align-items:flex-start">
     <div class="card" style="flex:1; min-width:280px">
       <h4 style="margin-top:0">Cards</h4>
@@ -2182,6 +2183,7 @@ if (typeof renderCardsTab !== 'function') {
 
 </body>
 </html>
+
 
 
 
