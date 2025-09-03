@@ -1497,7 +1497,7 @@ btnForkScenario.onclick = ()=>{
 	  decisions: JSON.parse(JSON.stringify(s.decisions||[]))
 	};
 	s.scenarios.push({ id, snapshot: snap, ts: Date.now() });
-	touch(); renderScList(); alert(`Scénario ${id} créé.`);
+	touch(); renderScList(); 
 };
 btnPromoteScenario.onclick = ()=>{
   const s=svc(); if(!s.scenarios?.length) return alert('Aucun scénario.');
@@ -2502,6 +2502,7 @@ if (typeof renderCardsTab !== 'function') {
 
 </body>
 </html>
+
 
 
 
