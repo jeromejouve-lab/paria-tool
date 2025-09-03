@@ -997,22 +997,31 @@ function renderDecisions(){
     return;
   }
 
-  el.innerHTML = list.map(d=>{
-    const when = new Date(d.ts||Date.now()).toLocaleString();
-    const type = d.type || d.status || d.action || 'log';
-    const card = d.card_id ? ` data-card="${String(d.card_id)}"` : '';
-    const sid  = d.sid ? ` data-sid="${String(d.sid)}"` : '';
-    const ver  = d.version_id ? ` data-version="${String(d.version_id)}"` : '';
-    const txt  = d.note || (d.item && d.item.reformulation) || d.label || d.card_id || d.sid || '';
-    let actionHtml = '';
-    if (d.type === 'scenario_deleted' && d.sid){
-      actionHtml = ` <button class="ev-restore-scenario" data-sid="${d.sid}">Restaurer</button>`;
-    }
-    if (d.type === 'card_deleted' && d.card_id){
-      actionHtml = ` <button class="ev-restore-card" data-cid="${d.card_id}">Restaurer</button>`;
-    }
-    return `<div class="pill" data-type="${type}"${card}${sid}${ver}>${when} — <b>${type}</b> — ${txt}${actionHtml}</div>`;
-  }).reverse().join('');
+	el.innerHTML = list.map(d=>{
+	  const act = d.action || d.type || d.status || 'log';
+	  const when = new Date(d.ts||Date.now()).toLocaleString();
+	  const sid = d.refs?.sid || '';
+	  const cid = d.refs?.card_id || '';
+	  // label lisible (préférence: titre snapshot)
+	  const label = d.snap?.title
+	             || d.note
+	             || (d.item && d.item.reformulation)
+	             || sid || cid || '';
+	  let actionHtml = '';
+	  if (act==='scenario_deleted' && sid){
+	    actionHtml = ` <button class="ev-restore-scenario" data-sid="${sid}">Restaurer</button>`;
+	  }
+	  if (act==='card_deleted' && cid){
+	    actionHtml = ` <button class="ev-restore-card" data-cid="${cid}">Restaurer</button>`;
+	  }
+	  return `<div class="pill"
+	               data-eid="${d.id}"
+	               data-act="${act}"
+	               data-sid="${sid}"
+	               data-card="${cid}">
+	            ${when} — <b>${act}</b> — ${label}${actionHtml}
+	          </div>`;
+	}).reverse().join('');
 
   // panneau détail (colonne droite)
   let det = document.getElementById('journalDetail');
@@ -1042,24 +1051,47 @@ function renderDecisions(){
     };
   });
 
-  el.querySelectorAll('.pill').forEach(p=>{
-    p.onclick=(ev)=>{
-      if(ev.target && (ev.target.closest('.ev-restore-scenario') || ev.target.closest('.ev-restore-card'))) return;
-      const card = p.getAttribute('data-card');
-      const sid  = p.getAttribute('data-sid');
-      const ver  = p.getAttribute('data-version');
-      if(card){
-        const it = (S.items||[]).find(x=>String(x.id)===String(card));
-        if(it){ det.textContent = JSON.stringify(it, null, 2); }
-      }else if(sid){
-        const sc = (S.scenarios||[]).find(x=>String(x.id)===String(sid));
-        if(sc){ det.textContent = JSON.stringify(sc, null, 2); }
-      }else if(ver){
-        const evline = (S.decisions||[]).find(d=>d.version_id===ver);
-        if(evline){ det.textContent = JSON.stringify(evline, null, 2); }
-      }
-    };
-  });
+	// délégation: un seul listener sur le conteneur
+	el.addEventListener('click', (ev)=>{
+	  // ne pas interférer avec les boutons Restaurer
+	  if (ev.target.closest('.ev-restore-scenario') || ev.target.closest('.ev-restore-card')) return;
+	
+	  const row = ev.target.closest('.pill'); if (!row) return;
+	  const S = svc();
+	  const pane = document.getElementById('journalDetail'); if (!pane) return;
+	
+	  const eid = row.dataset.eid;
+	  const act = row.dataset.act;
+	  const sid = row.dataset.sid;
+	  const cid = row.dataset.card;
+	  const entry = (S.decisions||[]).find(x=>x.id===eid) || {};
+	
+	  // 1) charter_saved => affiche le charter (snapshot si présent, sinon état courant)
+	  if (act === 'charter_saved'){
+	    pane.textContent = JSON.stringify(entry.snap?.charter || S.charter || {}, null, 2);
+	    return;
+	  }
+	
+	  // 2) scénarios: created/deleted => affiche le snapshot (pas de navigation)
+	  if (act === 'scenario_created' || act === 'scenario_deleted'){
+	    const snap = entry.snap?.scenario;
+	    const current = (S.scenarios||[]).find(x=>String(x.id)===String(sid));
+	    pane.textContent = JSON.stringify(snap || current || { sid }, null, 2);
+	    return;
+	  }
+	
+	  // 3) cards: deleted/exported/projector_set => montre la card (snap si dispo)
+	  if (cid){
+	    const snap = entry.snap?.card;
+	    const it   = (S.items||[]).find(x=>String(x.id)===String(cid));
+	    pane.textContent = JSON.stringify(snap || it || { id: cid }, null, 2);
+	    return;
+	  }
+	
+	  // fallback: montre l’entrée brute
+	  pane.textContent = JSON.stringify(entry, null, 2);
+	});
+
 }
 
 // Alias legacy (certaines zones appellent encore renderJournal)
@@ -2324,8 +2356,11 @@ if (typeof renderCardsTab !== 'function') {
     }, 0)
   );
   document.getElementById('btnCharterToState')?.addEventListener('click', ()=>
-    setTimeout(()=> logEvent('charter_saved', {}), 0)
-  );
+	  setTimeout(()=>{
+	    const c = JSON.parse(JSON.stringify((svc().charter || {})));
+	    logEvent('charter_saved', { snap:{ charter: c }, snapLabel:'Charter' });
+	  }, 0)
+	);
 
   // --- Cards ---
   document.getElementById('btnOpenProjector')?.addEventListener('click', ()=>
@@ -2360,22 +2395,46 @@ if (typeof renderCardsTab !== 'function') {
   );
 
   // --- Scénarios (mutations : créations/suppressions via diff d’IDs) ---
-  (function(){
-    const zone = document.getElementById('tab-scenarios');
-    if (!zone) return;
-    const getIds = ()=> (SVC().scenarios||[]).map(x=> String(x.id||x.sid));
-    let prev = getIds();
-    zone.addEventListener('click', ()=>{
-      setTimeout(()=>{
-        const now = getIds();
-        // créations
-        now.filter(id => !prev.includes(id)).forEach(id=> logEvent('scenario_created', { refs:{sid:id} }));
-        // suppressions
-        prev.filter(id => !now.includes(id)).forEach(id=> logEvent('scenario_deleted', { refs:{sid:id} }));
-        prev = now;
-      }, 0);
-    });
-  })();
+	(function(){
+	  const zone = document.getElementById('tab-scenarios');
+	  if (!zone) return;
+	
+	  const getList = ()=> (svc().scenarios||[]).map(x=>({ id:String(x.id||x.sid), obj:x }));
+	  let prev = getList();
+	
+	  zone.addEventListener('click', ()=>{
+	    setTimeout(()=>{
+	      const now = getList();
+	      const prevMap = Object.fromEntries(prev.map(x=>[x.id, x.obj]));
+	      const nowMap  = Object.fromEntries(now.map(x=>[x.id, x.obj]));
+	
+	      // créations: nouveau id => snapshot de l'objet créé
+	      now.forEach(({id, obj})=>{
+	        if (!prevMap[id]){
+	          logEvent('scenario_created', {
+	            refs:{ sid:id },
+	            snap:{ scenario: JSON.parse(JSON.stringify(obj)) },
+	            snapLabel: obj?.title || obj?.id || ''
+	          });
+	        }
+	      });
+	
+	      // suppressions: id disparu => snapshot de l'objet avant suppression
+	      prev.forEach(({id, obj})=>{
+	        if (!nowMap[id]){
+	          logEvent('scenario_deleted', {
+	            refs:{ sid:id },
+	            snap:{ scenario: JSON.parse(JSON.stringify(obj)) },
+	            snapLabel: obj?.title || obj?.id || ''
+	          });
+	        }
+	      });
+	
+	      prev = now;
+	    }, 0);
+	  });
+	})();
+
 
   // --- Séance ---
   document.getElementById('btnStartSess')?.addEventListener('click', ()=> setTimeout(()=> logEvent('session_started', {}), 0));
@@ -2443,6 +2502,7 @@ if (typeof renderCardsTab !== 'function') {
 
 </body>
 </html>
+
 
 
 
