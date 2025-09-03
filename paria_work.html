@@ -377,9 +377,15 @@ function showTab(id){
 		if (el.style) el.style.removeProperty('display'); // <-- NEUTRALISE tout display inline
 	});
 
-  document.querySelectorAll('.tabbtn').forEach(b=>{
-    b.classList.toggle('active', b.dataset.tab===id);
-  });
+	// forcer un seul actif, et au bon endroit (#tabbar)
+	const bar = document.getElementById('tabbar');
+	if (bar) {
+	  const prev = bar.querySelector('.tabbtn.active');
+	  if (prev) prev.classList.remove('active');
+	  const cur = bar.querySelector(`.tabbtn[data-tab="${id}"]`);
+	  if (cur) cur.classList.add('active');
+	}
+
   if(id==='cards'      && typeof renderCardsTab==='function') renderCardsTab();
   if(id==='analyse'    && typeof renderDecisions==='function') renderDecisions();
   if(id==='projecteur' && typeof renderProjectorInline==='function') renderProjectorInline();
@@ -388,7 +394,7 @@ function showTab(id){
 	
 // Ne pas booter l'UI complète en mode Projecteur, mais binder les onglets quand même
 const __IS_PROJECTOR = new URL(location.href).searchParams.get('projecteur') === '1';
-document.querySelectorAll('.tabbtn').forEach(b=> b.onclick = ()=> showTab(b.dataset.tab)); // <= toujours bind
+document.querySelectorAll('.tabbtn').forEach(b=> b.onclick = ()=> showTab(b.dataset.tab));
 if (!__IS_PROJECTOR) {
   loadDB();
   showTab('reglages');
@@ -2184,6 +2190,7 @@ if (typeof renderCardsTab !== 'function') {
 
 </body>
 </html>
+
 
 
 
