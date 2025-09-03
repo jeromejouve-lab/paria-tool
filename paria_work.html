@@ -366,27 +366,22 @@ function loadDB(){ try{ db = JSON.parse(localStorage.getItem(DB_KEY)||'{"service
 
 /* ====== ONGLETING ====== */
 const tabs = ['reglages','capture','analyse','projecteur','scenarios', 'cards'];
+	
 function showTab(id){
+  const tabs = ['reglages','capture','analyse','projecteur','scenarios','cards']; // si cards existe
   tabs.forEach(t=>{
     const el = document.getElementById('tab-'+t);
-  	if (el) el.classList.toggle('hide', t!==id);
+    if (!el) return;
+    el.classList.toggle('hide', t!==id);
+    el.style.removeProperty('display');   // <= neutralise tout display inline résiduel
   });
   document.querySelectorAll('.tabbtn').forEach(b=>{
     b.classList.toggle('active', b.dataset.tab===id);
   });
-  // Render hooks on show
-  if(id==='analyse'){ 
-    if (typeof renderDecisions==='function') renderDecisions();
-  }
-  if(id==='projecteur'){
-    if (typeof renderProjectorInline==='function') renderProjectorInline();
-  }
-	if(id==='scenarios'){
-	  if (typeof renderScList==='function') renderScList();
-	}
-	if(id==='cards'){
-	  if (typeof renderCardsTab==='function') renderCardsTab();
-	}
+  if(id==='cards'      && typeof renderCardsTab==='function') renderCardsTab();
+  if(id==='analyse'    && typeof renderDecisions==='function') renderDecisions();
+  if(id==='projecteur' && typeof renderProjectorInline==='function') renderProjectorInline();
+  if(id==='scenarios'  && typeof renderScList==='function') renderScList();
 }
 	
 // Ne pas booter l'UI à onglets si on est en mode Projecteur (plein écran invité)
@@ -2187,6 +2182,7 @@ if (typeof renderCardsTab !== 'function') {
 
 </body>
 </html>
+
 
 
 
