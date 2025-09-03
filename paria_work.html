@@ -1490,7 +1490,7 @@ btnForkScenario.onclick = ()=>{
   const s=svc();
   (s.scenarios||(s.scenarios=[]));
   s.scenarios = Array.isArray(s.scenarios) ? s.scenarios : [];
-	const id = 'S'+(s.scenarios.length+1);
+	const id = nextScenarioId();
 	const snap = {
 	  charter: s.charter || {},
 	  items: JSON.parse(JSON.stringify(s.items||[])),
@@ -2464,6 +2464,106 @@ if (typeof renderCardsTab !== 'function') {
     setTimeout(()=> logEvent('projector_card_set', { refs:{ card_id:String(cid) } }), 0);
   });
 })();
+
+/* Journal: click -> affiche le contenu dans #journalDetail (sans changer d'onglet) */
+(function(){
+  const host = document.getElementById('decisions');
+  if (!host || host.__bindDetail) return; 
+  host.__bindDetail = true;
+
+  host.addEventListener('click', function(ev){
+    const row = ev.target.closest('[data-eid]');
+    if (!row) return;
+
+    // On refuse toute navigation/route héritée
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.stopImmediatePropagation();
+
+    const S    = (typeof svc==='function') ? svc() : {};
+    const pane = document.getElementById('journalDetail'); 
+    if (!pane) return;
+
+    const eid  = row.dataset.eid;
+    const act  = row.dataset.act || '';
+    const sid  = row.dataset.sid || '';
+    const cid  = row.dataset.card || '';
+    const entry = (S.decisions||[]).find(x=>x.id===eid) || {};
+
+    // 1) Charter: on affiche le JSON charter (snapshot si dispo)
+    if (act === 'charter_saved'){
+      pane.textContent = JSON.stringify(entry.snap?.charter || S.charter || {}, null, 2);
+      return;
+    }
+
+    // 2) Scénarios: created/deleted -> on montre le snapshot conservé (si le scénario n’existe plus)
+    if (act === 'scenario_created' || act === 'scenario_deleted'){
+      const snap = entry.snap?.scenario;
+      pane.textContent = JSON.stringify(snap || { id: sid }, null, 2);
+      return;
+    }
+
+    // 3) Cards: deleted/exported/projector_set -> montre la card (snapshot si dispo)
+    if (cid){
+      const snap = entry.snap?.card;
+      const it   = (S.items||[]).find(x=>String(x.id)===String(cid));
+      pane.textContent = JSON.stringify(snap || it || { id: cid }, null, 2);
+      return;
+    }
+
+    // fallback: l’entrée brute
+    pane.textContent = JSON.stringify(entry, null, 2);
+  }, /* capture: */ true);
+})();
+
+/* Scénarios: ID monotone (stocké en state) -> S1, S2, ... sans réutiliser */
+function nextScenarioId(){
+  const S = (typeof svc==='function') ? svc() : (window.db?.services?.[currentService()] || {});
+  S.meta = S.meta || {};
+  const last = Number(S.meta.sc_counter||0);
+  const next = last + 1;
+  S.meta.sc_counter = next;
+  if (typeof saveDB==='function') saveDB();
+  return 'S'+next;
+}
+	
+/* Journal: clic sur "Restaurer" => affiche le snapshot dans #journalDetail (aucune navigation) */
+(function(){
+  const host = document.getElementById('decisions');
+  if (!host || host.__bindRestore) return;
+  host.__bindRestore = true;
+
+  function findEntryByRef(action, key, val){
+    const S = (typeof svc==='function') ? svc() : {};
+    return (S.decisions||[]).find(e => e.action===action && e.refs && String(e.refs[key])===String(val));
+  }
+
+  host.addEventListener('click', function(ev){
+    const pane = document.getElementById('journalDetail'); 
+    if (!pane) return;
+
+    const bSc = ev.target.closest('.ev-restore-scenario');
+    if (bSc){
+      ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+      const sid = bSc.dataset.sid;
+      const ent = findEntryByRef('scenario_deleted','sid',sid) || findEntryByRef('scenario_created','sid',sid);
+      const snap = ent?.snap?.scenario || { id: sid };
+      pane.textContent = JSON.stringify(snap, null, 2);
+      return;
+    }
+
+    const bCd = ev.target.closest('.ev-restore-card');
+    if (bCd){
+      ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+      const cid = bCd.dataset.cid;
+      const ent = findEntryByRef('card_deleted','card_id',cid);
+      const snap = ent?.snap?.card || { id: cid };
+      pane.textContent = JSON.stringify(snap, null, 2);
+      return;
+    }
+  }, /* capture: */ true);
+})();
+	
 	
 </script>
 
@@ -2502,6 +2602,7 @@ if (typeof renderCardsTab !== 'function') {
 
 </body>
 </html>
+
 
 
 
