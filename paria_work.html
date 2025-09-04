@@ -1011,6 +1011,11 @@ function renderDecisions(){
 	  if (act==='scenario_deleted' && sid){
 	    actionHtml = ` <button class="ev-restore-scenario" data-sid="${sid}">Restaurer</button>`;
 	  }
+		
+		// ... dans renderDecisions() / list.map(d=>{ ... })
+		if (act==='charter_saved'){
+		  actionHtml = ` <button class="ev-restore-charter" data-eid="${d.id}">Restaurer</button>`;
+		}
 	  if (act==='card_deleted' && cid){
 	    actionHtml = ` <button class="ev-restore-card" data-cid="${cid}">Restaurer</button>`;
 	  }
@@ -1038,61 +1043,83 @@ function renderDecisions(){
     det.textContent = '';
   }
 
-  el.querySelectorAll('.ev-restore-scenario').forEach(b=>{
-    b.onclick=(ev)=>{ ev.stopPropagation();
-      const sid=b.getAttribute('data-sid'); if(!sid) return;
-      if(restoreScenarioById(sid)){ if(typeof renderScList==='function') renderScList(); renderDecisions(); }
-    };
-  });
-  el.querySelectorAll('.ev-restore-card').forEach(b=>{
-    b.onclick=(ev)=>{ ev.stopPropagation();
-      const cid=b.getAttribute('data-cid'); if(!cid) return;
-      if(restoreCardById(cid)){ if(typeof renderProjectorInline==='function') renderProjectorInline(); renderDecisions(); }
-    };
-  });
-
-	// délégation: un seul listener sur le conteneur
-	el.addEventListener('click', (ev)=>{
-	  // ne pas interférer avec les boutons Restaurer
-	  if (ev.target.closest('.ev-restore-scenario') || ev.target.closest('.ev-restore-card')) return;
-	
-	  const row = ev.target.closest('.pill'); if (!row) return;
-	  const S = svc();
-	  const pane = document.getElementById('journalDetail'); if (!pane) return;
-	
-	  const eid = row.dataset.eid;
-	  const act = row.dataset.act;
-	  const sid = row.dataset.sid;
-	  const cid = row.dataset.card;
-	  const entry = (S.decisions||[]).find(x=>x.id===eid) || {};
-	
-	  // 1) charter_saved => affiche le charter (snapshot si présent, sinon état courant)
-	  if (act === 'charter_saved'){
-	    pane.textContent = JSON.stringify(entry.snap?.charter || S.charter || {}, null, 2);
-	    return;
-	  }
-	
-	  // 2) scénarios: created/deleted => affiche le snapshot (pas de navigation)
-	  if (act === 'scenario_created' || act === 'scenario_deleted'){
-	    const snap = entry.snap?.scenario;
-	    const current = (S.scenarios||[]).find(x=>String(x.id)===String(sid));
-	    pane.textContent = JSON.stringify(snap || current || { sid }, null, 2);
-	    return;
-	  }
-	
-	  // 3) cards: deleted/exported/projector_set => montre la card (snap si dispo)
-	  if (cid){
-	    const snap = entry.snap?.card;
-	    const it   = (S.items||[]).find(x=>String(x.id)===String(cid));
-	    pane.textContent = JSON.stringify(snap || it || { id: cid }, null, 2);
-	    return;
-	  }
-	
-	  // fallback: montre l’entrée brute
-	  pane.textContent = JSON.stringify(entry, null, 2);
+  // Scénario: restaurer depuis le snapshot du log (created/deleted)
+	el.querySelectorAll('.ev-restore-scenario').forEach(b=>{
+	  b.onclick=(ev)=>{
+	    ev.stopPropagation();
+	    const sid = b.getAttribute('data-sid');
+	    const S = svc();
+	    const entry = (S.decisions||[]).slice().reverse()
+	      .find(e => (e.action==='scenario_deleted' || e.action==='scenario_created') && e.refs?.sid===sid);
+	    const ok = restoreScenarioById(sid, entry?.snap);
+	    if (ok){ if(typeof renderScList==='function') renderScList(); renderDecisions(); }
+	  };
 	});
+	
+	// Card: restaurer depuis le snapshot du log (card_deleted)
+	el.querySelectorAll('.ev-restore-card').forEach(b=>{
+	  b.onclick=(ev)=>{
+	    ev.stopPropagation();
+	    const cid = b.getAttribute('data-cid');
+	    const S = svc();
+	    const entry = (S.decisions||[]).slice().reverse()
+	      .find(e => e.action==='card_deleted' && e.refs?.card_id===cid);
+	    const ok = restoreCardById(cid, entry?.snap);
+	    if (ok){ if(typeof renderCardsTab==='function') renderCardsTab(); renderDecisions(); }
+	  };
+	});
+	
+	// Charter: restaurer depuis snapshot (charter_saved)
+	el.querySelectorAll('.ev-restore-charter').forEach(b=>{
+	  b.onclick=(ev)=>{
+	    ev.stopPropagation();
+	    const eid = b.getAttribute('data-eid');
+	    const S = svc();
+	    const entry = (S.decisions||[]).find(x=>x.id===eid);
+	    if (restoreCharter(entry?.snap)){
+	      // Juste feedback visuel côté journal
+	      const pane = document.getElementById('journalDetail');
+	      if (pane) pane.textContent = JSON.stringify(S.charter||{}, null, 2);
+	    }
+	  };
+	});
+		
+  const row = ev.target.closest('.pill'); if (!row) return;
+  const S = svc();
+  const pane = document.getElementById('journalDetail'); if (!pane) return;
+	
+  const eid = row.dataset.eid;
+  const act = row.dataset.act;
+  const sid = row.dataset.sid;
+  const cid = row.dataset.card;
+  const entry = (S.decisions||[]).find(x=>x.id===eid) || {};
+	
+  // 1) charter_saved => affiche le charter (snapshot si présent, sinon état courant)
+  if (act === 'charter_saved'){
+    pane.textContent = JSON.stringify(entry.snap?.charter || S.charter || {}, null, 2);
+    return;
+  }
 
-}
+  // 2) scénarios: created/deleted => affiche le snapshot (pas de navigation)
+  if (act === 'scenario_created' || act === 'scenario_deleted'){
+    const snap = entry.snap?.scenario;
+    const current = (S.scenarios||[]).find(x=>String(x.id)===String(sid));
+    pane.textContent = JSON.stringify(snap || current || { sid }, null, 2);
+    return;
+  }
+
+  // 3) cards: deleted/exported/projector_set => montre la card (snap si dispo)
+  if (cid){
+    const snap = entry.snap?.card;
+    const it   = (S.items||[]).find(x=>String(x.id)===String(cid));
+    pane.textContent = JSON.stringify(snap || it || { id: cid }, null, 2);
+    return;
+  }
+
+  // fallback: montre l’entrée brute
+  pane.textContent = JSON.stringify(entry, null, 2);
+});
+
 
 // Alias legacy (certaines zones appellent encore renderJournal)
 window.renderJournal = window.renderDecisions;
@@ -2133,7 +2160,32 @@ if (typeof renderCardsTab !== 'function') {
     const bHtml = document.getElementById('btnCardExportHtml');
 
     if (bOpen) bOpen.onclick = ()=>{ s.pinned_card = String(id); touch(); if (typeof renderProjectorInline==='function') renderProjectorInline(); };
-    if (bDel)  bDel.onclick  = ()=>{ const it=(s.items||[]).find(x=>String(x.id)===String(id)); if(it){ it.deleted_ts=Date.now(); touch(); renderCardsList(); document.getElementById('cardView').textContent='—'; document.getElementById('cardJson').textContent='—'; } };
+		if (bDel) bDel.onclick = () => {
+			const s  = svc();
+			const it = (s.items || []).find(x => String(x.id) === String(id));
+			if (!it) return;
+
+			// snapshot AVANT suppression (pour restauration et affichage journal)
+			const snap = JSON.parse(JSON.stringify(it));
+
+			// soft delete
+			it.deleted_ts = Date.now();
+			touch();
+
+			// journaliser l’action (append-only)
+			logEvent('card_deleted', {
+				card_id: String(id),
+				service: currentService(),
+				snap: { card: snap }
+			});
+
+			// UI
+			renderCardsList();
+			const v = document.getElementById('cardView'); if (v) v.textContent = '—';
+			const j = document.getElementById('cardJson'); if (j) j.textContent = '—';
+			if (typeof renderDecisions === 'function') renderDecisions();
+		};
+
     if (bJ)    bJ.onclick    = ()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(it,null,2)],{type:'application/json'})); a.download=`card_${id}.json`; a.click(); URL.revokeObjectURL(a.href); };
     if (bMd)   bMd.onclick   = ()=>{ const md = `# ${title}\n\n## PARIA\n${Object.entries(it.paria||{}).map(([k,v])=>`- **${k}**: ${(v||[]).join('; ')}`).join('\n')}`; const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([md],{type:'text/markdown;charset=utf-8'})); a.download=`card_${id}.md`; a.click(); URL.revokeObjectURL(a.href); };
     if (bHtml) bHtml.onclick = ()=>{ const html = `<!doctype html><meta charset="utf-8"><title>${title}</title><h1>${title}</h1><h2>PARIA</h2><ul>${Object.entries(it.paria||{}).map(([k,v])=>`<li><b>${k}</b>: ${(v||[]).join('; ')}</li>`).join('')}</ul>`; const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'})); a.download=`card_${id}.html`; a.click(); URL.revokeObjectURL(a.href); };
@@ -2564,7 +2616,50 @@ function nextScenarioId(){
   }, /* capture: */ true);
 })();
 	
-	
+/* === RESTORES (append-only) === */
+function restoreScenarioById(sid, snap){
+  const S = svc();
+  if ((S.scenarios||[]).some(x=>String(x.id)===String(sid))) return true;
+  const obj = snap?.scenario || { id: sid, title: sid, snapshot:{ items:[], decisions:[] } };
+  (S.scenarios||(S.scenarios=[])).push(JSON.parse(JSON.stringify(obj)));
+  touch();
+  if (typeof renderScList==='function') renderScList();
+  return true;
+}
+
+function restoreCardById(cid, snap){
+  const S = svc();
+  if ((S.items||[]).some(x=>String(x.id)===String(cid))) return true;
+  const obj = snap?.card;
+  if (!obj) return false;
+  (S.items||(S.items=[])).push(JSON.parse(JSON.stringify(obj)));
+  touch();
+  if (typeof renderCardsTab==='function') renderCardsTab();
+  if (typeof renderProjectorInline==='function') renderProjectorInline();
+  return true;
+}
+
+function restoreCharter(snap){
+  const S = svc();
+  if (!snap?.charter) return false;
+  S.charter = JSON.parse(JSON.stringify(snap.charter));
+  touch();
+  if (typeof hydrateCharter==='function') hydrateCharter();
+  return true;
+}
+
+/* === SCENARIO ID MONOTONE === */
+function nextScenarioId(){
+  const S = svc();
+  S.meta = S.meta || {};
+  const last = Number(S.meta.sc_counter || 0);
+  const next = last + 1;
+  S.meta.sc_counter = next;
+  touch(); // persiste compteur
+  return 'S'+next;
+}
+
+
 </script>
 
 <div id="tab-cards" class="tab">
@@ -2602,41 +2697,3 @@ function nextScenarioId(){
 
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
