@@ -1971,13 +1971,6 @@ function softDeleteCard(id){
   touch(); if (typeof renderDecisions==='function') renderDecisions();
   if (typeof renderCardsList==='function') renderCardsList();
 }
-function restoreCardById(id){
-  const s=svc(); const it=(s.items||[]).find(x=>String(x.id)===String(id)); if(!it) return false;
-  if (it.deleted_ts){ delete it.deleted_ts; touch(); }
-  (s.decisions||(s.decisions=[])).push({ ts:Date.now(), type:'card_restored', card_id:String(id) });
-  safeLog('card_restored', {card_id:String(id)});
-  touch(); return true;
-}
 window.restoreCardById = restoreCardById; // utilisé par Journal (bouton "Restaurer")
 
 // ---------- Cards: rendering ----------
@@ -2498,17 +2491,6 @@ if (typeof renderCardsTab !== 'function') {
   }, true);
 })();
 
-//   Scénarios: ID monotone (stocké en state) -> S1, S2, ... sans réutiliser  
-function nextScenarioId(){
-  const S = (typeof svc==='function') ? svc() : (window.db?.services?.[currentService()] || {});
-  S.meta = S.meta || {};
-  const last = Number(S.meta.sc_counter||0);
-  const next = last + 1;
-  S.meta.sc_counter = next;
-  if (typeof saveDB==='function') saveDB();
-  return 'S'+next;
-}
-	
 //   Journal: clic sur "Restaurer" => affiche le snapshot dans #journalDetail (aucune navigation)  
 (function(){
   const host = document.getElementById('decisions');
@@ -2543,7 +2525,7 @@ function nextScenarioId(){
       pane.textContent = JSON.stringify(snap, null, 2);
       return;
     }
-  }, 
+  }, true);
 })();
 	
 //   === RESTORES (append-only) ===  
@@ -2627,6 +2609,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
