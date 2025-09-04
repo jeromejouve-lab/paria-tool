@@ -715,11 +715,20 @@ function parseWorkId(){
   const [client, service, date] = wid.split('|');
   return {client, service, date};
 }
+	
 function bindWork(){
-  const id = currentWorkId();
+  const id = currentWorkId(); // "CLIENT|Service|YYYY-MM-DD"
   localStorage.setItem(WORK_KEY, id);
   document.getElementById('workIdHdr').textContent = id;
+
+  // --- NEW: fixe aussi le client courant pour la base namespacée + sync ---
+  const [client, service] = id.split('|');
+  if (client) setClientId(client.trim());
+  if (service && typeof selectService==='function') selectService(service.trim());
+
   document.getElementById('workBindState').textContent = 'lié ✔';
+  // Option: déclenche un pull/push non bloquant
+  if (typeof scheduleSync==='function') scheduleSync('bindWork');
 }
 
 //   ====== SESSION SYNC ======  
@@ -997,7 +1006,9 @@ async function snapshotGitAuto(reason='auto-10min'){
     const state_json = JSON.stringify(s,null,2);
     const md = makeMarkdown(service, s);
     const message = (gh_msg?.value || `snapshot(${reason}): ${service} ${date}`);
-    await gasPost('git_snapshot', { work_id: wid, service, date, state_json, md, message });
+    const {client} = parseWorkId();
+		await gasPost('git_snapshot', { work_id: wid, client_id: client, service, date, state_json, md, message });
+
     _lastGitTs = Date.now();
     if (ghState) ghState.textContent = 'Auto ✔ ' + new Date(_lastGitTs).toLocaleTimeString();
   }catch(e){
@@ -1019,6 +1030,13 @@ startGitTimer();
   document.getElementById('workDate').value = today;
   const wid = localStorage.getItem(WORK_KEY)||'—';
   document.getElementById('workIdHdr').textContent = wid;
+	// NEW: si un Work ID existe, on pré-renseigne le client et on positionne le clientId
+	if (wid && wid !== '—') {
+	  const {client, service} = parseWorkId();
+	  if (client) { document.getElementById('workClient').value = client; setClientId(client); }
+	  if (service && typeof selectService==='function') selectService(service);
+	}
+
 	document.getElementById('PROXY_SECRET').value = proxySecret();
 
   // GH cfg
@@ -1057,7 +1075,8 @@ btnLoad.onclick = async ()=>{
   const svcKey = (wid.split('|')[1] || '').trim() || currentService();// <- clé service depuis WID
   gsState.textContent = 'Chargement…';
   try{
-    const r = await fetch(`${u}?route=load&secret=${encodeURIComponent(proxySecret())}&work_id=${encodeURIComponent(wid)}`);
+    const clientId = (parseWorkId().client || 'CLIENT');
+		const r = await fetch(`${u}?route=load&secret=${encodeURIComponent(proxySecret())}&work_id=${encodeURIComponent(wid)}&client_id=${encodeURIComponent(clientId)}`);
     const j = await r.json();
     if(j.ok && j.data){
       // normalise si besoin (au cas où le JSON n’a pas la structure attendue)
@@ -1088,11 +1107,9 @@ btnSave.onclick = async ()=>{
   const key = currentService();
   const state = db.services[key] || {charter:{},items:[],decisions:[],scenarios:[]};
   try{
-    const r = await fetch(u,{
-  		method:'POST',
-  		headers:{'Content-Type':'text/plain'},
-  		body: JSON.stringify({ route:'save', secret: proxySecret(), work_id: wid, state })
-		});
+    const clientId = (parseWorkId().client || 'CLIENT');
+		const body = { route:'save', secret: proxySecret(), work_id: wid, client_id: clientId, state };
+		const r = await fetch(u,{ method:'POST', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(body) });
     const j = await r.json();
     gsState.textContent = j.ok ? 'Sauvé ✔' : 'Erreur';
   }catch(e){ gsState.textContent='Erreur'; alert(e.message); }
@@ -1100,8 +1117,14 @@ btnSave.onclick = async ()=>{
 
 //   ====== DUMP / CLEAR ======  
 btnClear.onclick = () => {
-  if (!confirm('Effacer l’état local ?')) return;
+  if (!confirm('Effacer l’état local (tous clients) ?')) return;
+  // remove legacy
   localStorage.removeItem('paria_db');
+  // remove all namespaced
+  Object.keys(localStorage).forEach(k=>{
+    if (k.startsWith('paria_db_')) localStorage.removeItem(k);
+  });
+  // reboot état en RAM
   if (typeof loadDB === 'function') loadDB();
   const el = document.getElementById('dump');
   if (el) el.textContent = '—';
@@ -3071,6 +3094,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
