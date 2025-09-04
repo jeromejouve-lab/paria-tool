@@ -364,6 +364,45 @@ function svc(){
   return db.services[k];
 }
 
+function shrinkStateJson(raw, limit=60){
+  try {
+    const S = JSON.parse(raw);
+    if (Array.isArray(S.decisions)) {
+      // garde uniquement les 60 dernières décisions (snapshots intacts)
+      if (S.decisions.length > limit) {
+        S.decisions = S.decisions.slice(-limit);
+      }
+    }
+    return JSON.stringify(S);
+  } catch { return raw; }
+}
+
+function trimAllClientDBs(limit=60){
+  const keys = Object.keys(localStorage);
+  for (const k of keys){
+    if (k === 'paria_db' || k.startsWith('paria_db_')){
+      try {
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        const trimmed = shrinkStateJson(raw, limit);
+        if (trimmed && trimmed.length <= raw.length){
+          localStorage.setItem(k, trimmed);
+        }
+      } catch(_) { /* ignore */ }
+    }
+  }
+}
+
+function bootQuotaGuard(){
+  try {
+    // test minimal d’écriture ; si ça plante, on purge toutes les bases
+    localStorage.setItem('__paria_quota_probe', '1');
+    localStorage.removeItem('__paria_quota_probe');
+  } catch {
+    trimAllClientDBs(60);
+  }
+}
+
 function loadDB(){
   const cid = getClientId();
   let raw = localStorage.getItem(storageKey(cid));
@@ -404,6 +443,26 @@ function loadDB(){
         raw = payload;
       }catch(e){
         console.warn('Migration paria_db -> namespaced échouée', e);
+				try {
+          // Dernière chance: on réduit à un squelette minimal (sans décisions)
+          const obj = JSON.parse(legacy);
+          const k = (typeof currentService==='function' ? currentService() : null) || 'Compta';
+          const svcOnly = obj?.services && obj.services[k] ? obj.services[k] : obj;
+          const minimal = JSON.stringify({
+            charter: svcOnly.charter || {},
+            items: Array.isArray(svcOnly.items) ? svcOnly.items : [],
+            scenarios: Array.isArray(svcOnly.scenarios) ? svcOnly.scenarios : [],
+            decisions: [], // on vide pour passer le quota
+            meta: { client_id: cid, rev: 0, updated_ts: Date.now() }
+          });
+          localStorage.removeItem('paria_db'); // libère l'ancienne clé
+          localStorage.setItem(storageKey(cid), minimal); // écrit minifié
+          raw = minimal;
+        } catch(e2){
+          // en tout dernier recours on garde en RAM pour la session
+          raw = legacy;
+        }
+      }
         // en dernier recours: garder en mémoire (session) pour ne pas perdre la session
         raw = legacy;
       }
@@ -557,6 +616,9 @@ async function doAutoSync(reason){
 	
 // Au boot, charge local puis tente un pull remote en non-bloquant
 (function bootAutoLoad(){
+
+	// Au boot, garde 60 si quota serré
+	bootQuotaGuard();
   loadDB();
   // rendu initial
   if (typeof renderAll==='function') renderAll();
@@ -3009,6 +3071,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
