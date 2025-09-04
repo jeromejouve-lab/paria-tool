@@ -1978,13 +1978,21 @@ function pinCardInProjector(id){
 
 // ---------- Restore/Delete ----------
 function softDeleteCard(id){
-  const s=svc(); const it=(s.items||[]).find(x=>String(x.id)===String(id)); if(!it) return;
-  if (!it.deleted_ts){ it.deleted_ts = Date.now(); touch(); }
-  (s.decisions||(s.decisions=[])).push({ ts:Date.now(), type:'card_deleted', card_id:String(id) });
-  safeLog('card_deleted', {card_id:String(id)});
-  touch(); if (typeof renderDecisions==='function') renderDecisions();
+  const s = svc();
+  const it = (s.items||[]).find(x=>String(x.id)===String(id));
+  if (!it) return false;
+
+  const snap = JSON.parse(JSON.stringify(it));
+  it.deleted_ts = Date.now();
+  delete it.deleted_at; // normalise le flag
+  touch();
+
+  logEvent('card_deleted', { refs:{ card_id:String(id) }, service:(typeof currentService==='function'?currentService():undefined), snap:{ card:snap } });
+  if (typeof renderDecisions==='function') renderDecisions();
   if (typeof renderCardsList==='function') renderCardsList();
+  return true;
 }
+
 window.restoreCardById = restoreCardById; // utilisé par Journal (bouton "Restaurer")
 
 // ---------- Cards: rendering ----------
@@ -2114,9 +2122,9 @@ if (typeof renderCardsTab !== 'function') {
 
 			// journaliser l’action (append-only)
 			logEvent('card_deleted', {
-				card_id: String(id),
-				service: currentService(),
-				snap: { card: snap }
+			  refs: { card_id: String(id) },
+			  service: (typeof currentService==='function') ? currentService() : undefined,
+			  snap: { card: snap }
 			});
 
 			// UI
@@ -2376,12 +2384,12 @@ if (typeof renderCardsTab !== 'function') {
       if (id) logEvent('card_exported', { refs:{card_id:String(id)}, info:{format:'md'} });
     }, 0)
   );
-  document.getElementById('btnCardDel')?.addEventListener('click', ()=>
-    setTimeout(()=> {
-      const id = safe(()=>SVC().__last_card?.id);
-      if (id) logEvent('card_deleted', { refs:{card_id:String(id)} });
-    }, 0)
-  );
+	document.getElementById('btnCardDel')?.addEventListener('click', ()=>
+	  setTimeout(()=> {
+	    const id = safe(()=>SVC().__last_card?.id);
+	    if (id) logEvent('card_delete_clicked', { refs:{card_id:String(id)} });
+	  }, 0)
+	);
 
   // --- Scénarios (mutations : créations/suppressions via diff d’IDs) ---
 	(function(){
@@ -2506,37 +2514,58 @@ if (typeof renderCardsTab !== 'function') {
 })();
 
 //   Journal: clic sur "Restaurer" => affiche le snapshot dans #journalDetail (aucune navigation)  
+
+//   Journal: clic sur "Restaurer" => exécute la restauration + confirme dans #journalDetail
 (function(){
   const host = document.getElementById('decisions');
   if (!host || host.__bindRestore) return;
   host.__bindRestore = true;
 
+  const SVC = ()=> (typeof svc==='function') ? svc() : {decisions:[]};
+
   function findEntryByRef(action, key, val){
-    const S = (typeof svc==='function') ? svc() : {};
+    const S = SVC();
     return (S.decisions||[]).find(e => e.action===action && e.refs && String(e.refs[key])===String(val));
+  }
+  function findEntryById(eid){
+    const S = SVC();
+    return (S.decisions||[]).find(e => e.id===eid);
   }
 
   host.addEventListener('click', function(ev){
     const pane = document.getElementById('journalDetail'); 
     if (!pane) return;
 
+    // Restaurer un scénario
     const bSc = ev.target.closest('.ev-restore-scenario');
     if (bSc){
       ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
-      const sid = bSc.dataset.sid;
-      const ent = findEntryByRef('scenario_deleted','sid',sid) || findEntryByRef('scenario_created','sid',sid);
-      const snap = ent?.snap?.scenario || { id: sid };
-      pane.textContent = JSON.stringify(snap, null, 2);
+      const sid  = bSc.dataset.sid;
+      const ent  = findEntryByRef('scenario_deleted','sid',sid) || findEntryByRef('scenario_created','sid',sid);
+      const ok   = (typeof restoreScenarioById==='function') ? restoreScenarioById(sid, ent?.snap) : false;
+      pane.textContent = ok ? 'Scénario restauré ✔' : 'Restauration impossible.';
       return;
     }
 
+    // Restaurer une card
     const bCd = ev.target.closest('.ev-restore-card');
     if (bCd){
       ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
-      const cid = bCd.dataset.cid;
-      const ent = findEntryByRef('card_deleted','card_id',cid);
-      const snap = ent?.snap?.card || { id: cid };
-      pane.textContent = JSON.stringify(snap, null, 2);
+      const cid  = bCd.dataset.cid;
+      const ent  = findEntryByRef('card_deleted','card_id',cid);
+      const ok   = (typeof restoreCardById==='function') ? restoreCardById(cid, ent?.snap) : false;
+      pane.textContent = ok ? 'Card restaurée ✔' : 'Restauration impossible.';
+      return;
+    }
+
+    // Restaurer le charter
+    const bCh = ev.target.closest('.ev-restore-charter');
+    if (bCh){
+      ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+      const eid  = bCh.dataset.eid;
+      const ent  = findEntryById(eid);
+      const ok   = ent && typeof restoreCharter==='function' ? restoreCharter(ent.snap) : false;
+      pane.textContent = ok ? 'Charter restauré ✔' : 'Restauration impossible.';
       return;
     }
   }, true);
@@ -2555,7 +2584,21 @@ function restoreScenarioById(sid, snap){
 
 function restoreCardById(cid, snap){
   const S = svc();
-  if ((S.items||[]).some(x=>String(x.id)===String(cid))) return true;
+  const ex = (S.items||[]).find(x=>String(x.id)===String(cid));
+
+  // 1) Si la card existe déjà mais est "soft-deleted" → on enlève le flag
+  if (ex){
+    if (ex.deleted_ts || ex.deleted_at){
+      delete ex.deleted_ts;
+      delete ex.deleted_at;
+      touch();
+      if (typeof renderCardsTab==='function') renderCardsTab();
+      if (typeof renderProjectorInline==='function') renderProjectorInline();
+    }
+    return true;
+  }
+
+  // 2) Sinon on réinjecte le snapshot
   const obj = snap?.card;
   if (!obj) return false;
   (S.items||(S.items=[])).push(JSON.parse(JSON.stringify(obj)));
@@ -2564,6 +2607,7 @@ function restoreCardById(cid, snap){
   if (typeof renderProjectorInline==='function') renderProjectorInline();
   return true;
 }
+
 
 function restoreCharter(snap){
   const S = svc();
@@ -2623,6 +2667,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
