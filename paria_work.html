@@ -208,7 +208,6 @@
         <label>Message de commit</label><input id="gh_msg" placeholder="feat: audit Compta 2025-08-28">
         <div class="actions">
           <button id="btnSaveGh">Sauver</button>
-          <button id="btnPushGh">Pousser snapshot (.json + .md)</button>
           <span id="ghState" class="pill">—</span>
         </div>
         <small>Le snapshot pousse l’état du service courant + un Markdown de synthèse.</small>
@@ -365,45 +364,184 @@ function svc(){
   return db.services[k];
 }
 function saveDB(){
-  const S = (typeof svc==='function') ? svc() : null;
+  const S = (typeof svc==='function') ? svc() : window.__svc;
   if (!S) return;
-
-  // 1) tentative directe
-  try {
-    localStorage.setItem('paria_db', JSON.stringify(S));
-    return;
-  } catch(e1) {}
-
-  // 2) trim + retry
-  try {
-    const clone = JSON.parse(JSON.stringify(S));
-    const trimmed = emergencyTrim(clone);
-    const payload = JSON.stringify(clone);
-
-    try {
-      localStorage.setItem('paria_db', payload);
-      return;
-    } catch(e2) {
-      // 3) dernier recours : supprimer les snaps de TOUT sauf les KEEP_SNAP_FULL derniers
-      try {
-        const ds = Array.isArray(clone.decisions) ? clone.decisions : [];
-        const L  = ds.length;
-        for (let i = 0; i < Math.max(0, L - KEEP_SNAP_FULL); i++){
-          if (ds[i]?.snap) delete ds[i].snap;
-        }
-        localStorage.setItem('paria_db', JSON.stringify(clone));
-        return;
-      } catch(e3) {
-        console.error('saveDB fallback failed (quota). Snapshot trims exhausted.', e3);
-        alert("Stockage local saturé.\nLe journal a été allégé, mais la sauvegarde reste trop volumineuse.\nExportez/Nettoyez des données puis réessayez.");
+  ensureMeta(S); // garantit meta.client_id/rev/updated_ts
+  try{
+    localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+  }catch(e1){
+    // Trim/purge si nécessaire (réutilise tes helpers si déjà patchés)
+    try{
+      if (typeof emergencyTrim==='function') emergencyTrim(S);
+      localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+    }catch(e2){
+      if (typeof purgeJournalHard==='function'){ purgeJournalHard(); }
+      try{ localStorage.setItem(storageKey(getClientId()), JSON.stringify(S)); }
+      catch(e3){
+        console.error('saveDB: quota insurmontable', e3);
+        alert("Stockage local saturé. Exportez/épurez puis réessayez.");
       }
     }
-  } catch(e){
-    console.error('saveDB emergencyTrim error', e);
   }
 }
 
-function loadDB(){ try{ db = JSON.parse(localStorage.getItem(DB_KEY)||'{"services":{}}'); }catch(e){ db={services:{}}; } }
+function loadDB(){
+  const cid = getClientId();
+  let raw = localStorage.getItem(storageKey(cid));
+
+  // Migration legacy -> clé namespacée
+  if (!raw){
+    const legacy = localStorage.getItem('paria_db');
+    if (legacy){
+      try{
+        localStorage.setItem(storageKey(cid), legacy);
+        localStorage.removeItem('paria_db');
+        raw = legacy;
+      }catch(e){ console.warn('Migration paria_db -> namespaced échouée', e); }
+    }
+  }
+  const S = raw ? JSON.parse(raw) : { decisions:[], items:[], scenarios:[], charter:{}, meta:{ client_id:cid, rev:0, updated_ts: now() } };
+  ensureMeta(S);
+  window.__svc = S;
+  addClient(cid);
+  return S;
+}
+
+let __touch_t, __sync_t;
+function touch(){
+  const S = (typeof svc==='function') ? svc() : window.__svc;
+  if (S) bumpRev(S);       // incrémente la révision à chaque mutation
+  if (__touch_t) clearTimeout(__touch_t);
+  __touch_t = setTimeout(()=>{ try{ saveDB(); scheduleSync('touch'); }catch(e){} }, 120);
+}
+
+const SYNC_DEBOUNCE_MS = 800;
+const SYNC_MIN_GAP_MS = 5000;
+let __last_sync = 0;
+function scheduleSync(reason){
+  const { auto_sync } = getProxyConfig();
+  if (!auto_sync) return;
+  if (!navigator.onLine) return;
+  const nowt = now();
+  if (nowt - __last_sync < SYNC_MIN_GAP_MS){
+    if (__sync_t) clearTimeout(__sync_t);
+    __sync_t = setTimeout(()=>doAutoSync(reason), SYNC_DEBOUNCE_MS);
+    return;
+  }
+  if (__sync_t) clearTimeout(__sync_t);
+  __sync_t = setTimeout(()=>doAutoSync(reason), SYNC_DEBOUNCE_MS);
+}
+
+async function pullRemote(){
+  const S = (typeof svc==='function') ? svc() : window.__svc;
+  ensureMeta(S);
+  const localRev = S.meta.rev|0;
+
+  const r = await proxyCall('load_client_state', {
+    client_id: getClientId(),
+    want:'state'
+  }); // Attendu côté Apps Script: { state: {...}, ok:true } ou { ok:true, state:null }
+
+  const remote = r && r.state ? r.state : null;
+  if (!remote) return { changed:false, reason:'no-remote' };
+
+  // Sécurité: si le proxy ne renvoie pas meta, on le crée
+  remote.meta = remote.meta || { client_id:getClientId(), rev:0, updated_ts: now() };
+  const remoteRev = remote.meta.rev|0;
+
+  if (remoteRev > localRev){
+    window.__svc = remote;
+    localStorage.setItem(storageKey(getClientId()), JSON.stringify(remote));
+    if (typeof renderAll==='function') renderAll();
+    else {
+      if (typeof renderDecisions==='function') renderDecisions();
+      if (typeof renderCardsTab==='function') renderCardsTab();
+      if (typeof renderProjectorInline==='function') renderProjectorInline();
+    }
+    return { changed:true, reason:'remote-newer' };
+  }
+  return { changed:false, reason:'local-up-to-date-or-newer' };
+}
+
+async function pushRemote(){
+  const S = (typeof svc==='function') ? svc() : window.__svc;
+  if (!S) return { pushed:false, reason:'no-state' };
+  ensureMeta(S);
+  const payload = JSON.parse(JSON.stringify(S)); // clone
+
+  const r = await proxyCall('save_client_state', {
+    client_id: getClientId(),
+    state: payload
+  }); // Attendu: { ok:true, rev: <echo or server rev> }
+  return { pushed: !!(r && r.ok), rev: r?.rev };
+}
+
+async function doAutoSync(reason){
+  try{
+    const cfg = getProxyConfig();
+    if (!cfg.auto_sync || !cfg.url || !cfg.secret) return;
+    __last_sync = now();
+
+    // 1) Pull en premier (autoload après sélection client)
+    const pr = await pullRemote();
+
+    // 2) Si local > remote (ex. offline modifs), push
+    const S = (typeof svc==='function') ? svc() : window.__svc;
+    const localRev = S?.meta?.rev|0;
+
+    // On re-demande la remote (simple, pas de merge complexe ici)
+    if (pr.reason!=='remote-newer'){
+      await pushRemote();
+    }
+  }catch(e){
+    console.warn('doAutoSync error', e);
+  }
+}
+	
+// Au boot, charge local puis tente un pull remote en non-bloquant
+(function bootAutoLoad(){
+  loadDB();
+  // rendu initial
+  if (typeof renderAll==='function') renderAll();
+  else {
+    if (typeof renderDecisions==='function') renderDecisions();
+    if (typeof renderCardsTab==='function') renderCardsTab();
+    if (typeof renderProjectorInline==='function') renderProjectorInline();
+  }
+	
+  // pull remote (et push si local plus récent) en tâche de fond
+  scheduleSync('boot');
+})();
+
+// Re-sync quand on revient online
+window.addEventListener('online', ()=> scheduleSync('online'));
+
+// Basculer de client = sauvegarder l'état courant, charger l'autre, puis sync auto
+async function switchClient(id){
+  // 1) save courant
+  try{
+    if (window.__svc){
+      localStorage.setItem(storageKey(getClientId()), JSON.stringify(window.__svc));
+    }
+  }catch(e){ console.warn('switchClient/saveCurrent', e); }
+
+  // 2) set & load
+  addClient(id);
+  const key = storageKey(id);
+  const raw = localStorage.getItem(key);
+  window.__svc = raw ? JSON.parse(raw) : { decisions:[], items:[], scenarios:[], charter:{}, meta:{ client_id:id, rev:0, updated_ts: now() } };
+
+  // 3) rendu
+  if (typeof renderAll==='function') renderAll();
+  else {
+    if (typeof renderDecisions==='function') renderDecisions();
+    if (typeof renderCardsTab==='function') renderCardsTab();
+    if (typeof renderProjectorInline==='function') renderProjectorInline();
+  }
+
+  // 4) autoload depuis proxy + éventuel push
+  scheduleSync('switchClient');
+}
 
 //   ====== ONGLETING ======  
 const tabs = ['reglages','capture','analyse','projecteur','scenarios', 'cards'];
@@ -742,13 +880,6 @@ async function saveCloudNow(){
   await gasPost('save', {work_id: wid, state});
 }
 
-// À appeler après CHAQUE action clé :
-let __touch_t;
-function touch(){
-  if (__touch_t) clearTimeout(__touch_t);
-  __touch_t = setTimeout(()=>{ try{ saveDB(); }catch(e){} }, 120);
-}
-
 //   ====== SNAPSHOT GIT AUTO (10 min) ======  
 let _gitTimer = null, _lastGitTs = 0;
 async function snapshotGitAuto(reason='auto-10min'){
@@ -1057,6 +1188,76 @@ async function runSim(item, prop, comment){
   }catch(e){
     alert('Simulation KO: '+e.message);
   }
+}
+// ================== PROXY / GIT SYNC ==================
+function getSettings(){
+  // Adapter si tu as déjà un objet settings global
+  try{ return JSON.parse(localStorage.getItem('paria_settings')||'{}'); }catch(e){ return {}; }
+}
+function setSettings(x){
+  localStorage.setItem('paria_settings', JSON.stringify(x||{}));
+}
+function getProxyConfig(){
+  const st = getSettings();
+  return {
+    url: st.proxy_url,           // ex: "https://script.google.com/macros/s/XXX/exec"
+    secret: st.proxy_secret,     // PROXY_SECRET
+    repo: st.repo || "paria-audits", // optionnel, si utile côté Apps Script
+    auto_sync: st.auto_sync !== false, // true par défaut
+  };
+}
+function now(){ return Date.now(); }
+
+// ================== CLIENT NAMESPACE ==================
+function getClientId(){ return localStorage.getItem('paria_current_client') || 'default'; }
+function setClientId(id){ localStorage.setItem('paria_current_client', String(id||'default')); }
+function storageKey(clientId){ return `paria_db_${String(clientId||getClientId())}`; }
+
+function listClients(){
+  try{ const L = JSON.parse(localStorage.getItem('paria_clients')||'[]'); return Array.isArray(L)?L:[]; }catch(e){ return []; }
+}
+function addClient(id){
+  const cid = String(id||'default');
+  const L = listClients(); if (!L.includes(cid)){ L.push(cid); localStorage.setItem('paria_clients', JSON.stringify(L)); }
+  setClientId(cid);
+}
+
+// ================== REVISION & META ==================
+function ensureMeta(S){
+  S.meta = S.meta || {};
+  S.meta.client_id = getClientId();
+  S.meta.updated_ts = S.meta.updated_ts || now();
+  S.meta.rev = typeof S.meta.rev==='number' ? S.meta.rev : 0;
+  return S.meta;
+}
+function bumpRev(S){
+  const m = ensureMeta(S);
+  m.rev = (m.rev|0) + 1;
+  m.updated_ts = now();
+  return m.rev;
+}
+
+// ================== FETCH WRAPPER ==================
+async function proxyCall(action, payload){
+  const cfg = getProxyConfig();
+  if (!cfg.url || !cfg.secret) throw new Error('Proxy non configuré (proxy_url / proxy_secret manquants).');
+
+  const body = {
+    action,
+    secret: cfg.secret,
+    client_id: getClientId(),
+    repo: cfg.repo,
+    payload,
+  };
+  const r = await fetch(cfg.url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`Proxy HTTP ${r.status}`);
+  const json = await r.json().catch(()=> ({}));
+  if (json.error) throw new Error(json.error);
+  return json;
 }
 
 //   ====== DÉCISIONS ======  
@@ -2772,6 +2973,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
