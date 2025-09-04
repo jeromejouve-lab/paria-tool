@@ -445,7 +445,12 @@ if (svcSel){
 
 async function gasPost(route, payload){
   const u = gasUrl(); if(!u) throw new Error('Proxy non configuré');
-  const body = { route, secret: proxySecret(), ...(payload||{}) };
+  const body = Object.assign(
+	  {},
+	  { route: route, secret: proxySecret() },
+	  (payload && typeof payload === 'object') ? payload : {}
+	);
+
   const r = await fetch(u,{ method:'POST', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(body) });
   const j = await r.json(); if(!j.ok) throw new Error(j.error||route+' ko'); return j;
 }
@@ -723,8 +728,12 @@ btnLoad.onclick = async ()=>{
     const j = await r.json();
     if(j.ok && j.data){
       // normalise si besoin (au cas où le JSON n’a pas la structure attendue)
-      const data = j.data && j.data.charter ? j.data
-                   : { charter:{}, items:[], decisions:[], scenarios:[], ...j.data };
+      const data = (j && j.data && j.data.charter)
+		  ? j.data
+		  : Object.assign(
+		      { charter:{}, items:[], decisions:[], scenarios:[] },
+		      (j && j.data) ? j.data : {}
+		    );
       db.services = db.services || {};
       db.services[svcKey] = data;     // <- range au bon endroit
       saveDB();
@@ -884,8 +893,14 @@ function openScenario(sid){
       (si.propositions||[]).forEach(sp=>{
         (sp.sims||[]).filter(sm=>sm.picked).forEach(sm=>{
           const tp=(ti.propositions||[]).find(pp=>String(pp.pid)===String(sp.pid)); if(!tp) return;
-          tp.sims = Array.isArray(tp.sims)? tp.sims : [];
-          tp.sims.push({ ...sm, origin:(sm.origin||'IA'), who:'scenario', scenario: sc.id, id: (tp.sims.length+1) });
+          tp.sims = Array.isArray(tp.sims) ? tp.sims : [];
+					tp.sims.push(
+					  Object.assign(
+					    {},
+					    sm || {},
+					    { origin: (sm && sm.origin) || 'IA', who: 'scenario', scenario: sc.id, id: tp.sims.length + 1 }
+					  )
+					);
         });
       });
     });
@@ -956,19 +971,6 @@ document.querySelectorAll('.decide').forEach(b=>{
     touch();
   };
 });
-
-function renderLastItem(){
-  const s = svc();
-  const it = (s.items||[])[(s.items||[]).length-1];
-  if(!it){ lastItem.textContent='—'; return; }
-  lastItem.textContent = JSON.stringify({
-    id: it.id,
-    title: it.title||it.reformulation||'',
-    paria: it.paria||{},
-    propositions: it.propositions||[],
-    questions: it.questions||[]
-  }, null, 2);
-}
 
 document.querySelectorAll('.decide').forEach(b=>{
   b.onclick = ()=>{
@@ -1042,84 +1044,6 @@ function renderDecisions(){
   } else {
     det.textContent = '';
   }
-
-  // Scénario: restaurer depuis le snapshot du log (created/deleted)
-	el.querySelectorAll('.ev-restore-scenario').forEach(b=>{
-	  b.onclick=(ev)=>{
-	    ev.stopPropagation();
-	    const sid = b.getAttribute('data-sid');
-	    const S = svc();
-	    const entry = (S.decisions||[]).slice().reverse()
-	      .find(e => (e.action==='scenario_deleted' || e.action==='scenario_created') && e.refs?.sid===sid);
-	    const ok = restoreScenarioById(sid, entry?.snap);
-	    if (ok){ if(typeof renderScList==='function') renderScList(); renderDecisions(); }
-	  };
-	});
-	
-	// Card: restaurer depuis le snapshot du log (card_deleted)
-	el.querySelectorAll('.ev-restore-card').forEach(b=>{
-	  b.onclick=(ev)=>{
-	    ev.stopPropagation();
-	    const cid = b.getAttribute('data-cid');
-	    const S = svc();
-	    const entry = (S.decisions||[]).slice().reverse()
-	      .find(e => e.action==='card_deleted' && e.refs?.card_id===cid);
-	    const ok = restoreCardById(cid, entry?.snap);
-	    if (ok){ if(typeof renderCardsTab==='function') renderCardsTab(); renderDecisions(); }
-	  };
-	});
-	
-	// Charter: restaurer depuis snapshot (charter_saved)
-	el.querySelectorAll('.ev-restore-charter').forEach(b=>{
-	  b.onclick=(ev)=>{
-	    ev.stopPropagation();
-	    const eid = b.getAttribute('data-eid');
-	    const S = svc();
-	    const entry = (S.decisions||[]).find(x=>x.id===eid);
-	    if (restoreCharter(entry?.snap)){
-	      // Juste feedback visuel côté journal
-	      const pane = document.getElementById('journalDetail');
-	      if (pane) pane.textContent = JSON.stringify(S.charter||{}, null, 2);
-	    }
-	  };
-	});
-		
-  const row = ev.target.closest('.pill'); if (!row) return;
-  const S = svc();
-  const pane = document.getElementById('journalDetail'); if (!pane) return;
-	
-  const eid = row.dataset.eid;
-  const act = row.dataset.act;
-  const sid = row.dataset.sid;
-  const cid = row.dataset.card;
-  const entry = (S.decisions||[]).find(x=>x.id===eid) || {};
-	
-  // 1) charter_saved => affiche le charter (snapshot si présent, sinon état courant)
-  if (act === 'charter_saved'){
-    pane.textContent = JSON.stringify(entry.snap?.charter || S.charter || {}, null, 2);
-    return;
-  }
-
-  // 2) scénarios: created/deleted => affiche le snapshot (pas de navigation)
-  if (act === 'scenario_created' || act === 'scenario_deleted'){
-    const snap = entry.snap?.scenario;
-    const current = (S.scenarios||[]).find(x=>String(x.id)===String(sid));
-    pane.textContent = JSON.stringify(snap || current || { sid }, null, 2);
-    return;
-  }
-
-  // 3) cards: deleted/exported/projector_set => montre la card (snap si dispo)
-  if (cid){
-    const snap = entry.snap?.card;
-    const it   = (S.items||[]).find(x=>String(x.id)===String(cid));
-    pane.textContent = JSON.stringify(snap || it || { id: cid }, null, 2);
-    return;
-  }
-
-  // fallback: montre l’entrée brute
-  pane.textContent = JSON.stringify(entry, null, 2);
-});
-
 
 // Alias legacy (certaines zones appellent encore renderJournal)
 window.renderJournal = window.renderDecisions;
@@ -1697,7 +1621,12 @@ function renderScList(){
 	    if(j.ok && j.data){
 	      state.db = loadLocal(); state.db.services = state.db.services || {};
 	      const svcKey = (wid.split('|')[1] || 'Compta');
-	      state.db.services[svcKey] = (j.data && j.data.charter) ? j.data : { charter:{}, items:[], decisions:[], scenarios:[], ...j.data };
+	      state.db.services[svcKey] = (j.data && j.data.charter)
+					? j.data 
+					: Object.assign(
+		      		{ charter:{}, items:[], decisions:[], scenarios:[] },
+		      		(j && j.data) ? j.data : {}
+		    		);
 	      saveLocal(state.db);
 	      return true;
 	    }
@@ -2013,7 +1942,11 @@ function exportCardAs(fmt, it){
 // ---------- Helpers sûrs ----------
 function safeLog(type, payload){
   try { if (typeof logEvent === 'function') logEvent(type, payload||{}); } catch(e){}
-  try { if (typeof pushEventLive === 'function') pushEventLive({ type, ...(payload||{}) }); } catch(e){}
+  try {
+	  if (typeof pushEventLive === 'function') {
+	    pushEventLive(Object.assign({ type: type }, (payload || {})));
+	  }
+	} catch (e) {}
 }
 function download(name, content){
   const a = document.createElement('a');
@@ -2697,3 +2630,4 @@ function nextScenarioId(){
 
 </body>
 </html>
+
