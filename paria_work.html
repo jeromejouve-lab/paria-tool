@@ -2163,11 +2163,7 @@ if (typeof renderCardsTab !== 'function') {
   };
 }
 	
-/* ===================== JOURNAL — CORE (non-invasif) =======================
-   - Append-only dans svc().decisions
-   - Aucune fonction existante n'est modifiée/écrasée
-   - Décorateur auto des lignes du Journal pour pouvoir cliquer/ouvrir
-=========================================================================== */
+
 (function(){
   const safe = (fn, d)=>{ try{ return fn(); }catch(_){ return d; } };
   const now  = ()=> Date.now();
@@ -2631,5 +2627,6 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
