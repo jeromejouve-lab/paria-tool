@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>PARIA — Workbench — CLEAN_v2_20250902_174148</title>
 <style>
-/* PIN DOT STYLE */
+//   PIN DOT STYLE  
 .ppin{
   width:18px;height:18px;display:inline-block;vertical-align:middle;
   border:2px solid currentColor;border-radius:50%;
@@ -24,7 +24,7 @@
   body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink)}
   header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
 
-  /* Statuts propositions */
+  //   Statuts propositions  
   .status-pill{display:inline-flex;align-items:center;gap:6px;border:1px solid #ddd;border-radius:999px;padding:2px 8px;font-size:12px}
   .dot{width:8px;height:8px;border-radius:50%}
   .dot.pending{background:#9aa3af}
@@ -34,7 +34,7 @@
   .pact{cursor:pointer}
   .pact.active{background:#222;color:#fff;border-color:#222}
 
-  /* Grille Projecteur standalone */
+  //   Grille Projecteur standalone  
   .gridProj{display:grid;grid-template-columns:280px 1fr;gap:16px}
   .gridProj.no-agenda{grid-template-columns:1fr}
 
@@ -56,7 +56,7 @@
   .hide{display:none !important}
 	.tab-col{display:flex;flex-direction:column}
 
-	/* Forcer 2 colonnes “compactes” pour Journal & Projecteur, sauf très petit écran */
+	//   Forcer 2 colonnes “compactes” pour Journal & Projecteur, sauf très petit écran  
 	#tab-analyse .row, #tab-projecteur .row {
 	  grid-template-columns: minmax(280px, 1fr) minmax(380px, 1fr);
 	}
@@ -64,7 +64,7 @@
 	  #tab-analyse .row, #tab-projecteur .row { grid-template-columns: 1fr; }
 	}
 
-  /* Projecteur (onglet) */
+  //   Projecteur (onglet)  
 	#projAgenda{
 	  border:1px solid #ddd;border-radius:10px;padding:10px;
 	  max-height:70vh;overflow:auto;position:sticky;top:8px
@@ -74,10 +74,10 @@
 	  min-height:60vh;max-height:70vh;overflow:auto;background:#fff
 	}
 
-  /* Projecteur standalone */
+  //   Projecteur standalone  
   .full{max-width:1200px;margin:0 auto;padding:16px}
 
-	/* container 2 colonnes pour le projecteur inline */
+	//   container 2 colonnes pour le projecteur inline  
 	#projectorInline{
 	  display: grid;
 	  grid-template-columns: 320px 1fr;
@@ -85,7 +85,7 @@
 	  align-items: start;
 	}
 	
-	/* colonne gauche (agenda) sticky et scroll indépendante */
+	//   colonne gauche (agenda) sticky et scroll indépendante  
 	.proj-left{
 	  position: sticky;
 	  top: 8px;
@@ -95,7 +95,7 @@
 	  padding-right: 8px;
 	}
 	
-	/* colonne droite scroll indépendante */
+	//   colonne droite scroll indépendante  
 	.proj-right{
 	  max-height: calc(100vh - 160px);
 	  overflow: auto;
@@ -110,17 +110,17 @@
 }
 	
 
-/* --- Journal layout tweaks --- */
+//   --- Journal layout tweaks ---  
 #tab-analyse .row{
   display:grid;
   grid-template-columns: minmax(320px,1fr) 1fr;
   gap:16px;
   align-items:start;
 }
-#tab-analyse .row > .card:not(#journalDetailCard){ grid-column: 1; } /* left stack */
-#tab-analyse #journalDetailCard{ grid-column: 2; }                  /* right panel */
+#tab-analyse .row > .card:not(#journalDetailCard){ grid-column: 1; } //   left stack  
+#tab-analyse #journalDetailCard{ grid-column: 2; }                  //   right panel  
 
-/* Hide Journal export/import buttons */
+//   Hide Journal export/import buttons  
 #tab-analyse button[id*="Export"], #tab-analyse button[id*="Import"]{ display:none !important; }
 </style>
 </head>
@@ -334,7 +334,7 @@
 </main>
 
 <script>
-/* ====== CONFIG ====== */
+//   ====== CONFIG ======  
 const MODEL   = 'gpt-4o-mini';
 const GAS_KEY = 'paria_gas_url';
 const DB_KEY  = 'paria_db';
@@ -342,7 +342,7 @@ const WORK_KEY= 'paria_work_id'; // "ACME|Compta|2025-08-28"
 window.DEBUG = true; // passe à false pour couper
 const D = (...args)=> window.DEBUG && console.log(...args);
 
-/* ====== GitHub cfg ====== */
+//   ====== GitHub cfg ======  
 const GH_OWNER='paria_gh_owner', GH_REPO='paria_gh_repo', GH_BRANCH='paria_gh_branch',
       GH_BASE='paria_gh_base', GH_TOKEN='paria_gh_token';
 const GH_API = 'https://api.github.com';
@@ -354,7 +354,7 @@ function setGasUrl(u){ localStorage.setItem(GAS_KEY,u.trim()); }
 function proxySecret(){ return (localStorage.getItem(PROXY_SECRET_KEY)||'').trim(); }
 function setProxySecret(v){ localStorage.setItem(PROXY_SECRET_KEY, (v||'').trim()); }
 
-/* ====== ÉTAT LOCAL ====== */
+//   ====== ÉTAT LOCAL ======  
 let db = { services:{} }; // services[key]={ charter:{}, items:[], decisions:[], scenarios:[] }
 function currentService(){ return document.getElementById('serviceKey').value; }
 function svc(){
@@ -365,7 +365,7 @@ function svc(){
 function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
 function loadDB(){ try{ db = JSON.parse(localStorage.getItem(DB_KEY)||'{"services":{}}'); }catch(e){ db={services:{}}; } }
 
-/* ====== ONGLETING ====== */
+//   ====== ONGLETING ======  
 const tabs = ['reglages','capture','analyse','projecteur','scenarios', 'cards'];
 	
 function showTab(id){
@@ -406,7 +406,7 @@ if (!__IS_PROJECTOR) {
   showTab('reglages');
 }
 
-/* ====== WORK ID ====== */
+//   ====== WORK ID ======  
 function currentWorkId(){
   const c = (document.getElementById('workClient').value||'').trim() || 'CLIENT';
   const s = currentService();
@@ -425,7 +425,7 @@ function bindWork(){
   document.getElementById('workBindState').textContent = 'lié ✔';
 }
 
-/* ====== SESSION SYNC ====== */
+//   ====== SESSION SYNC ======  
 let sess = { id:null, operator_token:null, guest_token:null, last_seq:0, paused:false };
 let poller = null;
 function publicBase(){ return (localStorage.getItem('paria_public_base')||'').trim(); }
@@ -568,12 +568,12 @@ function startPoll(){
       const j = await gasGet('events_since', {session_id: sess.id, token: sess.operator_token, after: sess.last_seq});
       sess.paused = j.paused; liveState.textContent = sess.paused? 'paused' : 'live';
       (j.events||[]).forEach(ev=>{ sess.last_seq=Math.max(sess.last_seq, ev.seq||0); applyEvent(ev); });
-    }catch(e){ /* ignore qques ratés réseau */ }
+    }catch(e){}
   }, 1500);
 }
 function stopPoll(){ if(poller){ clearInterval(poller); poller=null; } }
 
-/* Applique un event entrant invited/operator -> sur l’état */
+//   Applique un event entrant invited/operator -> sur l’état  
 function applyEvent(ev){
   const e = ev.event||{};
   const s = svc();
@@ -604,7 +604,7 @@ function applyEvent(ev){
   touch();
 }
 
-/* Helpers pour pousser un event quand TOI tu agis */
+//   Helpers pour pousser un event quand TOI tu agis  
 async function pushDecision(card_id, pid, status, comment){
   if(!sess.id) return; // si pas de séance, pas d’event (local only)
   try{
@@ -653,7 +653,7 @@ async function saveCloudNow(){
 // À appeler après CHAQUE action clé :
 function touch(){ saveDB(); localStorage.setItem('paria_touch', String(Date.now())); autosaveCloud(); }
 
-/* ====== SNAPSHOT GIT AUTO (10 min) ====== */
+//   ====== SNAPSHOT GIT AUTO (10 min) ======  
 let _gitTimer = null, _lastGitTs = 0;
 async function snapshotGitAuto(reason='auto-10min'){
   try{
@@ -678,7 +678,7 @@ function startGitTimer(){
 }
 startGitTimer();
  
-/* ====== BOOT RÉGLAGES ====== */
+//   ====== BOOT RÉGLAGES ======  
 (function bootCfg(){
   document.getElementById('GAS_URL').value = gasUrl();
 	document.getElementById('public_base').value = publicBase();
@@ -717,7 +717,7 @@ btnTestProxy.onclick = async ()=>{
 
 btnBindWork.onclick = bindWork;
 
-/* ====== LOAD / SAVE (Apps Script) ====== */
+//   ====== LOAD / SAVE (Apps Script) ======  
 btnLoad.onclick = async ()=>{
   const u = gasUrl(); if(!u) return alert('Proxy non configuré.');
   const wid = localStorage.getItem(WORK_KEY) || currentWorkId();      // ex: ACME|Compta|2025-08-30
@@ -765,7 +765,7 @@ btnSave.onclick = async ()=>{
   }catch(e){ gsState.textContent='Erreur'; alert(e.message); }
 };
 
-/* ====== DUMP / CLEAR ====== */
+//   ====== DUMP / CLEAR ======  
 btnClear.onclick = () => {
   if (!confirm('Effacer l’état local ?')) return;
   localStorage.removeItem('paria_db');
@@ -775,7 +775,7 @@ btnClear.onclick = () => {
   alert('Réinitialisé.');
 };
 
-/* ====== CHARTER ====== */
+//   ====== CHARTER ======  
 function hydrateCharter(){
   const ch = (svc().charter||{});
   ch_obj.value = ch.objectifs||''; ch_ctx.value=ch.contexte||''; ch_scope.value=ch.perimetre||'';
@@ -794,7 +794,7 @@ btnCharterToState.onclick = ()=>{
   touch(); charterState.textContent='Sauvé ✔';
 };
 
-/* ====== DICTÉE (anti-duplication) ====== */
+//   ====== DICTÉE (anti-duplication) ======  
 (function setupMic(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR){ micStatus.textContent='(non supportée)'; return; }
@@ -815,7 +815,7 @@ btnCharterToState.onclick = ()=>{
   rec.onend=()=>{ if(on) rec.start(); else { micStatus.textContent='—'; btnMic.textContent='🎙️ Dicter'; } };
 })();
 
-/* ====== ANALYSE (Apps Script -> OpenAI) ====== */
+//   ====== ANALYSE (Apps Script -> OpenAI) ======  
 btnAnalyze.onclick = async ()=>{
   const u=gasUrl(); if(!u) return alert('Proxy non configuré.');
   const s=svc();
@@ -954,7 +954,7 @@ async function runSim(item, prop, comment){
   }
 }
 
-/* ====== DÉCISIONS ====== */
+//   ====== DÉCISIONS ======  
 function renderLastItem(){
   const s=svc();
   const it = (s.items||[])[(s.items||[]).length-1];
@@ -1075,7 +1075,7 @@ window.renderJournal = window.renderDecisions;
   }
 })();
 
-/* ====== EXPORTS ====== */
+//   ====== EXPORTS ======  
 btnExportMd.onclick=()=>{
   const key=currentService(); const s=svc();
   const md = makeMarkdown(key,s);
@@ -1126,7 +1126,7 @@ function makeMarkdown(key,s){
   return L.join('\n');
 }
 
-/* ====== Export HTML client + Import JSON ====== */
+//   ====== Export HTML client + Import JSON ======  
 btnExportClientHtml.onclick = ()=>{
   const s = svc();
   const pack = { service: currentService(), charter: s.charter, items: s.items };
@@ -1212,7 +1212,7 @@ function makeClientHtml(pack){
   <\/script>`;
 }
 
-/* ====== PROJECTEUR : inline ====== */
+//   ====== PROJECTEUR : inline ======  
 function chip(t){ return `<span style="border:1px solid #ddd;border-radius:999px;padding:2px 8px;margin-right:6px">${t}</span>`; }
 function stateBadge(p){ const map={discovery:'#A8B0B9',pret_projecteur:'#2463EB',en_validation:'#F59E0B',bouclee:'#10B981'}; const c=map[p]||'#A8B0B9'; return `<span style="background:${c};color:#fff;border-radius:6px;padding:2px 8px">${p||'—'}</span>`; }
 function originTag(origin, who){
@@ -1436,7 +1436,7 @@ btnOpenProjector.onclick = ()=>{
   window.open(url.toString(),'projecteur_'+(localStorage.getItem(WORK_KEY)||''),'noopener');
 };
 
-/* ====== SCÉNARIOS ====== */
+//   ====== SCÉNARIOS ======  
 btnForkScenario.onclick = ()=>{
   const s=svc();
   (s.scenarios||(s.scenarios=[]));
@@ -1536,7 +1536,7 @@ function renderScList(){
 }
 
 
-/* ====== Projecteur standalone interactif (plein écran) ====== */
+//   ====== Projecteur standalone interactif (plein écran) ======  
 (function maybeStandaloneProjector(){
   const params = new URL(location.href).searchParams;
   if(params.get('projecteur')!=='1') return;
@@ -1609,7 +1609,7 @@ function renderScList(){
 				guest.last_seq = Math.max(guest.last_seq, ev.seq||0);
 				applyIncomingEventToLocal(ev);
 			});
-		}catch(e){ /* on tolère des ratés */ }
+		}catch(e){}
 	}
 
 	async function loadBaselineFromCloud(){
@@ -1711,7 +1711,7 @@ function renderScList(){
     const html = state.agendaIds.map((cid,i)=>{
       const it = items.find(x=>x.id===cid);
       const cur = (i===state.idx) ? 'font-weight:700;text-decoration:underline;' : '';
-      const label = (it?.title || it?.reformulation || '—'); /* fix label */ 
+      const label = (it?.title || it?.reformulation || '—'); 
       return `<li style="margin:6px 0"><a href="#" data-i="${i}" style="${cur}">${label}</a></li>`;
     }).join('');
     agenda.innerHTML = `<h4 style="margin:0 0 8px 0">Agenda</h4><ol style="margin:0;padding-left:18px">${html||'<li>—</li>'}</ol>`;
@@ -1838,7 +1838,7 @@ function syncPinState(root){
   });
 }
 
-/* ===== Cards Tab (atelier) ===== */
+//   ===== Cards Tab (atelier) =====  
 let _cardsSelId = null;
 
 function cardsFiltered(){
@@ -2316,7 +2316,7 @@ if (typeof renderCardsTab !== 'function') {
   })();
 })();
 
-/* ===================== JOURNAL — COLLECTEURS ============================== */
+//   ===================== JOURNAL — COLLECTEURS ==============================  
 (function(){
   const safe = (fn,d)=>{ try{ return fn(); }catch(_){ return d; } };
   const SVC  = ()=> safe(()=>svc(), {});
@@ -2447,7 +2447,7 @@ if (typeof renderCardsTab !== 'function') {
   });
 })();
 
-/* Journal: click -> affiche le contenu dans #journalDetail (sans changer d'onglet) */
+//   Journal: click -> affiche le contenu dans #journalDetail (sans changer d'onglet)  
 (function(){
   const host = document.getElementById('decisions');
   if (!host || host.__bindDetail) return; 
@@ -2495,10 +2495,10 @@ if (typeof renderCardsTab !== 'function') {
 
     // fallback: l’entrée brute
     pane.textContent = JSON.stringify(entry, null, 2);
-  }, /* capture: */ true);
+  }, 
 })();
 
-/* Scénarios: ID monotone (stocké en state) -> S1, S2, ... sans réutiliser */
+//   Scénarios: ID monotone (stocké en state) -> S1, S2, ... sans réutiliser  
 function nextScenarioId(){
   const S = (typeof svc==='function') ? svc() : (window.db?.services?.[currentService()] || {});
   S.meta = S.meta || {};
@@ -2509,7 +2509,7 @@ function nextScenarioId(){
   return 'S'+next;
 }
 	
-/* Journal: clic sur "Restaurer" => affiche le snapshot dans #journalDetail (aucune navigation) */
+//   Journal: clic sur "Restaurer" => affiche le snapshot dans #journalDetail (aucune navigation)  
 (function(){
   const host = document.getElementById('decisions');
   if (!host || host.__bindRestore) return;
@@ -2543,10 +2543,10 @@ function nextScenarioId(){
       pane.textContent = JSON.stringify(snap, null, 2);
       return;
     }
-  }, /* capture: */ true);
+  }, 
 })();
 	
-/* === RESTORES (append-only) === */
+//   === RESTORES (append-only) ===  
 function restoreScenarioById(sid, snap){
   const S = svc();
   if ((S.scenarios||[]).some(x=>String(x.id)===String(sid))) return true;
@@ -2578,7 +2578,7 @@ function restoreCharter(snap){
   return true;
 }
 
-/* === SCENARIO ID MONOTONE === */
+//   === SCENARIO ID MONOTONE ===  
 function nextScenarioId(){
   const S = svc();
   S.meta = S.meta || {};
@@ -2627,6 +2627,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
