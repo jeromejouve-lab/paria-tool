@@ -349,6 +349,8 @@ const GH_API = 'https://api.github.com';
 const DEFAULT_GAS_URL = ''; // optionnel: mets ici ton URL Apps Script pour préremplir au 1er chargement
 const PROXY_SECRET_KEY = 'paria_proxy_secret';
 
+	
+
 function gasUrl(){ return (localStorage.getItem(GAS_KEY)||'').trim(); }
 function setGasUrl(u){ localStorage.setItem(GAS_KEY,u.trim()); }
 function proxySecret(){ return (localStorage.getItem(PROXY_SECRET_KEY)||'').trim(); }
@@ -362,7 +364,45 @@ function svc(){
   if(!db.services[k]) db.services[k]={ charter:{}, items:[], decisions:[], scenarios:[] };
   return db.services[k];
 }
-function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+function saveDB(){
+  const S = (typeof svc==='function') ? svc() : null;
+  if (!S) return;
+
+  // 1) tentative directe
+  try {
+    localStorage.setItem('paria_db', JSON.stringify(S));
+    return;
+  } catch(e1) {}
+
+  // 2) trim + retry
+  try {
+    const clone = JSON.parse(JSON.stringify(S));
+    const trimmed = emergencyTrim(clone);
+    const payload = JSON.stringify(clone);
+
+    try {
+      localStorage.setItem('paria_db', payload);
+      return;
+    } catch(e2) {
+      // 3) dernier recours : supprimer les snaps de TOUT sauf les KEEP_SNAP_FULL derniers
+      try {
+        const ds = Array.isArray(clone.decisions) ? clone.decisions : [];
+        const L  = ds.length;
+        for (let i = 0; i < Math.max(0, L - KEEP_SNAP_FULL); i++){
+          if (ds[i]?.snap) delete ds[i].snap;
+        }
+        localStorage.setItem('paria_db', JSON.stringify(clone));
+        return;
+      } catch(e3) {
+        console.error('saveDB fallback failed (quota). Snapshot trims exhausted.', e3);
+        alert("Stockage local saturé.\nLe journal a été allégé, mais la sauvegarde reste trop volumineuse.\nExportez/Nettoyez des données puis réessayez.");
+      }
+    }
+  } catch(e){
+    console.error('saveDB emergencyTrim error', e);
+  }
+}
+
 function loadDB(){ try{ db = JSON.parse(localStorage.getItem(DB_KEY)||'{"services":{}}'); }catch(e){ db={services:{}}; } }
 
 //   ====== ONGLETING ======  
@@ -604,6 +644,58 @@ function applyEvent(ev){
   touch();
 }
 
+// Paramètres de rotation du Journal
+const MAX_DECISIONS       = 400;  // taille max du journal
+const KEEP_SNAP_FULL      = 60;   // nb d'events conservés avec snapshot complet (restaurables)
+const KEEP_SNAP_META      = 140;  // nb d'events suivants gardés en "meta" (restauration non garantie)
+                                   // le reste: sans snap (juste trace)
+
+function pickCardMeta(c){
+  if (!c) return null;
+  return { id: c.id, title: c.title, status: c.status, service: c.service, ts: c.ts||c.created_ts };
+}
+function pickScenarioMeta(s){
+  if (!s) return null;
+  return { id: s.id, title: s.title, date: s.date||s.when, state: s.state, ts: s.ts };
+}
+function pickCharterMeta(ch){
+  if (!ch) return null;
+  return { title: ch.title, version: ch.version, ts: ch.ts };
+}
+
+function emergencyTrim(db){
+  if (!db) return false;
+  let changed = false;
+  const ds = Array.isArray(db.decisions) ? db.decisions : [];
+  const L  = ds.length;
+
+  // 1) Si trop d’entrées, on dégrade progressivement les snapshots
+  if (L > KEEP_SNAP_FULL + KEEP_SNAP_META){
+    // Anciennes entrées (les plus vieilles) => on supprime les snaps
+    for (let i = 0; i < L - (KEEP_SNAP_FULL + KEEP_SNAP_META); i++){
+      if (ds[i]?.snap){ delete ds[i].snap; changed = true; }
+    }
+    // Entrées "métadonnées"
+    for (let i = Math.max(0, L - (KEEP_SNAP_FULL + KEEP_SNAP_META)); i < L - KEEP_SNAP_FULL; i++){
+      const ent = ds[i];
+      if (!ent) continue;
+      if (!ent.snap) continue;
+      if (ent.snap.card){ ent.snap.card = pickCardMeta(ent.snap.card); changed = true; }
+      if (ent.snap.scenario){ ent.snap.scenario = pickScenarioMeta(ent.snap.scenario); changed = true; }
+      if (ent.snap.charter){ ent.snap.charter = pickCharterMeta(ent.snap.charter); changed = true; }
+    }
+  }
+
+  // 2) Taille maximale absolue du journal
+  if (ds.length > MAX_DECISIONS){
+    ds.splice(0, ds.length - MAX_DECISIONS);
+    db.decisions = ds;
+    changed = true;
+  }
+
+  return changed;
+}
+	
 //   Helpers pour pousser un event quand TOI tu agis  
 async function pushDecision(card_id, pid, status, comment){
   if(!sess.id) return; // si pas de séance, pas d’event (local only)
@@ -651,7 +743,11 @@ async function saveCloudNow(){
 }
 
 // À appeler après CHAQUE action clé :
-function touch(){ saveDB(); localStorage.setItem('paria_touch', String(Date.now())); autosaveCloud(); }
+let __touch_t;
+function touch(){
+  if (__touch_t) clearTimeout(__touch_t);
+  __touch_t = setTimeout(()=>{ try{ saveDB(); }catch(e){} }, 120);
+}
 
 //   ====== SNAPSHOT GIT AUTO (10 min) ======  
 let _gitTimer = null, _lastGitTs = 0;
@@ -923,6 +1019,15 @@ function recomputePipelineForItem(it){
   if (hasAny)   return 'en_validation';
   return 'pret_projecteur';
 }
+
+// Demande de stockage persistant (si supporté)
+(async function tryPersistStorage(){
+  try {
+    if (navigator.storage && navigator.storage.persist) {
+      await navigator.storage.persist();
+    }
+  } catch(e){}
+})();
 
 async function runSim(item, prop, comment){
   const u = gasUrl(); if(!u) return alert('Proxy non configuré.');
@@ -2667,6 +2772,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
