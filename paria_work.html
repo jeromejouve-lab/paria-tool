@@ -363,50 +363,107 @@ function svc(){
   if(!db.services[k]) db.services[k]={ charter:{}, items:[], decisions:[], scenarios:[] };
   return db.services[k];
 }
-function saveDB(){
-  const S = (typeof svc==='function') ? svc() : window.__svc;
-  if (!S) return;
-  ensureMeta(S); // garantit meta.client_id/rev/updated_ts
-  try{
-    localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
-  }catch(e1){
-    // Trim/purge si nécessaire (réutilise tes helpers si déjà patchés)
-    try{
-      if (typeof emergencyTrim==='function') emergencyTrim(S);
-      localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
-    }catch(e2){
-      if (typeof purgeJournalHard==='function'){ purgeJournalHard(); }
-      try{ localStorage.setItem(storageKey(getClientId()), JSON.stringify(S)); }
-      catch(e3){
-        console.error('saveDB: quota insurmontable', e3);
-        alert("Stockage local saturé. Exportez/épurez puis réessayez.");
-      }
-    }
-  }
-}
 
 function loadDB(){
   const cid = getClientId();
   let raw = localStorage.getItem(storageKey(cid));
 
-  // Migration legacy -> clé namespacée
+  // MIGRATION LEGACY -> clé namespacée (safe + trim)
   if (!raw){
     const legacy = localStorage.getItem('paria_db');
     if (legacy){
       try{
-        localStorage.setItem(storageKey(cid), legacy);
+        // 1) on garde une copie en mémoire
+        let payload = legacy;
+
+        // 2) on essaie d’alléger: ne stocker que le service courant
+        try{
+          const obj = JSON.parse(legacy);
+          // l'ancien format pouvait contenir services[key] ou un flat
+          const k = (typeof currentService==='function' ? currentService() : null) || 'Compta';
+          const svcOnly = obj?.services && obj.services[k] ? obj.services[k] : obj;
+          // mini-trim (journal, snapshots volumineux…)
+          if (svcOnly && Array.isArray(svcOnly.decisions) && svcOnly.decisions.length > 60){
+            svcOnly.decisions = svcOnly.decisions.slice(-60);
+          }
+          // on peut aussi virer d'anciens champs lourds ici si besoin
+          payload = JSON.stringify({
+            charter: svcOnly.charter||{},
+            items:   Array.isArray(svcOnly.items) ? svcOnly.items : [],
+            scenarios: Array.isArray(svcOnly.scenarios) ? svcOnly.scenarios : [],
+            decisions: Array.isArray(svcOnly.decisions) ? svcOnly.decisions : [],
+            meta: { client_id: cid, rev: 0, updated_ts: Date.now() }
+          });
+        }catch(_){ /* legacy non-JSON ou déjà “flat” : tomber sur payload brut */ }
+
+        // 3) on libère d’abord l’ancienne clé pour regagner de la place
         localStorage.removeItem('paria_db');
+
+        // 4) on écrit la nouvelle clé namespacée
+        localStorage.setItem(storageKey(cid), payload);
+        raw = payload;
+      }catch(e){
+        console.warn('Migration paria_db -> namespaced échouée', e);
+        // en dernier recours: garder en mémoire (session) pour ne pas perdre la session
         raw = legacy;
-      }catch(e){ console.warn('Migration paria_db -> namespaced échouée', e); }
+      }
     }
   }
-  const S = raw ? JSON.parse(raw) : { decisions:[], items:[], scenarios:[], charter:{}, meta:{ client_id:cid, rev:0, updated_ts: now() } };
+
+  const S = raw ? JSON.parse(raw) : { decisions:[], items:[], scenarios:[], charter:{}, meta:{ client_id:cid, rev:0, updated_ts: Date.now() } };
   ensureMeta(S);
   window.__svc = S;
   addClient(cid);
   return S;
 }
 
+function dedupeJournal(list){
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const out  = [];
+  for (const d of list){
+    const sig = [
+      d.type||d.action||d.status||'log',
+      d.item?.id||d.refs?.card_id||d.refs?.scenario_id||'',
+      d.note||'',
+      // on arrondit le timestamp pour absorber les double-binds dans la même seconde
+      Math.floor((d.ts||0)/1000)
+    ].join('|');
+    if (!seen.has(sig)){ seen.add(sig); out.push(d); }
+  }
+  return out;
+}
+function capJournal(S, limit=60){
+  S.decisions = dedupeJournal(S.decisions||[]);
+  if (S.decisions.length > limit) S.decisions = S.decisions.slice(-limit);
+}
+
+function saveDB(){
+  const S = (typeof svc==='function') ? svc() : window.__svc;
+  if (!S) return;
+  ensureMeta(S);
+  capJournal(S, 60); // <-- AJOUT clé
+  try{
+    localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+  }catch(e1){
+    try{
+      if (typeof emergencyTrim==='function') emergencyTrim(S);
+      capJournal(S, 60); // on recape après trim
+      localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+    }catch(e2){
+      try{
+        // fallback: purge plus dur du journal si tu as une fonction maison
+        if (typeof purgeJournalHard==='function') purgeJournalHard();
+        capJournal(S, 40);
+        localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+      }catch(e3){
+        console.error('saveDB: quota insurmontable', e3);
+        alert("Stockage local saturé. Exportez/épurez puis réessayez.");
+      }
+    }
+  }
+}
+	
 let __touch_t, __sync_t;
 function touch(){
   const S = (typeof svc==='function') ? svc() : window.__svc;
@@ -703,19 +760,6 @@ btnCopyGuest.onclick = async ()=>{
   }
 };
 
-btnPushGh.onclick = async ()=>{
-  try{
-    ghState.textContent='Push…';
-    const wid = localStorage.getItem('paria_work_id')||'';
-    const {client, service, date} = parseWorkId();
-    const s = svc();
-    const state_json = JSON.stringify(s,null,2);
-    const md = makeMarkdown(service, s);
-    const message = (gh_msg.value||`snapshot: ${service} ${date}`);
-    await gasPost('git_snapshot', {work_id: wid, service, date, state_json, md, message});
-    ghState.textContent='OK ✔';
-  }catch(e){ ghState.textContent='Erreur'; alert(e.message); }
-};
 const dumpEl = document.getElementById('dump');
 
 function refreshDump(){
@@ -1269,14 +1313,6 @@ function renderLastItem(){
     id: it.id, title: it.title||it.reformulation||'', paria: it.paria||{}, propositions: it.propositions||[], questions: it.questions||[]
   },null,2);
 }
-document.querySelectorAll('.decide').forEach(b=>{
-  b.onclick=()=>{
-    const s=svc(); const it=(s.items||[])[(s.items||[]).length-1]; if(!it) return;
-    (s.decisions||(s.decisions=[])).push({ ts:Date.now(), status:b.dataset.status, item:{ id:it.id, reformulation: it.reformulation||it.title||'' }});
-    touch(); renderDecisions(); decState.textContent='Noté ✔';
-    touch();
-  };
-});
 
 document.querySelectorAll('.decide').forEach(b=>{
   b.onclick = ()=>{
@@ -2973,6 +3009,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
