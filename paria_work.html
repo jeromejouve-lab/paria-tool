@@ -2209,9 +2209,10 @@ if (typeof renderCardsTab !== 'function') {
         service: curService(),
         work_id: curWorkId(),
         session: curSession(),
-        refs: {...refs},
-        info: {...info},
-        snap: {...snap}
+        refs: (refs && typeof refs==='object') ? JSON.parse(JSON.stringify(refs)) : {},
+        info: (info && typeof info==='object') ? JSON.parse(JSON.stringify(info)) : {},
+        snap: (snap && typeof snap==='object') ? JSON.parse(JSON.stringify(snap)) : {}
+
       };
       pushDecision(entry);
     };
@@ -2630,4 +2631,5 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
