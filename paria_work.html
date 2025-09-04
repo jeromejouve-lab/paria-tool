@@ -2495,7 +2495,7 @@ if (typeof renderCardsTab !== 'function') {
 
     // fallback: l’entrée brute
     pane.textContent = JSON.stringify(entry, null, 2);
-  }, 
+  }, true);
 })();
 
 //   Scénarios: ID monotone (stocké en state) -> S1, S2, ... sans réutiliser  
@@ -2627,6 +2627,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
