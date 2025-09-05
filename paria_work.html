@@ -182,6 +182,13 @@
         <label>Date</label><input id="workDate" type="date">
         <div class="actions">
           <button id="btnBindWork">Lier ce Work ID</button>
+					<div class="row" style="margin-top:6px">
+					  <label for="restoreAt" style="min-width:160px;display:inline-block">Date à restaurer</label>
+					  <input id="restoreAt" placeholder="jj/mm/aaaa HH:mm ou jj/mm/aaaa" style="width:220px">
+					  <button id="btnGitPropose" title="Proposer un snapshot Git">Proposer</button>
+					  <button id="btnGitRestore" title="Restaurer le snapshot proposé">Restaurer</button>
+					  <span id="gitState" class="pill">—</span>
+					</div>
           <span id="workBindState" class="pill">—</span>
         </div>
         <small>Le Work ID est mémorisé et visible en haut. Il permet de ré-ouvrir la même séance.</small>
@@ -339,7 +346,10 @@ const GAS_KEY = 'paria_gas_url';
 const DB_KEY  = 'paria_db';
 const WORK_KEY= 'paria_work_id'; // "ACME|Compta|2025-08-28"
 window.DEBUG = true; // passe à false pour couper
-const D = (...args)=> window.DEBUG && console.log(...args);
+const D = function () {
+  if (!window.DEBUG) return;
+  console.log.apply(console, arguments);
+};
 
 //   ====== GitHub cfg ======  
 const GH_OWNER='paria_gh_owner', GH_REPO='paria_gh_repo', GH_BRANCH='paria_gh_branch',
@@ -768,6 +778,93 @@ async function gasGet(route, qs){
   const r = await fetch(u.toString());
   const j = await r.json(); if(!j.ok) throw new Error(j.error||route+' ko'); return j;
 }
+	
+// ===== Parse FR -> ISO (jj/mm/aaaa [HH:mm]) =====
+function parseFrAt(input, widDateISO){
+  const s = (input||'').trim();
+  if (!s) return widDateISO; // fallback: date du WID
+  // ISO direct ?
+  if (/^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2})?$/.test(s)) return s.replace(' ','T');
+  // FR jj/mm/aaaa HH:mm ?
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
+  if (!m) return widDateISO;
+  const dd = String(m[1]).padStart(2,'0');
+  const MM = String(m[2]).padStart(2,'0');
+  const yyyy = m[3];
+  const hh = String(m[4]||'00').padStart(2,'0');
+  const mm = String(m[5]||'00').padStart(2,'0');
+  return m[4] ? `${yyyy}-${MM}-${dd}T${hh}:${mm}` : `${yyyy}-${MM}-${dd}`;
+}
+
+// ===== Git API (via Apps Script) =====
+async function gitFind(atISO){
+  const wid = localStorage.getItem('paria_work_id') || currentWorkId();
+  // Spec: route=git_find ?work_id=...&at=YYYY-MM-DD[THH:mm]
+  // Retour attendu: { ok:true, hit:{ ts, sha?, json_path }, prev_ts?, next_ts? }
+  const j = await gasGet('git_find', { work_id: wid, at: atISO }); // :contentReference[oaicite:3]{index=3}
+  if (!j || !j.ok) return null;
+  return j; // on renvoie l’objet complet (hit + éventuels prev_ts/next_ts si dispo)
+}
+
+async function gitLoad(hit){
+  const wid = localStorage.getItem('paria_work_id') || currentWorkId();
+  const svcKey = (wid.split('|')[1]||'').trim() || currentService();
+  const qs = { work_id: wid };
+  if (hit.sha) qs.sha = hit.sha;
+  if (hit.json_path) qs.json_path = hit.json_path;
+  // Spec: route=git_load ?work_id=...&sha=... | &json_path=...
+  const j = await gasGet('git_load', qs); // :contentReference[oaicite:4]{index=4}
+  if (!j || !j.ok || !j.state) throw new Error('git_load: état vide');
+
+  // Normalisation comme pour btnLoad Google
+	const data = j.state.charter ? j.state : Object.assign({charter:{},items:[],decisions:[],scenarios:[]}, (j.state||{}));
+
+  // Range dans le service courant et persist local
+  window.db = window.db || { services:{} };
+  db.services = db.services || {};
+  db.services[svcKey] = data;
+  if (typeof saveDB==='function') saveDB();                 // :contentReference[oaicite:5]{index=5}
+  if (typeof selectService==='function') selectService(svcKey); // :contentReference[oaicite:6]{index=6}
+  if (typeof renderDecisions==='function') renderDecisions();   // :contentReference[oaicite:7]{index=7}
+}
+
+// ===== Boutons UI =====
+document.getElementById('btnGitPropose')?.addEventListener('click', async ()=>{
+  try{
+    const wid = localStorage.getItem('paria_work_id') || currentWorkId();
+    const { date } = parseWorkId();                        // :contentReference[oaicite:8]{index=8}
+    const atISO = parseFrAt(document.getElementById('restoreAt')?.value||'', date);
+    const j = await gitFind(atISO);
+    const el = document.getElementById('gitState');
+    if (!j || !j.hit){ if(el) el.textContent='Aucun snapshot'; return; }
+
+    // On mémorise la proposition
+    window.__git_hit = j.hit;
+
+    // Affichage "restauré/proposé" + voisins si fournis par l’API
+    const t = new Date(j.hit.ts||Date.now()).toLocaleString();
+    let aux = '';
+    if ('prev_ts' in j && j.prev_ts) aux += ` | précédent: ${new Date(j.prev_ts).toLocaleTimeString()}`;
+    if ('next_ts' in j && j.next_ts) aux += ` | suivant: ${new Date(j.next_ts).toLocaleTimeString()}`;
+    if (el) el.textContent = `Proposé: ${t}${aux}`;
+  }catch(e){
+    const el = document.getElementById('gitState'); if (el) el.textContent='Erreur propose';
+  }
+});
+
+document.getElementById('btnGitRestore')?.addEventListener('click', async ()=>{
+  try{
+    const el = document.getElementById('gitState');
+    const hit = window.__git_hit;
+    if (!hit){ if(el) el.textContent='Aucune proposition'; return; }
+    if (el) el.textContent='Chargement Git…';
+    await gitLoad(hit);
+    if (el){
+      const t = new Date(hit.ts||Date.now()).toLocaleString();
+      el.textContent = `Restauré: ${t}`; // voisins déjà affichés lors de "Proposer"
+    }
+  }catch(e){ const el=document.getElementById('gitState'); if(el) el.textContent='Erreur chargement'; }
+});
 
 btnStartSess.onclick = async ()=>{
 	await saveCloudNow(); // baseline cloud IMMEDIATE avant la séance
@@ -3068,6 +3165,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
