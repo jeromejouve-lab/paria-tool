@@ -417,69 +417,80 @@ function loadDB(){
   const cid = getClientId();
   let raw = localStorage.getItem(storageKey(cid));
 
-  // MIGRATION LEGACY -> clé namespacée (safe + trim)
   if (!raw){
     const legacy = localStorage.getItem('paria_db');
     if (legacy){
       try{
-        // 1) on garde une copie en mémoire
         let payload = legacy;
-
-        // 2) on essaie d’alléger: ne stocker que le service courant
         try{
           const obj = JSON.parse(legacy);
-          // l'ancien format pouvait contenir services[key] ou un flat
           const k = (typeof currentService==='function' ? currentService() : null) || 'Compta';
           const svcOnly = obj?.services && obj.services[k] ? obj.services[k] : obj;
-          // mini-trim (journal, snapshots volumineux…)
           if (svcOnly && Array.isArray(svcOnly.decisions) && svcOnly.decisions.length > 60){
             svcOnly.decisions = svcOnly.decisions.slice(-60);
           }
-          // on peut aussi virer d'anciens champs lourds ici si besoin
           payload = JSON.stringify({
-            charter: svcOnly.charter||{},
-            items:   Array.isArray(svcOnly.items) ? svcOnly.items : [],
+            charter:   svcOnly.charter||{},
+            items:     Array.isArray(svcOnly.items) ? svcOnly.items : [],
             scenarios: Array.isArray(svcOnly.scenarios) ? svcOnly.scenarios : [],
             decisions: Array.isArray(svcOnly.decisions) ? svcOnly.decisions : [],
             meta: { client_id: cid, rev: 0, updated_ts: Date.now() }
           });
-        }catch(_){ /* legacy non-JSON ou déjà “flat” : tomber sur payload brut */ }
+        }catch(_){ /* non-JSON : on garde legacy brute */ }
 
-        // 3) on libère d’abord l’ancienne clé pour regagner de la place
-        localStorage.removeItem('paria_db');
+        // ÉCRITURE + suppression plus sûre (voir point 1)
+        try {
+          localStorage.setItem(storageKey(cid), payload);
+          localStorage.removeItem('paria_db');
+          raw = payload;
+        } catch(eSet){
+          localStorage.removeItem('paria_db');
+          localStorage.setItem(storageKey(cid), payload);
+          raw = payload;
+        }
 
-        // 4) on écrit la nouvelle clé namespacée
-        localStorage.setItem(storageKey(cid), payload);
-        raw = payload;
       }catch(e){
         console.warn('Migration paria_db -> namespaced échouée', e);
-				try {
-          // Dernière chance: on réduit à un squelette minimal (sans décisions)
+        try {
           const obj = JSON.parse(legacy);
           const k = (typeof currentService==='function' ? currentService() : null) || 'Compta';
           const svcOnly = obj?.services && obj.services[k] ? obj.services[k] : obj;
           const minimal = JSON.stringify({
-            charter: svcOnly.charter || {},
-            items: Array.isArray(svcOnly.items) ? svcOnly.items : [],
+            charter:   svcOnly.charter || {},
+            items:     Array.isArray(svcOnly.items) ? svcOnly.items : [],
             scenarios: Array.isArray(svcOnly.scenarios) ? svcOnly.scenarios : [],
-            decisions: [], // on vide pour passer le quota
+            decisions: [], // vide pour passer le quota
             meta: { client_id: cid, rev: 0, updated_ts: Date.now() }
           });
-          localStorage.removeItem('paria_db'); // libère l'ancienne clé
-          localStorage.setItem(storageKey(cid), minimal); // écrit minifié
-          raw = minimal;
+          // même séquence “écrire puis supprimer” si possible
+          try {
+            localStorage.setItem(storageKey(cid), minimal);
+            localStorage.removeItem('paria_db');
+            raw = minimal;
+          } catch(eMin){
+            localStorage.removeItem('paria_db');
+            localStorage.setItem(storageKey(cid), minimal);
+            raw = minimal;
+          }
         } catch(e2){
-          // en tout dernier recours on garde en RAM pour la session
+          // ultime fallback : session seulement
           raw = legacy;
         }
-      }
-        // en dernier recours: garder en mémoire (session) pour ne pas perdre la session
-        raw = legacy;
       }
     }
   }
 
-  const S = raw ? JSON.parse(raw) : { decisions:[], items:[], scenarios:[], charter:{}, meta:{ client_id:cid, rev:0, updated_ts: Date.now() } };
+  // Chargement défensif + recapping
+  let S;
+  try {
+    S = raw ? JSON.parse(raw) : { decisions:[], items:[], scenarios:[], charter:{}, meta:{ client_id:cid, rev:0, updated_ts: Date.now() } };
+  } catch {
+    S = { decisions:[], items:[], scenarios:[], charter:{}, meta:{ client_id:cid, rev:0, updated_ts: Date.now() } };
+  }
+  if (Array.isArray(S.decisions) && S.decisions.length > 60){
+    S.decisions = S.decisions.slice(-60);
+  }
+
   ensureMeta(S);
   window.__svc = S;
   addClient(cid);
@@ -502,6 +513,7 @@ function dedupeJournal(list){
   }
   return out;
 }
+	
 function capJournal(S, limit=60){
   S.decisions = dedupeJournal(S.decisions||[]);
   if (S.decisions.length > limit) S.decisions = S.decisions.slice(-limit);
@@ -3172,7 +3184,6 @@ function nextScenarioId(){
 
 </body>
 </html>
-
 
 
 
