@@ -2839,9 +2839,15 @@ if (typeof renderCardsTab !== 'function') {
   document.getElementById('btnLoad')?.addEventListener('click', ()=>
     setTimeout(()=> logEvent('config_loaded', { info:{source:'google'} }), 0)
   );
-  document.getElementById('btnBindWork')?.addEventListener('click', ()=>
-    setTimeout(()=> logEvent('workid_bound', {}), 0)
-  );
+	
+	// Remplace le collecteur existant
+	document.getElementById('btnBindWork')?.addEventListener('click', ()=>
+	  setTimeout(()=>{
+	    const {client, service, date} = parseWorkId();
+	    const wid = localStorage.getItem('paria_work_id') || '';
+	    logEvent('workid_bound', { info:{ work_id: wid, client, service, date } });
+	  }, 0)
+	);
 
   // --- Charter ---
   document.getElementById('btnAnalyze')?.addEventListener('click', ()=>
@@ -2930,13 +2936,14 @@ if (typeof renderCardsTab !== 'function') {
 	  });
 	})();
 
-
   // --- Séance ---
   document.getElementById('btnStartSess')?.addEventListener('click', ()=> setTimeout(()=> logEvent('session_started', {}), 0));
-  document.getElementById('btnPauseSess')?.addEventListener('click', ()=> setTimeout(()=> {
-    const paused = !!safe(()=>SVC().__live?.paused, false);
-    logEvent('session_paused', { info:{paused} });
-  }, 0));
+	
+	// Remplace seulement le collecteur pause
+	document.getElementById('btnPauseSess')?.addEventListener('click', ()=> setTimeout(()=>{
+	  logEvent('session_paused', { info:{ paused: !!(window.sess && window.sess.paused) } });
+	}, 0));
+
   document.getElementById('btnRotateGuest')?.addEventListener('click', ()=> setTimeout(()=> logEvent('session_rotated', {}), 0));
   document.getElementById('btnEndSess')?.addEventListener('click', ()=> setTimeout(()=> logEvent('session_ended', {}), 0));
 
@@ -3165,6 +3172,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
