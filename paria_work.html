@@ -519,6 +519,27 @@ function capJournal(S, limit=60){
   if (S.decisions.length > limit) S.decisions = S.decisions.slice(-limit);
 }
 
+	function preTrimForQuota(S, limit=60){
+  try{
+    // 1) cap journal
+    S.decisions = Array.isArray(S.decisions) ? dedupeJournal(S.decisions) : [];
+    if (S.decisions.length > limit) S.decisions = S.decisions.slice(-limit);
+    // 2) micro-réductions non destructrices
+    // - écrase les champs transitoires potentiellement volumineux
+    (S.items||[]).forEach(it=>{
+      if (Array.isArray(it.propositions)) {
+        it.propositions.forEach(p=>{
+          // couper les "sims" non pickées si trop nombreuses
+          if (Array.isArray(p.sims) && p.sims.length > 50) p.sims = p.sims.slice(-50);
+        });
+      }
+      // couper l’historique de commentaires si énorme
+      if (Array.isArray(it.comments) && it.comments.length > 200) it.comments = it.comments.slice(-200);
+    });
+  }catch(_){}
+  return S;
+}
+
 function saveDB(){
   const S = (typeof svc==='function') ? svc() : window.__svc;
   if (!S) return;
@@ -538,8 +559,35 @@ function saveDB(){
         capJournal(S, 40);
         localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
       }catch(e3){
-        console.error('saveDB: quota insurmontable', e3);
-        alert("Stockage local saturé. Exportez/épurez puis réessayez.");
+       	// Dernier filet: si la sérialisation dépasse ~4.5 Mo, on réduit progressivement
+		    try{
+		      const MAX = 4.5 * 1024 * 1024;
+		      const shrinkUntilFits = ()=>{
+		        let blob = JSON.stringify(S);
+		        if (blob.length <= MAX) return true;
+		        // étapes: 1) réduire sims / comments, 2) couper anciens items
+		        (S.items||[]).forEach(it=>{
+		          if (Array.isArray(it.comments) && it.comments.length>100) it.comments = it.comments.slice(-100);
+		          if (Array.isArray(it.propositions)) it.propositions.forEach(p=>{
+		            if (Array.isArray(p.sims) && p.sims.length>20) p.sims = p.sims.slice(-20);
+		          });
+		        });
+		        blob = JSON.stringify(S);
+		        if (blob.length <= MAX) return true;
+		        if (Array.isArray(S.items) && S.items.length>200) {
+		          S.items = S.items.slice(-200);
+		          blob = JSON.stringify(S);
+		          if (blob.length <= MAX) return true;
+		        }
+		        return false;
+		      };
+		      if (shrinkUntilFits()){
+		        localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+		        return; // on a réussi
+		      }
+		    }catch(_){}
+		    console.error('saveDB: quota insurmontable', e3);
+		    alert("Stockage local saturé. Exportez/épurez puis réessayez.");
       }
     }
   }
@@ -1196,10 +1244,18 @@ btnLoad.onclick = async ()=>{
 		      (j && j.data) ? j.data : {}
 		    );
       db.services = db.services || {};
-      db.services[svcKey] = data;     // <- range au bon endroit
-      saveDB();
-      // option: bascule l’UI sur ce service
+      // pré-trim côté charge (cap journal + micro-réduction si besoin)
+      db.services[svcKey] = preTrimForQuota(data);
+      // bascule d'abord le service courant pour que saveDB() cappe le bon S
       if (typeof selectService === 'function') selectService(svcKey);
+      saveDB();
+			try {
+        saveDB();
+      } catch(e) {
+        // Nettoyage global (toutes bases client) puis seconde tentative
+        trimAllClientDBs(60);
+        saveDB();
+      }
       gsState.textContent='Chargé ✔';
     } else if(j.ok && !j.data){
       gsState.textContent='Aucune donnée';
@@ -3184,6 +3240,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
