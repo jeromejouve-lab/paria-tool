@@ -983,7 +983,7 @@ function autosaveCloud(){
       const wid = localStorage.getItem('paria_work_id')||'';
       const service = currentService();
       const state = svc();
-      await gasPost('save', {work_id: wid || (`CLIENT|${service}|`+new Date().toISOString().slice(0,10)), state});
+      await gasPost('save', { work_id: wid, client_id: parseWorkId().client, state });
       _lastSaveTs = Date.now();
       if (gsState) gsState.textContent = 'Sauvé ✔ ' + new Date(_lastSaveTs).toLocaleTimeString();
     }catch(e){}
@@ -992,7 +992,7 @@ function autosaveCloud(){
 async function saveCloudNow(){
   const wid = localStorage.getItem('paria_work_id')||currentWorkId();
   const state = svc();
-  await gasPost('save', {work_id: wid, state});
+  await gasPost('save', { work_id: wid, client_id: parseWorkId().client, state });
 }
 
 //   ====== SNAPSHOT GIT AUTO (10 min) ======  
@@ -2294,23 +2294,6 @@ function cardsFiltered(){
   });
 }
 
-function renderCardsList(){
-  const listEl = document.getElementById('cardsList'); if(!listEl) return;
-  const L = cardsFiltered();
-  if(!L.length){ listEl.innerHTML='<div style="padding:8px;color:#888">Aucune card.</div>'; return; }
-  listEl.innerHTML = L.map(it=>{
-    const badge = it.status ? `<span class="pill" style="margin-left:6px">${it.status}</span>` : '';
-    const sel = (_cardsSelId && String(_cardsSelId)===String(it.id)) ? ' style="background:#eef"' : '';
-    return `<div class="rowItem"${sel} data-id="${it.id}" style="padding:8px;border-bottom:1px solid #eee;cursor:pointer">
-      <div style="font-weight:600">${(it.title||it.reformulation||it.id||'—')}</div>
-      <div style="font-size:.85em;color:#666">${it.id}${badge}</div>
-    </div>`;
-  }).join('');
-  listEl.querySelectorAll('.rowItem').forEach(r=>{
-    r.onclick=()=>{ _cardsSelId = r.getAttribute('data-id'); renderCardDetail(_cardsSelId); };
-  });
-}
-
 function renderCardDetail(id){
   const S = svc();
   const it = (S.items||[]).find(x=>String(x.id)===String(id));
@@ -2339,15 +2322,6 @@ function renderCardDetail(id){
   if(hBtn) hBtn.onclick=()=>{ exportCardAs('html', it); };
   const jBtn = document.getElementById('btnCardExportJson');
   if(jBtn) jBtn.onclick=()=>{ exportCardAs('json', it); };
-}
-
-function renderCardsTab(){
-  renderCardsList();
-  if(_cardsSelId){ renderCardDetail(_cardsSelId); }
-  const sch = document.getElementById('cardsSearch');
-  const ss = document.getElementById('cardsStatus');
-  if(sch) sch.oninput = ()=>renderCardsList();
-  if(ss) ss.onchange = ()=>renderCardsList();
 }
 
 // Exports (client-side download)
@@ -3094,6 +3068,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
