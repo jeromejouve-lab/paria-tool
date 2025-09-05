@@ -1248,10 +1248,9 @@ btnLoad.onclick = async ()=>{
       db.services[svcKey] = preTrimForQuota(data);
       // bascule d'abord le service courant pour que saveDB() cappe le bon S
       if (typeof selectService === 'function') selectService(svcKey);
-      saveDB();
-			try {
+      try {
         saveDB();
-      } catch(e) {
+      } catch (e) {
         // Nettoyage global (toutes bases client) puis seconde tentative
         trimAllClientDBs(60);
         saveDB();
@@ -3240,6 +3239,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
