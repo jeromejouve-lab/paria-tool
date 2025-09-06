@@ -517,9 +517,16 @@ function dedupeJournal(list){
 function capJournal(S, limit=60){
   S.decisions = dedupeJournal(S.decisions||[]);
   if (S.decisions.length > limit) S.decisions = S.decisions.slice(-limit);
+	try{
+	  const keep = 5;
+	  const L = Array.isArray(S.decisions) ? S.decisions.length : 0;
+	  for (let i = 0; i < Math.max(0, L - keep); i++){
+	    if (S.decisions[i] && S.decisions[i].snap) delete S.decisions[i].snap;
+	  }
+	}catch(_){}
 }
 
-	function preTrimForQuota(S, limit=60){
+function preTrimForQuota(S, limit=60){
   try{
     // 1) cap journal
     S.decisions = Array.isArray(S.decisions) ? dedupeJournal(S.decisions) : [];
@@ -589,7 +596,7 @@ function saveDB(){
           }
         }catch(_){}
         console.error('saveDB: quota insurmontable', e3);
-        alert("Stockage local saturé. Exportez/épurez puis réessayez.");
+ 				if (!silent) alert("Stockage local saturé. Exportez/épurez puis réessayez.");
         return false;
       }
     }
@@ -1657,6 +1664,7 @@ function approxUsedBytes(){
     n += k.length + v.length;
   } return n;
 }
+	
 function evictOtherClientsExcept(cid, budgetBytes = 4.7*1024*1024){
   // Supprime les plus vieux clients jusqu'à repasser sous un budget approximatif
   const victims=[];
@@ -1673,14 +1681,14 @@ function evictOtherClientsExcept(cid, budgetBytes = 4.7*1024*1024){
     if (approxUsedBytes() < budgetBytes) break;
   }
 }
+	
 function commitWithEviction(){
-  if (saveDB()) return true;
-  trimAllClientDBs(60);              // réduit toutes les bases par client
-  if (saveDB()) return true;
+	if (saveDB(true)) return true;          // 1er essai silencieux
+  trimAllClientDBs(60);
+  if (saveDB(true)) return true;          // 2e essai silencieux
   evictOtherClientsExcept(getClientId());
-  return saveDB();
+  return saveDB(false);                   // 3e essai = alerte unique si échec
 }
-
 
 // Alias legacy (certaines zones appellent encore renderJournal)
 window.renderJournal = window.renderDecisions;
@@ -3283,6 +3291,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
