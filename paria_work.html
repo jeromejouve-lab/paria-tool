@@ -542,56 +542,60 @@ function capJournal(S, limit=60){
 
 function saveDB(){
   const S = (typeof svc==='function') ? svc() : window.__svc;
-  if (!S) return;
+  if (!S) return true; // rien à écrire = OK
   ensureMeta(S);
-  capJournal(S, 60); // <-- AJOUT clé
-  try{
+  capJournal(S, 60);
+
+  try {
     localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
-  }catch(e1){
-    try{
+    return true;
+  } catch(e1) {
+    try {
       if (typeof emergencyTrim==='function') emergencyTrim(S);
-      capJournal(S, 60); // on recape après trim
+      capJournal(S, 60);
       localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
-    }catch(e2){
-      try{
-        // fallback: purge plus dur du journal si tu as une fonction maison
+      return true;
+    } catch(e2) {
+      try {
         if (typeof purgeJournalHard==='function') purgeJournalHard();
         capJournal(S, 40);
         localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
-      }catch(e3){
-       	// Dernier filet: si la sérialisation dépasse ~4.5 Mo, on réduit progressivement
-		    try{
-		      const MAX = 4.5 * 1024 * 1024;
-		      const shrinkUntilFits = ()=>{
-		        let blob = JSON.stringify(S);
-		        if (blob.length <= MAX) return true;
-		        // étapes: 1) réduire sims / comments, 2) couper anciens items
-		        (S.items||[]).forEach(it=>{
-		          if (Array.isArray(it.comments) && it.comments.length>100) it.comments = it.comments.slice(-100);
-		          if (Array.isArray(it.propositions)) it.propositions.forEach(p=>{
-		            if (Array.isArray(p.sims) && p.sims.length>20) p.sims = p.sims.slice(-20);
-		          });
-		        });
-		        blob = JSON.stringify(S);
-		        if (blob.length <= MAX) return true;
-		        if (Array.isArray(S.items) && S.items.length>200) {
-		          S.items = S.items.slice(-200);
-		          blob = JSON.stringify(S);
-		          if (blob.length <= MAX) return true;
-		        }
-		        return false;
-		      };
-		      if (shrinkUntilFits()){
-		        localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
-		        return; // on a réussi
-		      }
-		    }catch(_){}
-		    console.error('saveDB: quota insurmontable', e3);
-		    alert("Stockage local saturé. Exportez/épurez puis réessayez.");
+        return true;
+      } catch(e3) {
+        // filet final: réduction progressive pour passer sous ~4.5 Mo
+        try{
+          const MAX = 4.5 * 1024 * 1024;
+          const shrinkUntilFits = ()=>{
+            let blob = JSON.stringify(S);
+            if (blob.length <= MAX) return true;
+            (S.items||[]).forEach(it=>{
+              if (Array.isArray(it.comments) && it.comments.length>100) it.comments = it.comments.slice(-100);
+              if (Array.isArray(it.propositions)) it.propositions.forEach(p=>{
+                if (Array.isArray(p.sims) && p.sims.length>20) p.sims = p.sims.slice(-20);
+              });
+            });
+            blob = JSON.stringify(S);
+            if (blob.length <= MAX) return true;
+            if (Array.isArray(S.items) && S.items.length>200) {
+              S.items = S.items.slice(-200);
+              blob = JSON.stringify(S);
+              if (blob.length <= MAX) return true;
+            }
+            return false;
+          };
+          if (shrinkUntilFits()){
+            localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+            return true;
+          }
+        }catch(_){}
+        console.error('saveDB: quota insurmontable', e3);
+        alert("Stockage local saturé. Exportez/épurez puis réessayez.");
+        return false;
       }
     }
   }
 }
+
 	
 let __touch_t, __sync_t;
 function touch(){
@@ -769,7 +773,6 @@ document.getElementById('tabbar')?.addEventListener('click', (e)=>{
 });
 
 if (!__IS_PROJECTOR) {
-  loadDB();
   showTab('reglages');
 }
 
@@ -1248,13 +1251,10 @@ btnLoad.onclick = async ()=>{
       db.services[svcKey] = preTrimForQuota(data);
       // bascule d'abord le service courant pour que saveDB() cappe le bon S
       if (typeof selectService === 'function') selectService(svcKey);
-      try {
-        saveDB();
-      } catch (e) {
-        // Nettoyage global (toutes bases client) puis seconde tentative
-        trimAllClientDBs(60);
-        saveDB();
-      }
+			if (!commitWithEviction()){
+			  gsState.textContent='Erreur quota';
+			  return; // on a déjà alerté dans saveDB()
+			}
       gsState.textContent='Chargé ✔';
     } else if(j.ok && !j.data){
       gsState.textContent='Aucune donnée';
@@ -1294,6 +1294,19 @@ btnClear.onclick = () => {
   if (el) el.textContent = '—';
   alert('Réinitialisé.');
 };
+
+
+function bootQuotaGuard(){
+  try{
+    localStorage.setItem('__paria_quota_probe','1');
+    localStorage.removeItem('__paria_quota_probe');
+  }catch{
+    // si même la probe échoue, on réduit tout de suite
+    trimAllClientDBs(60);
+  }
+  // pré-trim si l’espace global est déjà très entamé
+  try{ if (approxUsedBytes() > 4.7*1024*1024) trimAllClientDBs(60); }catch(_){}
+}
 
 //   ====== CHARTER ======  
 function hydrateCharter(){
@@ -1635,6 +1648,37 @@ function renderDecisions(){
   } else {
     det.textContent = '';
   }
+}
+
+
+function approxUsedBytes(){
+  let n=0; for (let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i), v=localStorage.getItem(k)||'';
+    n += k.length + v.length;
+  } return n;
+}
+function evictOtherClientsExcept(cid, budgetBytes = 4.7*1024*1024){
+  // Supprime les plus vieux clients jusqu'à repasser sous un budget approximatif
+  const victims=[];
+  for (let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if (k && k.startsWith('paria_db_') && k !== storageKey(cid)){
+      let ts=0; try{ ts = JSON.parse(localStorage.getItem(k)||'{}')?.meta?.updated_ts|0; }catch(_){}
+      victims.push({k, ts});
+    }
+  }
+  victims.sort((a,b)=>a.ts-b.ts);
+  for (const v of victims){
+    localStorage.removeItem(v.k);
+    if (approxUsedBytes() < budgetBytes) break;
+  }
+}
+function commitWithEviction(){
+  if (saveDB()) return true;
+  trimAllClientDBs(60);              // réduit toutes les bases par client
+  if (saveDB()) return true;
+  evictOtherClientsExcept(getClientId());
+  return saveDB();
 }
 
 
@@ -3239,6 +3283,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
