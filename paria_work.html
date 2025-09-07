@@ -716,6 +716,31 @@ async function doAutoSync(reason){
     console.warn('doAutoSync error', e);
   }
 }
+
+
+// ===== Budget helpers (pré/post-restauration) =====
+const MAX_LOCAL_BYTES = 4.5 * 1024 * 1024;
+const TARGET_BACKUP_RATIO = 0.45;
+
+async function ensurePreRestoreBudget(){
+  try{
+    // 1) trim léger et éviction des autres clients pour repasser sous ~45%
+    trimAllClientDBs(60);
+    evictOtherClientsExcept(getClientId(), MAX_LOCAL_BYTES * TARGET_BACKUP_RATIO);
+    // 2) pousser un snapshot budgeté côté remote (Google/Git via proxy auto)
+    await pushRemote();
+  }catch(_){}
+}
+
+async function consolidateAfterRestore(){
+  try{
+    // 1) on essaye d’écrire local avec la rotation/trim habituelle
+    commitWithEviction();
+    // 2) on pousse un snapshot budgeté pour revenir ≤45% côté distant
+    await pushRemote();
+  }catch(_){}
+}
+
 	
 // Au boot, charge local puis tente un pull remote en non-bloquant
 (function bootAutoLoad(){
@@ -918,6 +943,30 @@ async function gitLoad(hit){
   if (typeof saveDB==='function') saveDB();                 // :contentReference[oaicite:5]{index=5}
   if (typeof selectService==='function') selectService(svcKey); // :contentReference[oaicite:6]{index=6}
   if (typeof renderDecisions==='function') renderDecisions();   // :contentReference[oaicite:7]{index=7}
+}
+
+// ===== GDRIVE API (miroir Git) =====
+async function gdrvFind(atISO){
+  const wid = localStorage.getItem('paria_work_id') || currentWorkId();
+  try{
+    // Spec attendue: route=gdrive_find ?work_id=...&at=YYYY-MM-DD[THH:mm]
+    // Retour: { ok:true, hit:{ ts, id?, json_path }, prev_ts?, next_ts? }
+    const j = await gasGet('gdrive_find', { work_id: wid, at: atISO });
+    if (!j || !j.ok) return null;
+    return j;
+  }catch(_){ return null; }
+}
+
+async function gdrvLoad(hit){
+  const wid = localStorage.getItem('paria_work_id') || currentWorkId();
+  const svcKey = (wid.split('|')[1]||'').trim() || currentService();
+  const qs = { work_id: wid };
+  if (hit?.id) qs.id = hit.id;
+  if (hit?.json_path) qs.json_path = hit.json_path;
+  // Spec attendue: route=gdrive_load ?work_id=...&id=...|json_path=...
+  const j = await gasGet('gdrive_load', qs);
+  if (!j || !j.ok) return null;
+  return j; // { ok:true, state:{ charter, items, decisions, scenarios } }
 }
 
 // ===== Boutons UI =====
@@ -3159,6 +3208,8 @@ if (typeof renderCardsTab !== 'function') {
   }, true);
 })();
 
+
+	
 // (PATCH) Journal: clic sur "Restaurer"
 (function(){
   const host = document.getElementById('decisions');
@@ -3180,83 +3231,127 @@ if (typeof renderCardsTab !== 'function') {
     const pane = document.getElementById('journalDetail'); 
     if (!pane) return;
 
-    // === Restaurer un scénario ===
-    const bSc = ev.target.closest('.ev-restore-scenario');
-    if (bSc){
-      ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
-      const sid  = bSc.dataset.sid;
-      const ent  = findEntryByRef('scenario_deleted','sid',sid) || findEntryByRef('scenario_created','sid',sid);
-      let snap   = ent?.snap;
+	 // === Restaurer un scénario ===
+	  const bSc = ev.target.closest('.ev-restore-scenario');
+	  if (bSc){
+	    ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+	    await ensurePreRestoreBudget(); // NEW: pré-budget
+	    const sid  = bSc.dataset.sid;
+	    const ent  = findEntryByRef('scenario_deleted','sid',sid) || findEntryByRef('scenario_created','sid',sid);
+	    let snap   = ent?.snap;
+	
+	    // Git d'abord
+	    if (!snap && ent?.ts && typeof gitFind==='function' && typeof gitLoad==='function'){
+	      try{
+	        const widDate = parseWorkId()?.date || '';
+	        const atISO   = parseFrAt(new Date(ent.ts).toLocaleString('sv-SE').replace(' ','T'), widDate);
+	        const prop    = await gitFind(atISO);
+	        if (prop?.hit){
+	          const state = (await gitLoad(prop.hit))?.state;
+	          const sc    = (state?.scenarios||[]).find(x=>String(x.id)===String(sid));
+	          if (sc) snap = { scenario: sc };
+	        }
+	      }catch(_){}
+	    }
+	    // Fallback Google si Git n'a rien
+	    if (!snap && ent?.ts && typeof gdrvFind==='function' && typeof gdrvLoad==='function'){
+	      try{
+	        const widDate = parseWorkId()?.date || '';
+	        const atISO   = parseFrAt(new Date(ent.ts).toLocaleString('sv-SE').replace(' ','T'), widDate);
+	        const prop    = await gdrvFind(atISO);
+	        if (prop?.hit){
+	          const state = (await gdrvLoad(prop.hit))?.state;
+	          const sc    = (state?.scenarios||[]).find(x=>String(x.id)===String(sid));
+	          if (sc) snap = { scenario: sc };
+	        }
+	      }catch(_){}
+	    }
+	
+	    const ok = (typeof restoreScenarioById==='function') ? restoreScenarioById(sid, snap) : false;
+	    if (ok) await consolidateAfterRestore(); // NEW: consolidation
+	    pane.textContent = ok ? 'Scénario restauré ✔' : 'Restauration impossible.';
+	    return;
+	  }
+	
+	  // === Restaurer une card ===
+	  const bCd = ev.target.closest('.ev-restore-card');
+	  if (bCd){
+	    ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+	    await ensurePreRestoreBudget(); // NEW: pré-budget
+	    const cid  = bCd.dataset.cid;
+	    const ent  = findEntryByRef('card_deleted','card_id',cid);
+	    let snap   = ent?.snap;
+	
+	    if (!snap && ent?.ts && typeof gitFind==='function' && typeof gitLoad==='function'){
+	      try{
+	        const widDate = parseWorkId()?.date || '';
+	        const atISO   = parseFrAt(new Date(ent.ts).toLocaleString('sv-SE').replace(' ','T'), widDate);
+	        const prop    = await gitFind(atISO);
+	        if (prop?.hit){
+	          const state = (await gitLoad(prop.hit))?.state;
+	          const it    = (state?.items||[]).find(x=>String(x.id)===String(cid));
+	          if (it) snap = { card: it };
+	        }
+	      }catch(_){}
+	    }
+	    // Fallback Google
+	    if (!snap && ent?.ts && typeof gdrvFind==='function' && typeof gdrvLoad==='function'){
+	      try{
+	        const widDate = parseWorkId()?.date || '';
+	        const atISO   = parseFrAt(new Date(ent.ts).toLocaleString('sv-SE').replace(' ','T'), widDate);
+	        const prop    = await gdrvFind(atISO);
+	        if (prop?.hit){
+	          const state = (await gdrvLoad(prop.hit))?.state;
+	          const it    = (state?.items||[]).find(x=>String(x.id)===String(cid));
+	          if (it) snap = { card: it };
+	        }
+	      }catch(_){}
+	    }
+	
+	    const ok = (typeof restoreCardById==='function') ? restoreCardById(cid, snap) : false;
+	    if (ok) await consolidateAfterRestore(); // NEW: consolidation
+	    pane.textContent = ok ? 'Card restaurée ✔' : 'Restauration impossible.';
+	    return;
+	  }
 
-      // si pas de snapshot local → on va le chercher dans Git au plus proche de ent.ts
-      if (!snap && ent?.ts && typeof gitFind==='function' && typeof gitLoad==='function'){
-        try{
-          const widDate = parseWorkId()?.date || '';
-          const atISO   = parseFrAt(new Date(ent.ts).toLocaleString('sv-SE').replace(' ','T'), widDate);
-          const prop    = await gitFind(atISO);            // propose le meilleur hit à >= ent.ts
-          if (prop?.hit){
-            const state = (await gitLoad(prop.hit))?.state;
-            const sc    = (state?.scenarios||[]).find(x=>String(x.id)===String(sid));
-            if (sc) snap = { scenario: sc };
-          }
-        }catch(_){}
-      }
-
-      const ok = (typeof restoreScenarioById==='function') ? restoreScenarioById(sid, snap) : false;
-      pane.textContent = ok ? 'Scénario restauré ✔' : 'Restauration impossible.';
-      return;
-    }
-
-    // === Restaurer une card ===
-    const bCd = ev.target.closest('.ev-restore-card');
-    if (bCd){
-      ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
-      const cid  = bCd.dataset.cid;
-      const ent  = findEntryByRef('card_deleted','card_id',cid);
-      let snap   = ent?.snap;
-
-      if (!snap && ent?.ts && typeof gitFind==='function' && typeof gitLoad==='function'){
-        try{
-          const widDate = parseWorkId()?.date || '';
-          const atISO   = parseFrAt(new Date(ent.ts).toLocaleString('sv-SE').replace(' ','T'), widDate);
-          const prop    = await gitFind(atISO);
-          if (prop?.hit){
-            const state = (await gitLoad(prop.hit))?.state;
-            const it    = (state?.items||[]).find(x=>String(x.id)===String(cid));
-            if (it) snap = { card: it };
-          }
-        }catch(_){}
-      }
-
-      const ok = (typeof restoreCardById==='function') ? restoreCardById(cid, snap) : false;
-      pane.textContent = ok ? 'Card restaurée ✔' : 'Restauration impossible.';
-      return;
-    }
-
-    // === Restaurer le charter ===
-    const bCh = ev.target.closest('.ev-restore-charter');
-    if (bCh){
-      ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
-      const eid  = bCh.dataset.eid;
-      const ent  = findEntryById(eid);
-      let snap   = ent?.snap;
-
-      if (!snap && ent?.ts && typeof gitFind==='function' && typeof gitLoad==='function'){
-        try{
-          const widDate = parseWorkId()?.date || '';
-          const atISO   = parseFrAt(new Date(ent.ts).toLocaleString('sv-SE').replace(' ','T'), widDate);
-          const prop    = await gitFind(atISO);
-          if (prop?.hit){
-            const state = (await gitLoad(prop.hit))?.state;
-            if (state?.charter) snap = { charter: state.charter };
-          }
-        }catch(_){}
-      }
-
-      const ok = ent && typeof restoreCharter==='function' ? restoreCharter(snap) : false;
-      pane.textContent = ok ? 'Charter restauré ✔' : 'Restauration impossible.';
-      return;
-    }
+		// === Restaurer le charter ===
+	  const bCh = ev.target.closest('.ev-restore-charter');
+	  if (bCh){
+	    ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+	    await ensurePreRestoreBudget(); // NEW: pré-budget
+	    const eid  = bCh.dataset.eid;
+	    const ent  = findEntryById(eid);
+	    let snap   = ent?.snap;
+	
+	    if (!snap && ent?.ts && typeof gitFind==='function' && typeof gitLoad==='function'){
+	      try{
+	        const widDate = parseWorkId()?.date || '';
+	        const atISO   = parseFrAt(new Date(ent.ts).toLocaleString('sv-SE').replace(' ','T'), widDate);
+	        const prop    = await gitFind(atISO);
+	        if (prop?.hit){
+	          const state = (await gitLoad(prop.hit))?.state;
+	          if (state?.charter) snap = { charter: state.charter };
+	        }
+	      }catch(_){}
+	    }
+	    // Fallback Google
+	    if (!snap && ent?.ts && typeof gdrvFind==='function' && typeof gdrvLoad==='function'){
+	      try{
+	        const widDate = parseWorkId()?.date || '';
+	        const atISO   = parseFrAt(new Date(ent.ts).toLocaleString('sv-SE').replace(' ','T'), widDate);
+	        const prop    = await gdrvFind(atISO);
+	        if (prop?.hit){
+	          const state = (await gdrvLoad(prop.hit))?.state;
+	          if (state?.charter) snap = { charter: state.charter };
+	        }
+	      }catch(_){}
+	    }
+	
+	    const ok = ent && typeof restoreCharter==='function' ? restoreCharter(snap) : false;
+	    if (ok) await consolidateAfterRestore(); // NEW: consolidation
+	    pane.textContent = ok ? 'Charter restauré ✔' : 'Restauration impossible.';
+	    return;
+	  }	  
   }, true);
 })();
 
@@ -3357,6 +3452,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
