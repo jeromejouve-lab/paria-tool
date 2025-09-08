@@ -797,7 +797,7 @@ async function consolidateAfterRestore(){
 (function bootAutoLoad(){
 
 	// Au boot, garde 60 si quota serré
-	();
+	bootQuotaGuard();
   loadDB();
 	if (typeof updateStorageBadge==='function') updateStorageBadge();
   // rendu initial
@@ -3551,6 +3551,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
