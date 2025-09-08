@@ -122,6 +122,12 @@
 
 //   Hide Journal export/import buttons  
 #tab-analyse button[id*="Export"], #tab-analyse button[id*="Import"]{ display:none !important; }
+
+#quotaBadge { padding:2px 6px; border-radius:6px; font-variant-numeric: tabular-nums; }
+#quotaBadge.ok   { background:#e6ffed; color:#036b26; }
+#quotaBadge.warn { background:#fff7e6; color:#8a5a00; }
+#quotaBadge.hot  { background:#ffecec; color:#7d0f0f; }
+	
 </style>
 </head>
 <body>
@@ -140,6 +146,8 @@
     <button id="btnRotateGuest" disabled>Changer lien</button>
     <button id="btnEndSess" disabled>Terminer</button>
     <span id="liveState" class="pill">offline</span>
+		<span id="quotaBadge" class="quota ok" title="Taille base locale"></span>
+
   </div>
   <div class="spacer"></div>
   <div class="ctx">Service:
@@ -553,56 +561,108 @@ function saveDB(){
   ensureMeta(S);
   capJournal(S, 60);
 
-  try {
-    localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
-    return true;
-  } catch(e1) {
-    try {
-      if (typeof emergencyTrim==='function') emergencyTrim(S);
-      capJournal(S, 60);
-      localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
-      return true;
-    } catch(e2) {
-      try {
-        if (typeof purgeJournalHard==='function') purgeJournalHard();
-        capJournal(S, 40);
-        localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
-        return true;
-      } catch(e3) {
-        // filet final: réduction progressive pour passer sous ~4.5 Mo
-        try{
-          const MAX = 4.5 * 1024 * 1024;
-          const shrinkUntilFits = ()=>{
-            let blob = JSON.stringify(S);
-            if (blob.length <= MAX) return true;
-            (S.items||[]).forEach(it=>{
-              if (Array.isArray(it.comments) && it.comments.length>100) it.comments = it.comments.slice(-100);
-              if (Array.isArray(it.propositions)) it.propositions.forEach(p=>{
-                if (Array.isArray(p.sims) && p.sims.length>20) p.sims = p.sims.slice(-20);
-              });
-            });
-            blob = JSON.stringify(S);
-            if (blob.length <= MAX) return true;
-            if (Array.isArray(S.items) && S.items.length>200) {
-              S.items = S.items.slice(-200);
-              blob = JSON.stringify(S);
-              if (blob.length <= MAX) return true;
-            }
-            return false;
-          };
-          if (shrinkUntilFits()){
-            localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
-            return true;
-          }
-        }catch(_){}
-        console.error('saveDB: quota insurmontable', e3);
- 				if (!silent) alert("Stockage local saturé. Exportez/épurez puis réessayez.");
-        return false;
-      }
-    }
-  }
+	// après setItem réussi, MM dans saveDB/commitWithEviction :
+	try {
+	  localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+	  updateStorageBadge?.();
+	
+	  // seuils: 75% => offload doux, 90% => offload + évacuation non-actif immédiate
+	  const max = (window.MAX_LOCAL_BYTES || 4*1024*1024);
+	  const used = approxUsedBytes();
+	  const ratio = used / max;
+	
+	  if (ratio > 0.90){
+	    // 1/ push distant (Git/Google) du non-actif
+	    if (typeof pushRemote==='function') { try{ pushRemote({ onlyNonActive:true }); }catch(_){ } }
+	    // 2/ éviction locale non-active (actifs intouchables)
+	    try { shedNonActiveLocally(); } catch(_){}
+	    updateStorageBadge?.();
+	  } else if (ratio > 0.75){
+	    // plancher préventif, non bloquant
+	    if (typeof pushRemote==='function') { try{ pushRemote({ onlyNonActive:true }); }catch(_){ } }
+	  }
+	
+	  return true;
+	} catch(e) {
+		
+	  try {
+	    localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+	    return true;
+	  } catch(e1) {
+	    try {
+	      if (typeof emergencyTrim==='function') emergencyTrim(S);
+	      capJournal(S, 60);
+	      localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+	      return true;
+	    } catch(e2) {
+	      try {
+	        if (typeof purgeJournalHard==='function') purgeJournalHard();
+	        capJournal(S, 40);
+	        localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+	        return true;
+	      } catch(e3) {
+	        // filet final: réduction progressive pour passer sous ~4.5 Mo
+	        try{
+	          const MAX = 4.5 * 1024 * 1024;
+	          const shrinkUntilFits = ()=>{
+	            let blob = JSON.stringify(S);
+	            if (blob.length <= MAX) return true;
+	            (S.items||[]).forEach(it=>{
+	              if (Array.isArray(it.comments) && it.comments.length>100) it.comments = it.comments.slice(-100);
+	              if (Array.isArray(it.propositions)) it.propositions.forEach(p=>{
+	                if (Array.isArray(p.sims) && p.sims.length>20) p.sims = p.sims.slice(-20);
+	              });
+	            });
+	            blob = JSON.stringify(S);
+	            if (blob.length <= MAX) return true;
+	            if (Array.isArray(S.items) && S.items.length>200) {
+	              S.items = S.items.slice(-200);
+	              blob = JSON.stringify(S);
+	              if (blob.length <= MAX) return true;
+	            }
+	            return false;
+	          };
+	          if (shrinkUntilFits()){
+	            localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+	            return true;
+	          }
+	        }catch(_){}
+	        console.error('saveDB: quota insurmontable', e3);
+	 				if (!silent) alert("Stockage local saturé. Exportez/épurez puis réessayez.");
+	        return false;
+	      }
+	    }
+	  }
+	  throw e;
+	}
 }
 
+// Eviction locale du non-actif (après pushRemote OK, mais on reste tolérant)
+window.shedNonActiveLocally = function(){
+  const S = (typeof svc==='function') ? svc() : {};
+  const A = activeSet();
+
+  // items (cards)
+  if (Array.isArray(S.items)){
+    S.items = S.items.filter(it=>{
+      const id = String(it.id||it.cid||it._id);
+      return A.openCardIds.includes(id) || String(A.projectedCardId||'')===id;
+    });
+  }
+
+  // scenarios
+  if (Array.isArray(S.scenarios)){
+    S.scenarios = S.scenarios.filter(sc=> String(sc.id||sc.sid) === String(A.scenarioId||''));
+  }
+
+  // charter : s’il n’est pas "ouvert", on le garde (actif = ouvert) => donc charter reste si actif
+  // Si tu veux l’évincer quand il n’est pas “ouvert”, décommente la ligne suivante :
+  // if (!A.charter) S.charter = (S.charter && S.charter.__active) ? S.charter : {};
+
+  // journal : on garde tout (règle produit)
+  // meta intacte
+  if (typeof touch==='function') touch(); // flush sans bloquer
+};
 	
 let __touch_t, __sync_t;
 function touch(){
@@ -2897,6 +2957,62 @@ if (typeof renderCardsTab !== 'function') {
     setTimeout(decorateDecisionsList, 0);
   }
 
+	// ==== Active set + budget helpers (léger, pur JS) ====
+	window.activeSet = function(){
+	  const S = (typeof svc==='function') ? svc() : {};
+	  const active = {
+	    charter: !!document.getElementById('tab-capture')?.classList.contains('active'),
+	    scenarioId: (function(){
+	      // essaie de trouver un scénario ouvert dans l'UI (ex: [data-sid].active)
+	      const el = document.querySelector('#tab-scenarios [data-sid].active');
+	      return el ? String(el.dataset.sid) : null;
+	    })(),
+	    projectedCardId: (function(){
+	      const el = document.querySelector('#projCard [data-pin-card-id].active') 
+	              || document.querySelector('#cardView [data-card-id]');
+	      return el ? String(el.dataset.pinCardId || el.dataset.cardId) : null;
+	    })(),
+	    openCardIds: Array.from(document.querySelectorAll('#cards [data-card-id].open, #cards [data-card-id].active'))
+	                    .map(n=>String(n.dataset.cardId)),
+	    journal: true
+	  };
+	
+	  // cartes référencées par le scénario actif (si snapshot référentiel dispo)
+	  if (active.scenarioId){
+	    const sc = (S.scenarios||[]).find(x=>String(x.id||x.sid)===active.scenarioId);
+	    const ids = new Set(active.openCardIds);
+	    (sc?.snapshot?.items||[]).forEach(it=> ids.add(String(it.id||it.card_id||it.cid||it._id)));
+	    active.openCardIds = Array.from(ids);
+	  }
+	  return active;
+	};
+	
+	window.approxUsedBytes = function(){
+	  try{
+	    let sum = 0;
+	    for (let i=0;i<localStorage.length;i++){
+	      const k = localStorage.key(i);
+	      if (!k) continue;
+	      const v = localStorage.getItem(k)||'';
+	      sum += k.length + v.length;
+	    }
+	    return sum;
+	  }catch(_){ return 0; }
+	};
+	
+	window.updateStorageBadge = function(){
+	  const max = (window.MAX_LOCAL_BYTES || 4*1024*1024);
+	  const used = approxUsedBytes();
+	  const ratio = used / max; // 0..1
+	  const badge = document.getElementById('quotaBadge');
+	  if (!badge) return; // pas d’UI => no-op
+	  badge.textContent = Math.round(ratio*100)+'%';
+	  badge.classList.remove('ok','warn','hot');
+	  if (ratio < 0.40) badge.classList.add('ok');
+	  else if (ratio < 0.75) badge.classList.add('warn');
+	  else badge.classList.add('hot');
+	};
+	
   // API centrale (n’écrase pas une éventuelle version existante)
   if (!window.logEvent){
     window.logEvent = function(action, {refs={}, info={}, snap={}}={}){
@@ -3379,6 +3495,7 @@ function restoreCardById(cid, snap){
       touch();
       if (typeof renderCardsTab==='function') renderCardsTab();
       if (typeof renderProjectorInline==='function') renderProjectorInline();
+			if (typeof showTab==='function') showTab('cards');
     }
     return true;
   }
@@ -3390,6 +3507,8 @@ function restoreCardById(cid, snap){
   touch();
   if (typeof renderCardsTab==='function') renderCardsTab();
   if (typeof renderProjectorInline==='function') renderProjectorInline();
+	if (typeof showTab==='function') showTab('cards');
+
   return true;
 }
 
@@ -3452,6 +3571,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
