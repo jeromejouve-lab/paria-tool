@@ -411,16 +411,6 @@ function trimAllClientDBs(limit=60){
   }
 }
 
-function bootQuotaGuard(){
-  try {
-    // test minimal d’écriture ; si ça plante, on purge toutes les bases
-    localStorage.setItem('__paria_quota_probe', '1');
-    localStorage.removeItem('__paria_quota_probe');
-  } catch {
-    trimAllClientDBs(60);
-  }
-}
-
 function loadDB(){
   const cid = getClientId();
   let raw = localStorage.getItem(storageKey(cid));
@@ -555,7 +545,7 @@ function preTrimForQuota(S, limit=60){
   return S;
 }
 
-function saveDB(){
+function saveDB(silent=false){
   const S = (typeof svc==='function') ? svc() : window.__svc;
   if (!S) return true; // rien à écrire = OK
   ensureMeta(S);
@@ -709,6 +699,7 @@ async function pullRemote(){
   if (remoteRev > localRev){
     window.__svc = remote;
     localStorage.setItem(storageKey(getClientId()), JSON.stringify(remote));
+		if (typeof updateStorageBadge==='function') updateStorageBadge();
     if (typeof renderAll==='function') renderAll();
     else {
       if (typeof renderDecisions==='function') renderDecisions();
@@ -806,8 +797,9 @@ async function consolidateAfterRestore(){
 (function bootAutoLoad(){
 
 	// Au boot, garde 60 si quota serré
-	bootQuotaGuard();
+	();
   loadDB();
+	if (typeof updateStorageBadge==='function') updateStorageBadge();
   // rendu initial
   if (typeof renderAll==='function') renderAll();
   else {
@@ -837,7 +829,7 @@ async function switchClient(id){
   const key = storageKey(id);
   const raw = localStorage.getItem(key);
   window.__svc = raw ? JSON.parse(raw) : { decisions:[], items:[], scenarios:[], charter:{}, meta:{ client_id:id, rev:0, updated_ts: now() } };
-
+	if (typeof updateStorageBadge==='function') updateStorageBadge();
   // 3) rendu
   if (typeof renderAll==='function') renderAll();
   else {
@@ -1431,6 +1423,7 @@ btnClear.onclick = () => {
   const el = document.getElementById('dump');
   if (el) el.textContent = '—';
   alert('Réinitialisé.');
+	if (typeof updateStorageBadge==='function') updateStorageBadge();
 };
 
 
@@ -2987,19 +2980,6 @@ if (typeof renderCardsTab !== 'function') {
 	  return active;
 	};
 	
-	window.approxUsedBytes = function(){
-	  try{
-	    let sum = 0;
-	    for (let i=0;i<localStorage.length;i++){
-	      const k = localStorage.key(i);
-	      if (!k) continue;
-	      const v = localStorage.getItem(k)||'';
-	      sum += k.length + v.length;
-	    }
-	    return sum;
-	  }catch(_){ return 0; }
-	};
-	
 	window.updateStorageBadge = function(){
 	  const max = (window.MAX_LOCAL_BYTES || 4*1024*1024);
 	  const used = approxUsedBytes();
@@ -3571,6 +3551,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
