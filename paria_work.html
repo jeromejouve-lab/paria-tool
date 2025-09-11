@@ -545,6 +545,9 @@ function preTrimForQuota(S, limit=60){
   return S;
 }
 
+
+
+	
 function saveDB(silent=false){
   const S = (typeof svc==='function') ? svc() : window.__svc;
   if (!S) return true; // rien à écrire = OK
@@ -561,16 +564,17 @@ function saveDB(silent=false){
 	  const used = approxUsedBytes();
 	  const ratio = used / max;
 	
-	  if (ratio > 0.90){
-	    // 1/ push distant (Git/Google) du non-actif
-	    if (typeof pushRemote==='function') { try{ pushRemote({ onlyNonActive:true }); }catch(_){ } }
-	    // 2/ éviction locale non-active (actifs intouchables)
-	    try { shedNonActiveLocally(); } catch(_){}
-	    updateStorageBadge?.();
-	  } else if (ratio > 0.75){
-	    // plancher préventif, non bloquant
-	    if (typeof pushRemote==='function') { try{ pushRemote({ onlyNonActive:true }); }catch(_){ } }
-	  }
+	  // nouveau garde-fou commun
+		const cfg = getProxyConfig();
+		const canRemote = !!(cfg.auto_sync && cfg.url && cfg.secret && typeof pushRemote === 'function');
+		
+		if (ratio > 0.90){
+		  if (canRemote) { pushRemote({ onlyNonActive:true }).catch(()=>{}); }
+		  try { shedNonActiveLocally(); } catch(_){}
+		  updateStorageBadge?.();
+		} else if (ratio > 0.75){
+		  if (canRemote) { pushRemote({ onlyNonActive:true }).catch(()=>{}); }
+		}
 	
 	  return true;
 	} catch(e) {
@@ -627,6 +631,9 @@ function saveDB(silent=false){
 	}
 }
 
+
+
+	
 // Eviction locale du non-actif (après pushRemote OK, mais on reste tolérant)
 window.shedNonActiveLocally = function(){
   const S = (typeof svc==='function') ? svc() : {};
@@ -713,7 +720,11 @@ async function pullRemote(){
 
 // (PATCH) pushRemote : avant d'envoyer à Google, on respecte un budget ~40–45%
 async function pushRemote(){
-  const S = (typeof svc==='function') ? svc() : window.__svc;
+ 	const cfg = getProxyConfig();
+  if (!cfg.url || !cfg.secret){
+    return { pushed:false, reason:'proxy_unconfigured' };
+  } 
+	const S = (typeof svc==='function') ? svc() : window.__svc;
   if (!S) return { pushed:false, reason:'no-state' };
   ensureMeta(S);
 
@@ -1675,27 +1686,23 @@ function bumpRev(S){
 }
 
 // ================== FETCH WRAPPER ==================
-async function proxyCall(action, payload){
+function proxyCall(route, payload){
   const cfg = getProxyConfig();
-  if (!cfg.url || !cfg.secret) throw new Error('Proxy non configuré (proxy_url / proxy_secret manquants).');
-
-  const body = {
-    action,
-    secret: cfg.secret,
-    client_id: getClientId(),
-    repo: cfg.repo,
-    payload,
-  };
-  const r = await fetch(cfg.url, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(`Proxy HTTP ${r.status}`);
-  const json = await r.json().catch(()=> ({}));
-  if (json.error) throw new Error(json.error);
-  return json;
+  if (!cfg.url || !cfg.secret){
+    // NO-OP gracieux : l’appelant reçoit un objet ok:false
+    return Promise.resolve({ ok:false, error:'proxy_unconfigured' });
+  }
+  try{
+    return fetch(cfg.url, {
+      method:'POST',
+      headers:{ 'Content-Type':'text/plain' },
+      body: JSON.stringify({ route, secret: cfg.secret, ...payload })
+    }).then(r=>r.json()).catch(e=>({ ok:false, error: e.message||String(e) }));
+  }catch(e){
+    return Promise.resolve({ ok:false, error: e.message||String(e) });
+  }
 }
+
 
 //   ====== DÉCISIONS ======  
 function renderLastItem(){
@@ -3551,6 +3558,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
