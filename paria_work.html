@@ -1686,20 +1686,36 @@ function bumpRev(S){
 }
 
 // ================== FETCH WRAPPER ==================
-function proxyCall(route, payload){
+async function proxyCall(action, payload){
   const cfg = getProxyConfig();
-  if (!cfg.url || !cfg.secret){
-    // NO-OP gracieux : l’appelant reçoit un objet ok:false
-    return Promise.resolve({ ok:false, error:'proxy_unconfigured' });
+
+  // Proxy absent → NO-OP gracieux, jamais de throw
+  if (!cfg.url || !cfg.secret) {
+    if (window.DEBUG) console.warn('proxyCall: proxy non configuré');
+    return { ok:false, error:'proxy_unconfigured' };
   }
-  try{
-    return fetch(cfg.url, {
+
+  const body = {
+    action,
+    secret:   cfg.secret,
+    client_id:getClientId(),
+    repo:     cfg.repo,
+    payload
+  };
+
+  try {
+    const r = await fetch(cfg.url, {
       method:'POST',
-      headers:{ 'Content-Type':'text/plain' },
-      body: JSON.stringify({ route, secret: cfg.secret, ...payload })
-    }).then(r=>r.json()).catch(e=>({ ok:false, error: e.message||String(e) }));
-  }catch(e){
-    return Promise.resolve({ ok:false, error: e.message||String(e) });
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) return { ok:false, error:`http_${r.status}` };
+
+    const json = await r.json().catch(()=> ({}));
+    if (json && json.error) return { ok:false, error: json.error };
+    return json || { ok:false, error:'empty_response' };
+  } catch (e){
+    return { ok:false, error: String(e && e.message || e) };
   }
 }
 
@@ -3558,6 +3574,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
