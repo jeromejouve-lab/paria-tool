@@ -368,9 +368,9 @@ const PROXY_SECRET_KEY = 'paria_proxy_secret';
 
 	
 
-function gasUrl(){ return (localStorage.getItem(GAS_KEY)||'').trim(); }
+
 function setGasUrl(u){ localStorage.setItem(GAS_KEY,u.trim()); }
-function proxySecret(){ return (localStorage.getItem(PROXY_SECRET_KEY)||'').trim(); }
+
 function setProxySecret(v){ localStorage.setItem(PROXY_SECRET_KEY, (v||'').trim()); }
 
 //   ====== ÉTAT LOCAL ======  
@@ -563,7 +563,7 @@ function saveDB(silent=false){
 	// après setItem réussi, MM dans saveDB/commitWithEviction :
 	try {
 	  const cid = currentClientId();
-		writeClientBlob(cid, window.__svc, { trim:true });
+		(cid, window.__svc, { trim:true });
 
 	  updateStorageBadge?.();
 	
@@ -598,7 +598,6 @@ function saveDB(silent=false){
 	      return true;
 	    } catch(e2) {
 	      try {
-	        if (typeof purgeJournalHard==='function') purgeJournalHard();
 	        capJournal(S, 40);
 	        localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
 	        return true;
@@ -1057,10 +1056,15 @@ async function gdrvLoad(hit){
 	  : Object.assign({ charter:{}, items:[], decisions:[], scenarios:[] }, (j && j.state) ? j.state : {});
 	
 	// Range + pré-trim + persist local sous budget (même pattern que btnLoad Google)
-	window.db = window.db || { services:{} };
-	db.services = db.services || {};
-	db.services[svcKey] = (typeof preTrimForQuota === 'function') ? preTrimForQuota(data) : data;
-	
+	if (typeof mergeIntoCurrentService === 'function') {
+	  mergeIntoCurrentService(data);
+	} else {
+		// fallback ultra-legacy si jamais merge* n’existe pas (sécurité)
+		window.db = window.db || { services:{} };
+		db.services = db.services || {};
+		db.services[svcKey] = data;
+	}
+
 	// Bascule service courant pour que save/commit cible le bon S
 	if (typeof selectService === 'function') selectService(svcKey);
 	
@@ -1446,13 +1450,7 @@ btnLoad.onclick = async ()=>{
 			mergeIntoCurrentService(data);   // <- centralisé & orienté service
 			selectService && selectService(currentServiceKey());
 			commitWithEviction && commitWithEviction();
-      db.services[svcKey] = preTrimForQuota(data);
-      // bascule d'abord le service courant pour que saveDB() cappe le bon S
-      if (typeof selectService === 'function') selectService(svcKey);
-			if (!commitWithEviction()){
-			  gsState.textContent='Erreur quota';
-			  return; // on a déjà alerté dans saveDB()
-			}
+
       gsState.textContent='Chargé ✔';
     } else if(j.ok && !j.data){
       gsState.textContent='Aucune donnée';
@@ -1785,15 +1783,7 @@ function mergeIntoCurrentService(SvcPart){
 function setSettings(x){
   localStorage.setItem('paria_settings', JSON.stringify(x||{}));
 }
-function getProxyConfig(){
-  const st = getSettings();
-  return {
-    url: st.proxy_url,           // ex: "https://script.google.com/macros/s/XXX/exec"
-    secret: st.proxy_secret,     // PROXY_SECRET
-    repo: st.repo || "paria-audits", // optionnel, si utile côté Apps Script
-    auto_sync: st.auto_sync !== false, // true par défaut
-  };
-}
+
 function now(){ return Date.now(); }
 
 // ================== CLIENT NAMESPACE ==================
@@ -2627,10 +2617,6 @@ function renderScList(){
 		// (plus tard) sim_create ...
 	}
 
-  function chip(t){ return `<span style="border:1px solid #ddd;border-radius:999px;padding:2px 8px;margin-right:6px">${t}</span>`; }
-  
-	function stateBadge(p){ const map={discovery:'#A8B0B9',pret_projecteur:'#2463EB',en_validation:'#F59E0B',bouclee:'#10B981'}; const c=map[p]||'#A8B0B9'; return `<span style="background:${c};color:#fff;border-radius:6px;padding:2px 8px">${p||'—'}</span>`; }
-  
 	function block(label,arr){ 
 		if(!Array.isArray(arr)||!arr.length) return ''; 
 		return `<div><strong>${label}</strong><ul style="margin:6px 0 12px 22px">${arr.slice(0,6).map(x=>`<li>${x}</li>`).join('')}</ul></div>`;
@@ -2866,57 +2852,22 @@ function safeLog(type, payload){
 	  }
 	} catch (e) {}
 }
+	
 function download(name, content){
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([content], {type:'text/plain;charset=utf-8'}));
   a.download = name; a.click(); URL.revokeObjectURL(a.href);
 }
 
-
 // ===== SETTINGS CORE (config centrale) =====
 const SETTINGS_KEY = 'paria_settings';
 const SETTINGS_MIG_FLAG = 'paria_settings_migrated_v1';
-
-function migrateSettingsOnce(){
-  try{
-    if (localStorage.getItem(SETTINGS_MIG_FLAG)) return;
-
-    const st = getSettings(); // { ... } (ta fonction existante)
-    let changed = false;
-
-    // legacy
-    const legacyUrl    = (localStorage.getItem(GAS_KEY)||'').trim();            // 'paria_gas_url'
-    const legacySecret = (localStorage.getItem(PROXY_SECRET_KEY)||'').trim();   // 'paria_proxy_secret'
-    const legacyWid    = (localStorage.getItem(WORK_KEY)||'').trim();           // 'paria_work_id'
-    const legacyRepo   = (localStorage.getItem(GH_REPO)||'').trim();            // 'paria_gh_repo' si utilisé
-
-    if (!st.proxy_url && legacyUrl){ st.proxy_url = legacyUrl; changed = true; }
-    if (!st.proxy_secret && legacySecret){ st.proxy_secret = legacySecret; changed = true; }
-    if (!st.work_id && legacyWid){ st.work_id = legacyWid; changed = true; }
-    if (!st.repo && legacyRepo){ st.repo = legacyRepo; changed = true; }
-    if (typeof st.auto_sync === 'undefined'){ st.auto_sync = true; changed = true; }
-    if (!st.repo){ st.repo = 'paria-audits'; changed = true; } // défaut cohérent avec ton code
-
-    if (changed) setSettings(st);
-    localStorage.setItem(SETTINGS_MIG_FLAG, '1');
-  }catch(e){
-    console.warn('migrateSettingsOnce:', e);
-  }
-}
 
 /**
  * Écrit la config proxy centralisée dans paria_settings (sans toucher aux autres clés).
  * Respecte tes noms existants: proxy_url / proxy_secret / repo / auto_sync
  */
-function setProxyConfig({ url, secret, auto_sync, repo }){
-  const st = getSettings();
-  if (typeof url       !== 'undefined') st.proxy_url    = (url||'').trim();
-  if (typeof secret    !== 'undefined') st.proxy_secret = (secret||'').trim();
-  if (typeof auto_sync !== 'undefined') st.auto_sync    = !!auto_sync;
-  if (typeof repo      !== 'undefined') st.repo         = (repo||'paria-audits').trim();
-  setSettings(st);
-  return st;
-}
+
 function settingsDefaults(){
   return {
     meta:{ ver:1, updated_ts: Date.now() },
@@ -2994,6 +2945,7 @@ function getProxyConfig(){
   };
 }
 function gasUrl(){ return settingsLoad().proxy.url || ''; }
+	
 function proxySecret(){ return settingsLoad().proxy.secret || ''; }
 
 // helpers de haut niveau (à appeler depuis l’UI “Réglages”)
@@ -3863,6 +3815,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
