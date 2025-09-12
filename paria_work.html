@@ -412,7 +412,13 @@ function trimAllClientDBs(limit=60){
 }
 
 function loadDB(){
-  const cid = getClientId();
+ 	const cid = currentClientId();
+	const S   = readClientBlob(cid);     // <- centralisé
+	ensureMeta && ensureMeta(S);
+	window.__svc = S;
+	if (typeof addClient==='function') addClient(cid);
+	return S;
+
   let raw = localStorage.getItem(storageKey(cid));
 
   if (!raw){
@@ -556,7 +562,9 @@ function saveDB(silent=false){
 
 	// après setItem réussi, MM dans saveDB/commitWithEviction :
 	try {
-	  localStorage.setItem(storageKey(getClientId()), JSON.stringify(S));
+	  const cid = currentClientId();
+		writeClientBlob(cid, window.__svc, { trim:true });
+
 	  updateStorageBadge?.();
 	
 	  // seuils: 75% => offload doux, 90% => offload + évacuation non-actif immédiate
@@ -1000,13 +1008,26 @@ async function gitLoad(hit){
   // Normalisation comme pour btnLoad Google
 	const data = j.state.charter ? j.state : Object.assign({charter:{},items:[],decisions:[],scenarios:[]}, (j.state||{}));
 
-  // Range dans le service courant et persist local
-  window.db = window.db || { services:{} };
-  db.services = db.services || {};
-  db.services[svcKey] = data;
-  if (typeof saveDB==='function') saveDB();                 // :contentReference[oaicite:5]{index=5}
-  if (typeof selectService==='function') selectService(svcKey); // :contentReference[oaicite:6]{index=6}
-  if (typeof renderDecisions==='function') renderDecisions();   // :contentReference[oaicite:7]{index=7}
+  // Range dans le service courant (merge) + persist local avec budget
+	if (typeof mergeIntoCurrentService === 'function') {
+	  mergeIntoCurrentService(data);      // fusionne charter/items/decisions/scenarios
+	} else {
+	  // fallback legacy si merge* n'existe pas encore
+	  window.db = window.db || { services:{} };
+	  db.services = db.services || {};
+	  db.services[svcKey] = data;
+	}
+	
+	if (typeof selectService === 'function') selectService(svcKey);
+	if (typeof commitWithEviction === 'function') {
+	  commitWithEviction();               // saveDB + trims + badge
+	} else if (typeof saveDB === 'function') {
+	  saveDB();
+	}
+	
+	if (typeof renderDecisions === 'function') renderDecisions();
+	if (typeof refreshDump === 'function') refreshDump();
+
 }
 
 // ===== GDRIVE API (miroir Git) =====
@@ -1030,7 +1051,33 @@ async function gdrvLoad(hit){
   // Spec attendue: route=gdrive_load ?work_id=...&id=...|json_path=...
   const j = await gasGet('gdrive_load', qs);
   if (!j || !j.ok) return null;
-  return j; // { ok:true, state:{ charter, items, decisions, scenarios } }
+  // Normalisation (miroir de gitLoad/btnLoad)
+	const data = (j && j.state && j.state.charter)
+	  ? j.state
+	  : Object.assign({ charter:{}, items:[], decisions:[], scenarios:[] }, (j && j.state) ? j.state : {});
+	
+	// Range + pré-trim + persist local sous budget (même pattern que btnLoad Google)
+	window.db = window.db || { services:{} };
+	db.services = db.services || {};
+	db.services[svcKey] = (typeof preTrimForQuota === 'function') ? preTrimForQuota(data) : data;
+	
+	// Bascule service courant pour que save/commit cible le bon S
+	if (typeof selectService === 'function') selectService(svcKey);
+	
+	// Persistance avec budget si possible
+	if (typeof commitWithEviction === 'function') {
+	  commitWithEviction();
+	} else if (typeof saveDB === 'function') {
+	  saveDB();
+	}
+	
+	// UI
+	if (typeof renderDecisions === 'function') renderDecisions();
+	if (typeof refreshDump === 'function') refreshDump();
+	
+	// On renvoie un objet de même forme que gitLoad pour homogénéité
+	return { ok: true, state: data };
+
 }
 
 // ===== Boutons UI =====
@@ -1396,6 +1443,9 @@ btnLoad.onclick = async ()=>{
 		    );
       db.services = db.services || {};
       // pré-trim côté charge (cap journal + micro-réduction si besoin)
+			mergeIntoCurrentService(data);   // <- centralisé & orienté service
+			selectService && selectService(currentServiceKey());
+			commitWithEviction && commitWithEviction();
       db.services[svcKey] = preTrimForQuota(data);
       // bascule d'abord le service courant pour que saveDB() cappe le bon S
       if (typeof selectService === 'function') selectService(svcKey);
@@ -1645,7 +1695,90 @@ async function runSim(item, prop, comment){
   }
 }
 // ================== PROXY / GIT SYNC ==================
-function getSettings(){
+// ===== CLIENT STORE CORE (blob local du client) =====
+
+function currentClientId(){
+  // priorité au manifeste central (paria_settings.work.client)
+  const st = (typeof getSettings==='function') ? getSettings() : {};
+  if (st && st.work && st.work.client) return st.work.client;
+  // fallback : parse depuis le WID si présent
+  if (typeof currentWorkId==='function'){
+    const wid = currentWorkId()||'';
+    const parts = wid.split('|'); // ACME|Compta|2025-08-31
+    if (parts[0]) return parts[0].trim();
+  }
+  return 'CLIENT';
+}
+
+function currentServiceKey(){
+  const st = (typeof getSettings==='function') ? getSettings() : {};
+  if (st && st.work && st.work.service) return st.work.service;
+  if (typeof currentWorkId==='function'){
+    const wid = currentWorkId()||'';
+    const parts = wid.split('|');
+    if (parts[1]) return parts[1].trim();
+  }
+  return (typeof currentService==='function' ? currentService() : 'Compta');
+}
+
+function clientStorageKey(cid){
+  return 'paria_db_' + (cid||currentClientId());
+}
+
+function normalizeClientBlob(S, cid){
+  const out = S && typeof S==='object' ? S : {};
+  out.charter   = out.charter   || {};
+  out.items     = Array.isArray(out.items)     ? out.items     : [];
+  out.scenarios = Array.isArray(out.scenarios) ? out.scenarios : [];
+  out.decisions = Array.isArray(out.decisions) ? out.decisions : [];
+  out.meta = Object.assign({ client_id: cid||currentClientId(), rev:0, updated_ts: Date.now() }, out.meta||{});
+  return out;
+}
+
+function readClientBlob(cid){
+  const key = clientStorageKey(cid);
+  const raw = localStorage.getItem(key);
+  return normalizeClientBlob(raw ? JSON.parse(raw) : {}, cid);
+}
+
+function writeClientBlob(cid, S, opts={}){
+  const key = clientStorageKey(cid);
+  const safe = normalizeClientBlob(S, cid);
+  // trim léger (journal/volumineux) si demandé
+  const final = (opts && opts.trim===false) ? safe : (typeof preTrimForQuota==='function' ? preTrimForQuota(safe) : safe);
+  localStorage.setItem(key, JSON.stringify(final));
+  if (typeof updateStorageBadge==='function') updateStorageBadge();
+  return final;
+}
+
+/**
+ * Remplace en mémoire le service courant par SvcPart pour le service ciblé.
+ * SvcPart = { charter?, items?, scenarios?, decisions? } (les champs absents ne sont pas touchés)
+ */
+function mergeIntoCurrentService(SvcPart){
+  const cid = currentClientId();
+  const blob = readClientBlob(cid);
+  const svcKey = currentServiceKey();
+
+  // Si tu utilises un bucket par service dans blob.services, on le respecte :
+  if (blob.services && typeof blob.services==='object'){
+    const cur = blob.services[svcKey] || { charter:{}, items:[], scenarios:[], decisions:[] };
+    blob.services[svcKey] = Object.assign({}, cur, SvcPart||{});
+  }else{
+    // blob “flat” (global)
+    const flat = normalizeClientBlob(blob, cid);
+    if (SvcPart.charter)   flat.charter   = SvcPart.charter;
+    if (SvcPart.items)     flat.items     = SvcPart.items;
+    if (SvcPart.scenarios) flat.scenarios = SvcPart.scenarios;
+    if (SvcPart.decisions) flat.decisions = SvcPart.decisions;
+    Object.assign(blob, flat);
+  }
+
+  return writeClientBlob(cid, blob, { trim:true });
+}
+
+	
+	function getSettings(){
   // Adapter si tu as déjà un objet settings global
   try{ return JSON.parse(localStorage.getItem('paria_settings')||'{}'); }catch(e){ return {}; }
 }
@@ -3730,6 +3863,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
