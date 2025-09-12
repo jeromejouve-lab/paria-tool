@@ -418,87 +418,6 @@ function loadDB(){
 	window.__svc = S;
 	if (typeof addClient==='function') addClient(cid);
 	return S;
-
-  let raw = localStorage.getItem(storageKey(cid));
-
-  if (!raw){
-    const legacy = localStorage.getItem('paria_db');
-    if (legacy){
-      try{
-        let payload = legacy;
-        try{
-          const obj = JSON.parse(legacy);
-          const k = (typeof currentService==='function' ? currentService() : null) || 'Compta';
-          const svcOnly = obj?.services && obj.services[k] ? obj.services[k] : obj;
-          if (svcOnly && Array.isArray(svcOnly.decisions) && svcOnly.decisions.length > 60){
-            svcOnly.decisions = svcOnly.decisions.slice(-60);
-          }
-          payload = JSON.stringify({
-            charter:   svcOnly.charter||{},
-            items:     Array.isArray(svcOnly.items) ? svcOnly.items : [],
-            scenarios: Array.isArray(svcOnly.scenarios) ? svcOnly.scenarios : [],
-            decisions: Array.isArray(svcOnly.decisions) ? svcOnly.decisions : [],
-            meta: { client_id: cid, rev: 0, updated_ts: Date.now() }
-          });
-        }catch(_){ /* non-JSON : on garde legacy brute */ }
-
-        // ÉCRITURE + suppression plus sûre (voir point 1)
-        try {
-          localStorage.setItem(storageKey(cid), payload);
-          localStorage.removeItem('paria_db');
-          raw = payload;
-        } catch(eSet){
-          localStorage.removeItem('paria_db');
-          localStorage.setItem(storageKey(cid), payload);
-          raw = payload;
-        }
-
-      }catch(e){
-        console.warn('Migration paria_db -> namespaced échouée', e);
-        try {
-          const obj = JSON.parse(legacy);
-          const k = (typeof currentService==='function' ? currentService() : null) || 'Compta';
-          const svcOnly = obj?.services && obj.services[k] ? obj.services[k] : obj;
-          const minimal = JSON.stringify({
-            charter:   svcOnly.charter || {},
-            items:     Array.isArray(svcOnly.items) ? svcOnly.items : [],
-            scenarios: Array.isArray(svcOnly.scenarios) ? svcOnly.scenarios : [],
-            decisions: [], // vide pour passer le quota
-            meta: { client_id: cid, rev: 0, updated_ts: Date.now() }
-          });
-          // même séquence “écrire puis supprimer” si possible
-          try {
-            localStorage.setItem(storageKey(cid), minimal);
-            localStorage.removeItem('paria_db');
-            raw = minimal;
-          } catch(eMin){
-            localStorage.removeItem('paria_db');
-            localStorage.setItem(storageKey(cid), minimal);
-            raw = minimal;
-          }
-        } catch(e2){
-          // ultime fallback : session seulement
-          raw = legacy;
-        }
-      }
-    }
-  }
-
-  // Chargement défensif + recapping
-  let S;
-  try {
-    S = raw ? JSON.parse(raw) : { decisions:[], items:[], scenarios:[], charter:{}, meta:{ client_id:cid, rev:0, updated_ts: Date.now() } };
-  } catch {
-    S = { decisions:[], items:[], scenarios:[], charter:{}, meta:{ client_id:cid, rev:0, updated_ts: Date.now() } };
-  }
-  if (Array.isArray(S.decisions) && S.decisions.length > 60){
-    S.decisions = S.decisions.slice(-60);
-  }
-
-  ensureMeta(S);
-  window.__svc = S;
-  addClient(cid);
-  return S;
 }
 
 function dedupeJournal(list){
@@ -3815,6 +3734,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
