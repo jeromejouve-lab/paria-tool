@@ -365,12 +365,12 @@ const GH_OWNER='paria_gh_owner', GH_REPO='paria_gh_repo', GH_BRANCH='paria_gh_br
 const GH_API = 'https://api.github.com';
 const DEFAULT_GAS_URL = ''; // optionnel: mets ici ton URL Apps Script pour préremplir au 1er chargement
 const PROXY_SECRET_KEY = 'paria_proxy_secret';
-
 	
-
+// Settings core (dispo avant toute utilisation)
+const SETTINGS_KEY = 'paria_settings';
+const SETTINGS_MIG_FLAG = 'paria_settings_migrated_v1';
 
 function setGasUrl(u){ localStorage.setItem(GAS_KEY,u.trim()); }
-
 function setProxySecret(v){ localStorage.setItem(PROXY_SECRET_KEY, (v||'').trim()); }
 
 //   ====== ÉTAT LOCAL ======  
@@ -2778,10 +2778,6 @@ function download(name, content){
   a.download = name; a.click(); URL.revokeObjectURL(a.href);
 }
 
-// ===== SETTINGS CORE (config centrale) =====
-const SETTINGS_KEY = 'paria_settings';
-const SETTINGS_MIG_FLAG = 'paria_settings_migrated_v1';
-
 /**
  * Écrit la config proxy centralisée dans paria_settings (sans toucher aux autres clés).
  * Respecte tes noms existants: proxy_url / proxy_secret / repo / auto_sync
@@ -3734,6 +3730,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
