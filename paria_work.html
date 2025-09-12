@@ -809,6 +809,7 @@ async function consolidateAfterRestore(){
 
 	// Au boot, garde 60 si quota serré
 	bootQuotaGuard();
+  migrateSettingsOnce(); // centralise proxy_url, proxy_secret, work_id, repo, auto_sync
   loadDB();
 	if (typeof updateStorageBadge==='function') updateStorageBadge();
   // rendu initial
@@ -1353,6 +1354,12 @@ btnSaveCfg.onclick = ()=>{
   setGasUrl(document.getElementById('GAS_URL').value);
   localStorage.setItem('paria_public_base', document.getElementById('public_base').value.trim());
   localStorage.setItem(PROXY_SECRET_KEY, document.getElementById('PROXY_SECRET').value.trim());
+	setProxyConfig({
+    url: document.getElementById('GAS_URL').value,
+    secret: document.getElementById('PROXY_SECRET').value,
+    auto_sync: true,
+    repo: localStorage.getItem(GH_REPO)||'paria-audits'
+  });
   alert('Réglages sauvegardés.');
 };
 
@@ -2732,6 +2739,155 @@ function download(name, content){
   a.download = name; a.click(); URL.revokeObjectURL(a.href);
 }
 
+
+// ===== SETTINGS CORE (config centrale) =====
+const SETTINGS_KEY = 'paria_settings';
+const SETTINGS_MIG_FLAG = 'paria_settings_migrated_v1';
+
+function migrateSettingsOnce(){
+  try{
+    if (localStorage.getItem(SETTINGS_MIG_FLAG)) return;
+
+    const st = getSettings(); // { ... } (ta fonction existante)
+    let changed = false;
+
+    // legacy
+    const legacyUrl    = (localStorage.getItem(GAS_KEY)||'').trim();            // 'paria_gas_url'
+    const legacySecret = (localStorage.getItem(PROXY_SECRET_KEY)||'').trim();   // 'paria_proxy_secret'
+    const legacyWid    = (localStorage.getItem(WORK_KEY)||'').trim();           // 'paria_work_id'
+    const legacyRepo   = (localStorage.getItem(GH_REPO)||'').trim();            // 'paria_gh_repo' si utilisé
+
+    if (!st.proxy_url && legacyUrl){ st.proxy_url = legacyUrl; changed = true; }
+    if (!st.proxy_secret && legacySecret){ st.proxy_secret = legacySecret; changed = true; }
+    if (!st.work_id && legacyWid){ st.work_id = legacyWid; changed = true; }
+    if (!st.repo && legacyRepo){ st.repo = legacyRepo; changed = true; }
+    if (typeof st.auto_sync === 'undefined'){ st.auto_sync = true; changed = true; }
+    if (!st.repo){ st.repo = 'paria-audits'; changed = true; } // défaut cohérent avec ton code
+
+    if (changed) setSettings(st);
+    localStorage.setItem(SETTINGS_MIG_FLAG, '1');
+  }catch(e){
+    console.warn('migrateSettingsOnce:', e);
+  }
+}
+
+/**
+ * Écrit la config proxy centralisée dans paria_settings (sans toucher aux autres clés).
+ * Respecte tes noms existants: proxy_url / proxy_secret / repo / auto_sync
+ */
+function setProxyConfig({ url, secret, auto_sync, repo }){
+  const st = getSettings();
+  if (typeof url       !== 'undefined') st.proxy_url    = (url||'').trim();
+  if (typeof secret    !== 'undefined') st.proxy_secret = (secret||'').trim();
+  if (typeof auto_sync !== 'undefined') st.auto_sync    = !!auto_sync;
+  if (typeof repo      !== 'undefined') st.repo         = (repo||'paria-audits').trim();
+  setSettings(st);
+  return st;
+}
+function settingsDefaults(){
+  return {
+    meta:{ ver:1, updated_ts: Date.now() },
+    proxy:{ url:'', secret:'', auto_sync:true, repo:'paria-audits' },
+    work:{ client:'', service:'', work_id:'', restore_at:'' },
+    ui:{ last_tab:'cards', date:'', time:'' },
+    budgets:{ max_local_bytes: 4*1024*1024, warn:0.75, cap:0.90, target:0.45 },
+    clients:{} // index léger (optionnel, laissé vide ici)
+  };
+}
+
+function settingsLoad(){
+  try{
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    const base = settingsDefaults();
+    if(!raw) return base;
+    const cur = JSON.parse(raw);
+    // merge superficiel (suffisant pour la conf)
+    return Object.assign(base, cur, {
+      proxy:   Object.assign(base.proxy,   cur.proxy||{}),
+      work:    Object.assign(base.work,    cur.work||{}),
+      ui:      Object.assign(base.ui,      cur.ui||{}),
+      budgets: Object.assign(base.budgets, cur.budgets||{}),
+      clients: Object.assign(base.clients, cur.clients||{}),
+      meta:    Object.assign(base.meta,    cur.meta||{})
+    });
+  }catch(_){ return settingsDefaults(); }
+}
+
+function settingsSave(patch){
+  const cur = settingsLoad();
+  // patch attendu de la forme { proxy:{...} } ou { work:{...} } etc.
+  const next = Object.assign({}, cur);
+  if (patch.proxy)   next.proxy   = Object.assign({}, cur.proxy,   patch.proxy);
+  if (patch.work)    next.work    = Object.assign({}, cur.work,    patch.work);
+  if (patch.ui)      next.ui      = Object.assign({}, cur.ui,      patch.ui);
+  if (patch.budgets) next.budgets = Object.assign({}, cur.budgets, patch.budgets);
+  if (patch.clients) next.clients = Object.assign({}, cur.clients, patch.clients);
+  if (patch.meta)    next.meta    = Object.assign({}, cur.meta,    patch.meta);
+  next.meta.updated_ts = Date.now();
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+  return next;
+}
+
+function migrateSettingsOnce(){
+  if (localStorage.getItem(SETTINGS_MIG_FLAG)) return;
+  const cur = settingsLoad();
+  // anciennes clés possibles
+  const legacyUrl = localStorage.getItem('paria_gas_url')
+                  || localStorage.getItem('proxy_url')
+                  || localStorage.getItem('paria_proxy_url')
+                  || localStorage.getItem('paria_proxy_base') || '';
+  const legacySecret = localStorage.getItem('paria_proxy_secret')
+                    || localStorage.getItem('proxy_secret')
+                    || localStorage.getItem('PROXY_SECRET') || '';
+  const legacyWorkId = localStorage.getItem('paria_work_id') || '';
+  // si conf vide, on injecte les valeurs héritées
+  const patch = {};
+  if (!cur.proxy.url && legacyUrl)     (patch.proxy = (patch.proxy||{})).url    = legacyUrl;
+  if (!cur.proxy.secret && legacySecret)(patch.proxy = (patch.proxy||{})).secret = legacySecret;
+  if (!cur.work.work_id && legacyWorkId)(patch.work  = (patch.work ||{})).work_id = legacyWorkId;
+
+  if (Object.keys(patch).length) settingsSave(patch);
+  localStorage.setItem(SETTINGS_MIG_FLAG, '1');
+}
+
+// wrappers rétro-compatibles (signatures conservées)
+function getProxyConfig(){
+  const st = settingsLoad();
+  return {
+    url: st.proxy.url,
+    secret: st.proxy.secret,
+    auto_sync: st.proxy.auto_sync !== false,
+    repo: st.proxy.repo || 'paria-audits'
+  };
+}
+function gasUrl(){ return settingsLoad().proxy.url || ''; }
+function proxySecret(){ return settingsLoad().proxy.secret || ''; }
+
+// helpers de haut niveau (à appeler depuis l’UI “Réglages”)
+function setProxyConfig({url, secret, auto_sync, repo}){
+  return settingsSave({ proxy:{ 
+    url: (url||'').trim(), 
+    secret: (secret||'').trim(),
+    auto_sync: (auto_sync!==false), 
+    repo: (repo||'paria-audits').trim()
+  }});
+}
+function setWorkContext({client, service, work_id, restore_at}){
+  return settingsSave({ work:{
+    client: client||'',
+    service: service||'',
+    work_id: work_id || '',
+    restore_at: restore_at || ''
+  }});
+}
+function setUiDateTime({date, time}){
+  return settingsSave({ ui:{
+    date: date||'',
+    time: time||''
+  }});
+}
+	
+
 // ---------- Pinned ----------
 function isPinned(id){ const s=svc(); return String(s.pinned_card||'')===String(id); }
 function pinCardInProjector(id){
@@ -3574,6 +3730,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
