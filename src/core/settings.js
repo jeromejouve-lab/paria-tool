@@ -1,7 +1,7 @@
 const SETTINGS_KEY='paria_settings';
 
 function defaults(){
-  return { proxy:{url:'',secret:'',auto_sync=true,repo:'paria-audits'},
+  return { proxy:{url:'',secret:'',auto_sync:true,repo:'paria-audits'},
            work:{client:'',service:'',work_id:'',restore_at:'',last_proposed:{},last_restored:{}},
            ui:{last_tab:'settings',date:'',time:''},
            budgets:{max_local_bytes:4*1024*1024,warn:0.75,cap:0.90,target:0.45},
@@ -59,3 +59,4 @@ export function setWorkContext({client,service,work_id,restore_at}){
 export const currentWorkId=()=>settingsLoad().work.work_id||'';
 export const currentClient=()=>settingsLoad().work.client||'ACME';
 export const currentService=()=>settingsLoad().work.service||'Compta';
+
