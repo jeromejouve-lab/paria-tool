@@ -1735,38 +1735,34 @@ function bumpRev(S){
 }
 
 // ================== FETCH WRAPPER ==================
-async function proxyCall(action, payload){
+async function proxyCall(route, payload){
   const cfg = getProxyConfig();
-
-  // Proxy absent → NO-OP gracieux, jamais de throw
   if (!cfg.url || !cfg.secret) {
     if (window.DEBUG) console.warn('proxyCall: proxy non configuré');
     return { ok:false, error:'proxy_unconfigured' };
   }
 
-  const body = {
-    action,
-    secret:   cfg.secret,
-    client_id:getClientId(),
-    repo:     cfg.repo,
-    payload
-  };
+  const body = Object.assign(
+    {},
+    { route, secret: cfg.secret, client_id: getClientId(), repo: cfg.repo },
+    (payload && typeof payload === 'object') ? payload : {}
+  );
 
   try {
     const r = await fetch(cfg.url, {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify(body),
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' }, // <- évite le pré-vol
+      body: JSON.stringify(body)
     });
     if (!r.ok) return { ok:false, error:`http_${r.status}` };
-
     const json = await r.json().catch(()=> ({}));
     if (json && json.error) return { ok:false, error: json.error };
     return json || { ok:false, error:'empty_response' };
   } catch (e){
-    return { ok:false, error: String(e && e.message || e) };
+    return { ok:false, error: String((e && e.message) || e) };
   }
 }
+
 
 
 //   ====== DÉCISIONS ======  
@@ -3730,6 +3726,7 @@ function nextScenarioId(){
 
 </body>
 </html>
+
 
 
 
