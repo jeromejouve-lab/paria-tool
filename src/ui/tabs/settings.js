@@ -4,6 +4,8 @@ import { combineAt } from '../../core/time.js';
 import { diag, gitFind, gdrvFind, gitLoad, gdrvLoad, loadFromGoogle } from '../../core/net.js';
 import { mergeIntoCurrentService } from '../../core/store.js';
 import { appendJournal } from '../../domain/journal.js';
+import { readClientBlob } from '../../core/store.js';
+import { saveToGoogle, gitSnapshot } from '../../core/net.js';
 
 export function mountSettingsTab(host){
   host.innerHTML = `
@@ -49,6 +51,7 @@ export function mountSettingsTab(host){
       <legend>Charger depuis Google (état courant)</legend>
       <div class="btns">
         <button id="btnLoad">Charger</button>
+        <button id="btnSnapshotNow" class="secondary">Snapshot maintenant</button>
         <span id="loadState" class="pill mono">—</span>
       </div>
     </fieldset>
@@ -117,4 +120,15 @@ export function mountSettingsTab(host){
     mergeIntoCurrentService(j.data); await commitWithEviction(); appendJournal({ts:Date.now(),type:'load',target:{kind:'state',id:'*'}});
     host.querySelector('#loadState').textContent='OK';
   };
+
+  host.querySelector('#btnSnapshotNow').onclick=async ()=>{
+    const wid=currentWorkId(); if(!wid){alert('Lier un WorkID');return;}
+    const state = readClientBlob();
+    host.querySelector('#loadState').textContent='Snapshot…';
+    try{ await saveToGoogle(wid, state); }catch{}
+    const gh = await gitSnapshot(wid, state);
+    host.querySelector('#loadState').textContent = (gh && gh.ok) ? 'Snapshot OK' : 'Snapshot Drive OK';
+  };
+  
 }
+
