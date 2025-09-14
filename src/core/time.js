@@ -1,5 +1,4 @@
 // src/core/time.js — utilitaires temps compatibles avec l'UI
-// (ajout de addWeeks + helpers semaine ISO, sans rien casser)
 
 export const now = () => Date.now();
 
@@ -31,7 +30,7 @@ export function endOfWeek(date) {
   return d;
 }
 
-// numéro de semaine ISO + id "YYYY-Www"
+// numéro & libellé de semaine ISO
 function isoWeekParts(date) {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   const dayNum = d.getUTCDay() || 7; // 1..7 (lundi..dimanche)
@@ -44,6 +43,8 @@ export function weekId(date = new Date()) {
   const { year, week } = isoWeekParts(new Date(date));
   return `${year}-W${String(week).padStart(2, '0')}`;
 }
+// alias attendu par l'UI
+export const isoWeekString = weekId;
 
 // formats pratiques
 export function formatISODate(date = new Date()) {
@@ -60,5 +61,7 @@ INDEX time.js:
 - startOfWeek(date)
 - endOfWeek(date)
 - weekId(date)
+- isoWeekString(date)  // alias de weekId
 - formatISODate(date)
 */
+
