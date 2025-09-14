@@ -1,7 +1,7 @@
+// src/core/budget.js — quotas 45/70/90 (local = courant)
 import { readClientBlob } from './store.js';
 
-// Quotas: 45% (préventif), 70% (alerte), 90% (alerte forte, on stoppe nouveaux snapshots locaux)
-const LIMIT_BYTES = 5 * 1024 * 1024; // 5MB par défaut, ajuste si besoin
+const LIMIT_BYTES = 5 * 1024 * 1024; // 5MB par défaut (ajuste si besoin)
 
 export function getBudget(){
   try{
@@ -12,16 +12,14 @@ export function getBudget(){
 }
 
 export function watchBudget(cb){
-  // L’UI actuelle affiche déjà des hints ; on laisse un hook léger
   const tick = ()=> cb(getBudget().usage);
   tick();
   const id = setInterval(tick, 3000);
   return ()=> clearInterval(id);
 }
 
-export function commitWithEviction(){
-  // À 90%+: tu continues le courant, mais pas de nouveaux snapshots locaux (à gérer côté écrans de backup)
-}
+// à 90%: on continue le "courant", mais on ne crée plus de nouveaux snapshots locaux (les snapshots sont de toute façon remote-only ici)
+export function commitWithEviction(){}
 
 /*
 INDEX budget.js:
