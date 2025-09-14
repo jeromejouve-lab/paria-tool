@@ -1,10 +1,10 @@
-// Réglages minimalistes : on respecte ton arbo et on ne force rien côté UI.
+// src/core/settings.js — réglages (client/service + endpoints), workId
 const KEY = 'paria::connections';
 const DEFAULT = {
   client: 'default-client',
   service: 'default-service',
   endpoints: {
-    llm: (window.PARIA_LLM_ENDPOINT || ''), // tu peux définir window.PARIA_LLM_ENDPOINT dans index.html
+    llm: (window.PARIA_LLM_ENDPOINT || ''), // renseigne via index.html si besoin
     git: '',
     gdrive: ''
   },
