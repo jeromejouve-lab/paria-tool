@@ -1,13 +1,11 @@
-// src/core/store.js — blob local "courant"
+// src/core/store.js — blob local "courant" (aucun snapshot local)
 import { getSettings, getWorkId } from './settings.js';
 
 const LS_PREFIX = 'paria::';
 
 export function keyForCurrent(){
-  const s = getSettings();
-  return `${LS_PREFIX}${getWorkId(s)}`;
+  return `${LS_PREFIX}${getWorkId(getSettings())}`;
 }
-
 export function ensureBaseBlob(){
   const k = keyForCurrent();
   if (!localStorage.getItem(k)){
@@ -22,16 +20,12 @@ export function ensureBaseBlob(){
   }
   return readClientBlob();
 }
-
 export function readClientBlob(){
-  const k = keyForCurrent();
-  const raw = localStorage.getItem(k);
+  const raw = localStorage.getItem(keyForCurrent());
   return raw ? JSON.parse(raw) : ensureBaseBlob();
 }
-
 export function writeClientBlob(blob){
-  const k = keyForCurrent();
-  localStorage.setItem(k, JSON.stringify(blob));
+  localStorage.setItem(keyForCurrent(), JSON.stringify(blob));
   return true;
 }
 
