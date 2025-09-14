@@ -1,17 +1,18 @@
-// src/core/net.js — LLM + snapshots Git/Drive (+ alias compat) + diag()
+// src/core/net.js — LLM + Snapshots Git/Drive (+ alias complets) + diag()
 import { getSettings, getWorkId } from './settings.js';
 
-async function postJSON(url, data){
+// ——— HTTP util ———
+export async function postJSON(url, data){
   const res = await fetch(url, {
     method:'POST',
-    headers:{'Content-Type':'application/json'},
+    headers:{ 'Content-Type':'application/json' },
     body: JSON.stringify(data)
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
-// ---------- Diag (attendu par l’UI) ----------
+// ——— Diag attendu par l’UI ———
 export async function diag(){
   const { endpoints } = getSettings();
   const out = {
@@ -25,55 +26,43 @@ export async function diag(){
   if (out.llm.configured) {
     try {
       const r = await postJSON(endpoints.llm, { mode:'ping' });
-      out.llm.ok = true;
-      out.llm.detail = typeof r === 'object' ? 'pong' : String(r);
-    } catch (e) {
-      out.llm.ok = false; out.llm.detail = e?.message || 'fail';
-    }
+      out.llm.ok = true; out.llm.detail = typeof r === 'object' ? 'pong' : String(r);
+    } catch (e) { out.llm.ok = false; out.llm.detail = e?.message || 'fail'; }
   }
-
   // Git
   if (out.git.configured) {
     try {
       const r = await postJSON(endpoints.git, { action:'ping', workId: out.workId });
-      out.git.ok = true;
-      out.git.detail = typeof r === 'object' ? 'pong' : String(r);
-    } catch (e) {
-      out.git.ok = false; out.git.detail = e?.message || 'fail';
-    }
+      out.git.ok = true; out.git.detail = typeof r === 'object' ? 'pong' : String(r);
+    } catch (e) { out.git.ok = false; out.git.detail = e?.message || 'fail'; }
   }
-
   // Google Drive
   if (out.gdrive.configured) {
     try {
       const r = await postJSON(endpoints.gdrive, { action:'ping', workId: out.workId });
-      out.gdrive.ok = true;
-      out.gdrive.detail = typeof r === 'object' ? 'pong' : String(r);
-    } catch (e) {
-      out.gdrive.ok = false; out.gdrive.detail = e?.message || 'fail';
-    }
+      out.gdrive.ok = true; out.gdrive.detail = typeof r === 'object' ? 'pong' : String(r);
+    } catch (e) { out.gdrive.ok = false; out.gdrive.detail = e?.message || 'fail'; }
   }
-
   return out;
 }
 
-// ---------- LLM ----------
+// ——— LLM ———
 export async function postLLM(payload){
   const { endpoints } = getSettings();
   if (!endpoints.llm) return { ok:false, data:[] };
   const out = await postJSON(endpoints.llm, payload);
   return { ok:true, data: out };
 }
-export async function llmParia({title='',content='',tags=[],components=['P','A','R','I']}){
+export async function llmParia({ title='', content='', tags=[], components=['P','A','R','I'] }){
   const r = await postLLM({ mode:'paria', title, content, tags, components });
   return r.ok && Array.isArray(r.data) ? r.data : [];
 }
 
-// ---------- Git ----------
+// ——— Git (remote snapshots) ———
 export async function listGitSnapshots(workId=getWorkId()){
   const { endpoints } = getSettings(); if (!endpoints.git) return [];
   const out = await postJSON(endpoints.git, { action:'snapshot.list', workId });
-  return Array.isArray(out)? out: [];
+  return Array.isArray(out) ? out : [];
 }
 export async function pushSnapshotToGit(snapshot, workId=getWorkId()){
   const { endpoints } = getSettings(); if (!endpoints.git) throw new Error('Git endpoint not configured');
@@ -82,19 +71,15 @@ export async function pushSnapshotToGit(snapshot, workId=getWorkId()){
 }
 export async function fetchSnapshotFromGit(id, workId=getWorkId()){
   const { endpoints } = getSettings(); if (!endpoints.git) throw new Error('Git endpoint not configured');
-  const out = await postJSON(endpoints.git, { action:'snapshot.fetch', workId, payload:{id} });
+  const out = await postJSON(endpoints.git, { action:'snapshot.fetch', workId, payload:{ id } });
   return out && out.blob ? out : null;
 }
-// alias compat
-export const gitFind = listGitSnapshots;
-export const gitSnapshot = pushSnapshotToGit;
-export const gitLoad = fetchSnapshotFromGit;
 
-// ---------- Google Drive ----------
+// ——— Google Drive (remote snapshots) ———
 export async function listDriveSnapshots(workId=getWorkId()){
   const { endpoints } = getSettings(); if (!endpoints.gdrive) return [];
   const out = await postJSON(endpoints.gdrive, { action:'snapshot.list', workId });
-  return Array.isArray(out)? out: [];
+  return Array.isArray(out) ? out : [];
 }
 export async function pushSnapshotToDrive(snapshot, workId=getWorkId()){
   const { endpoints } = getSettings(); if (!endpoints.gdrive) throw new Error('Drive endpoint not configured');
@@ -103,18 +88,49 @@ export async function pushSnapshotToDrive(snapshot, workId=getWorkId()){
 }
 export async function fetchSnapshotFromDrive(id, workId=getWorkId()){
   const { endpoints } = getSettings(); if (!endpoints.gdrive) throw new Error('Drive endpoint not configured');
-  const out = await postJSON(endpoints.gdrive, { action:'snapshot.fetch', workId, payload:{id} });
+  const out = await postJSON(endpoints.gdrive, { action:'snapshot.fetch', workId, payload:{ id } });
   return out && out.blob ? out : null;
 }
-// alias compat
-export const gdrvFind = listDriveSnapshots;
+
+// ——— Alias compatibles (UI variées) ———
+// *Git*
+export const gitFind     = listGitSnapshots;
+export const gitSnapshot = pushSnapshotToGit;
+export const gitLoad     = fetchSnapshotFromGit;
+// *Drive*
+export const gdrvFind     = listDriveSnapshots;
 export const gdrvSnapshot = pushSnapshotToDrive;
-export const gdrvLoad = fetchSnapshotFromDrive;
+export const gdrvLoad     = fetchSnapshotFromDrive;
+
+// ——— Alias “haut niveau” souvent importés par les UIs ———
+export async function saveToGit(snapshot){ return pushSnapshotToGit(snapshot); }
+export async function saveToGoogle(snapshot){ return pushSnapshotToDrive(snapshot); }
+
+/** Charge un snapshot Git par id et renvoie l’objet JSON (si blob JSON) */
+export async function loadFromGit(id){
+  const snap = await fetchSnapshotFromGit(id);
+  if (!snap || !snap.blob) return null;
+  try { return JSON.parse(snap.blob); } catch { return null; }
+}
+
+/** Charge un snapshot Drive par id et renvoie l’objet JSON (si blob JSON) */
+export async function loadFromGoogle(id){
+  const snap = await fetchSnapshotFromDrive(id);
+  if (!snap || !snap.blob) return null;
+  try { return JSON.parse(snap.blob); } catch { return null; }
+}
+
+// *Listes simplifiées*
+export const listGit    = listGitSnapshots;
+export const listGoogle = listDriveSnapshots;
 
 /*
 INDEX net.js:
+- postJSON()
 - diag()
-- postLLM()/llmParia()
-- listGitSnapshots/pushSnapshotToGit/fetchSnapshotFromGit (+ alias gitFind/gitSnapshot/gitLoad)
-- listDriveSnapshots/pushSnapshotToDrive/fetchSnapshotFromDrive (+ alias gdrvFind/gdrvSnapshot/gdrvLoad)
+- LLM: postLLM(), llmParia()
+- Git: listGitSnapshots(), pushSnapshotToGit(), fetchSnapshotFromGit()
+       alias: gitFind, gitSnapshot, gitLoad, saveToGit(), loadFromGit(), listGit
+- Drive: listDriveSnapshots(), pushSnapshotToDrive(), fetchSnapshotFromDrive()
+        alias: gdrvFind, gdrvSnapshot, gdrvLoad, saveToGoogle(), loadFromGoogle(), listGoogle
 */
