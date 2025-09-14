@@ -1,3 +1,4 @@
+// src/domain/journal.js — append/list scope client/service
 import { readClientBlob, writeClientBlob } from '../core/store.js';
 import { getSettings } from '../core/settings.js';
 
