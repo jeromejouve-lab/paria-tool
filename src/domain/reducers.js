@@ -3,8 +3,26 @@ import { commitWithEviction } from '../core/budget.js';
 import { newCard, normalizeCard, newScenario, normalizeScenario } from './models.js';
 import { appendJournal } from './journal.js';
 
-export function getCharter(){const s=readClientBlob(); return s.charter||{title:'',content:'',tags:[],state:{deleted:false,updated_ts:Date.now()}};}
-export function saveCharter(patch){ const s=readClientBlob(); s.charter={...(s.charter||{title:'',content:'',tags:[],state:{deleted:false,updated_ts:Date.now()}}),...patch}; s.charter.state={...(s.charter.state||{}),updated_ts:Date.now()}; writeClientBlob(s); commitWithEviction(); appendJournal({ts:Date.now(),type:'update',target:{kind:'charter',id:'charter'}}); return s.charter;}
+export function getCharter(){
+  const s = readClientBlob();
+  return (s && s.charter) ? s.charter : {
+    title: '',
+    content: '',
+    tags: [],
+    state: { deleted: false, updated_ts: Date.now() }
+  };
+}
+
+export function saveCharter(patch){
+  const s = readClientBlob();
+  const base = s.charter || { title:'', content:'', tags:[], state:{ deleted:false, updated_ts:Date.now() } };
+  s.charter = { ...base, ...patch };
+  s.charter.state = { ...(s.charter.state||{}), updated_ts: Date.now() };
+  writeClientBlob(s); commitWithEviction();
+  appendJournal({ ts: Date.now(), type: 'update', target: { kind: 'charter', id: 'charter' }, payload: patch });
+  return s.charter;
+}
+
 export const softDeleteCharter=()=>saveCharter({state:{deleted:true,updated_ts:Date.now()}}); 
 export const restoreCharter=()=>saveCharter({state:{deleted:false,updated_ts:Date.now()}});
 
@@ -71,14 +89,39 @@ export function importCharterSelectedToCurrentCard(){
   const tgt = (s.items||[]).find(x => x.id === targetId);
   const newContent = (tgt?.content || '') + bullets;
   updateCard(targetId, { content: newContent });
-  appendJournal({ts:Date.now(), type:'update', target:{kind:'card', id:targetId}, payload:{from:'charter.ai', count:selected.length}});
+
+  appendJournal({
+    ts: Date.now(),
+    type: 'update',
+    target: { kind: 'card', id: targetId },
+    payload: { from: 'charter.ai', count: selected.length }
+  });
   return true;
 }
+
 
 export function listCards(mode='active',q=''){const s=readClientBlob(); let arr=Array.isArray(s.items)?s.items.map(normalizeCard):[]; if(mode==='active')arr=arr.filter(c=>!c.state.deleted); if(mode==='deleted')arr=arr.filter(c=>c.state.deleted);
   if(mode==='recent')arr=arr.sort((a,b)=>b.state.updated_ts-a.state.updated_ts).slice(0,50); if(q){const qq=q.toLowerCase(); arr=arr.filter(c=>(c.title||'').toLowerCase().includes(qq)||(c.content||'').toLowerCase().includes(qq));} return arr;}
 export function createCard(part={}){const s=readClientBlob(); const c=newCard(part); s.items=Array.isArray(s.items)?s.items:[]; s.items.push(c); writeClientBlob(s); appendJournal({ts:Date.now(),type:'create',target:{kind:'card',id:c.id},payload:{title:c.title}}); return c;}
-export function updateCard(id,patch){const s=readClientBlob(); const i=s.items.findIndex(x=>x.id===id); if(i<0)return null; const cur=normalizeCard(s.items[i]); const next=normalizeCard({...cur,...patch,state:{...cur.state,updated_ts:Date.now()}}); s.items[i]=next; writeClientBlob(s); appendJournal({ts:Date.now(),type:'update',target:{kind:'card',id},payload:patch}); return next;}
+export function updateCard(id, patch){
+  const s = readClientBlob();
+  s.items = Array.isArray(s.items) ? s.items : [];
+  const idx = s.items.findIndex(c => c.id === id);
+  if (idx < 0) return null;
+
+  const cur = s.items[idx] || {};
+  const next = {
+    ...cur,
+    ...patch,
+    state: { ...(cur.state||{}), updated_ts: Date.now() }
+  };
+  s.items[idx] = next;
+
+  writeClientBlob(s); commitWithEviction();
+  appendJournal({ ts: Date.now(), type: 'update', target: { kind: 'card', id }, payload: patch });
+  return next;
+}
+
 export const softDeleteCard=id=>updateCard(id,{state:{deleted:true,deleted_at:Date.now(),deleted_by:'me',updated_ts:Date.now()}});
 export const restoreCard=id=>updateCard(id,{state:{deleted:false,deleted_at:0,deleted_by:'',updated_ts:Date.now()}});
 export function openCard(id){const s=readClientBlob(); s.meta=s.meta||{}; const open=new Set(s.meta.open_cards||[]); open.add(id); s.meta.open_cards=[...open]; writeClientBlob(s); commitWithEviction();}
@@ -101,4 +144,5 @@ export function removeCardFromScenario(scId,cardId){const s=readClientBlob(); co
 export function duplicateCurrentCard(){const s=readClientBlob(); const sess=s.meta?.session; const baseId=sess?.card_id; const src=(Array.isArray(s.items)?s.items:[]).find(x=>x.id===baseId)||(Array.isArray(s.items)?s.items[0]:null); if(!src)return null; const copy={...src,id:undefined,title:(src.title||'Card')+' (copie)',state:{...src.state,deleted:false,updated_ts:Date.now()}}; return createCard(copy);}
 export function importSelectedToCurrentCard(scId){const s=readClientBlob(); const sess=s.meta?.session; const targetId=sess?.card_id||((s.items||[]).find(x=>!x.state?.deleted)?.id); if(!targetId)return null; const sc=(Array.isArray(s.scenarios)?s.scenarios:[]).find(x=>x.id===scId); if(!sc)return null; const byId=new Map((s.items||[]).map(c=>[c.id,c])); const selected=[]; (sc.items||[]).forEach(it=>{const c=byId.get(it.card_id); if(!c)return; (c.ai||[]).forEach(a=>{if(a.selected||a.status==='ok')selected.push({card:c.title,text:a.text});});});
   if(!selected.length){updateCard(targetId,{}); return true;} const tgt=(s.items||[]).find(x=>x.id===targetId); const bullets='\n\n## Propositions importées\n'+selected.map(x=>`- (${x.card}) ${x.text}`).join('\n')+'\n'; const newContent=(tgt?.content||'')+bullets; updateCard(targetId,{content:newContent}); appendJournal({ts:Date.now(),type:'update',target:{kind:'card',id:targetId},payload:{imported_from:scId,count:selected.length}}); return true;}
+
 
