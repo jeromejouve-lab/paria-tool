@@ -1,7 +1,9 @@
 import {
   getCharter, saveCharter, softDeleteCharter, restoreCharter,
-  addAItoCharter, toggleCharterAIStatus, setCharterAISelected, importCharterSelectedToCurrentCard
+  addAItoCharter, toggleCharterAIStatus, setCharterAISelected,
+  importCharterSelectedToCurrentCard, removeCharterAI
 } from '../../domain/reducers.js';
+
 
 const PARIA = ['P','A','R','I','A2']; // labels génériques (on pourra renommer finement plus tard)
 
@@ -64,13 +66,20 @@ export function mountCharterTab(host){
       const top=document.createElement('div'); top.style.display='flex'; top.style.justifyContent='space-between';
       top.innerHTML=`<strong>[${a.component}]</strong><span class="small muted">${new Date(a.ts).toLocaleString()}</span>`;
       const text=document.createElement('div'); text.className='small mono-pre'; text.textContent=a.text;
+      const status = document.createElement('div');
+      status.className = 'small muted';
+      status.textContent =
+        (a.status==='hold') ? 'À réfléchir' :
+        (a.status==='ok')   ? 'Validé' :
+        (a.status==='drop') ? 'Rejeté' : 'À traiter';
       const btns=document.createElement('div'); btns.className='btns';
       const chk=document.createElement('input'); chk.type='checkbox'; chk.checked=!!a.selected; chk.onchange=()=>{ setCharterAISelected(a.id, chk.checked); };
       const ok=document.createElement('button'); ok.className='secondary'; ok.textContent='✅'; ok.title='valider'; ok.onclick=()=>{ toggleCharterAIStatus(a.id,'ok'); renderAI(); };
       const hold=document.createElement('button'); hold.className='secondary'; hold.textContent='💭'; hold.title='à réfléchir'; hold.onclick=()=>{ toggleCharterAIStatus(a.id,'hold'); renderAI(); };
-      const drop=document.createElement('button'); drop.className='secondary'; drop.textContent='🗑️'; drop.title='rejeter'; drop.onclick=()=>{ toggleCharterAIStatus(a.id,'drop'); renderAI(); };
+      const drop=document.createElement('button'); drop.className='secondary'; drop.textContent='🗑️'; drop.title='rejeter'; drop.onclick=()=>{ removeCharterAI(a.id); renderAI(); };
       btns.append(chk, ok, hold, drop);
-      row.append(top,text,btns); list.appendChild(row);
+      row.append(top,text,status,btns); list.appendChild(row);
+
     });
   }
   renderAI();
@@ -117,9 +126,20 @@ export function mountCharterTab(host){
     content:host.querySelector('#chContent').value,
     tags:(host.querySelector('#chTags').value||'').split(',').map(s=>s.trim()).filter(Boolean)
   }); alert('Charter enregistré');};
-  host.querySelector('#btnChDelete').onclick=()=>{softDeleteCharter(); alert('Charter supprimé (soft)');};
+  host.querySelector('#btnChDelete').onclick = () => {
+  if (!confirm('Supprimer le Charter ? (soft-delete)')) return;
+  softDeleteCharter();
+  // feedback UI discret
+  const ed = host.querySelector('.charter-editor');
+  const info = document.createElement('div');
+  info.className = 'charter-empty-hint';
+  info.textContent = 'Charter supprimé (soft). Vous pouvez le restaurer.';
+  ed.prepend(info);
+};
+
   host.querySelector('#btnChRestore').onclick=()=>{restoreCharter(); alert('Charter restauré');};
   host.querySelector('#btnChExportMD').onclick=()=>{const md=`# ${host.querySelector('#chTitle').value}\n\n${host.querySelector('#chContent').value}`; download(new Blob([md],{type:'text/markdown'}),'charter.md');};
   host.querySelector('#btnChExportHTML').onclick=()=>{const esc=s=>String(s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); const html=`<!doctype html><meta charset="utf-8"><article><h1>${esc(host.querySelector('#chTitle').value)}</h1><div>${esc(host.querySelector('#chContent').value).replace(/\n/g,'<br>')}</div></article>`; download(new Blob([html],{type:'text/html'}),'charter.html');};
   host.querySelector('#btnChExportJSON').onclick=()=>download(new Blob([JSON.stringify(getCharter(),null,2)],{type:'application/json'}),'charter.json');
 }
+
