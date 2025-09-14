@@ -121,7 +121,8 @@ export function updateCard(id, patch){
   const idx = s.items.findIndex(c => c.id === id);
   if (idx < 0) return null;
   const cur = s.items[idx] || {};
-  const next = { ...cur, ...patch, state: { ...(cur.state||{}), updated_ts:_now() } };
+  const next = { ...cur, ...patch, state: { ...(cur.state||{}), ...(patch.state||{}), updated_ts:_now() } };
+
   s.items[idx] = next;
   writeClientBlob(s);
   _withJournal({ ts:_now(), type:'update', target:{kind:'card', id}, payload:patch });
@@ -155,7 +156,41 @@ export const softDeleteCard=id=>updateCard(id,{state:{deleted:true,deleted_at:Da
 export const restoreCard=id=>updateCard(id,{state:{deleted:false,deleted_at:0,deleted_by:'',updated_ts:Date.now()}});
 export function openCard(id){const s=readClientBlob(); s.meta=s.meta||{}; const open=new Set(s.meta.open_cards||[]); open.add(id); s.meta.open_cards=[...open]; writeClientBlob(s); commitWithEviction();}
 export function addAItoCard(id,aiPart){const s=readClientBlob(); const i=s.items.findIndex(x=>x.id===id); if(i<0)return null; const card=normalizeCard(s.items[i]); const a={id:aiPart?.id||`ai_${Math.random().toString(36).slice(2,6)}`,kind:aiPart?.kind||'note',status:aiPart?.status||'todo',origin:aiPart?.origin||'manual',text:aiPart?.text||'',ts:Date.now(),selected:!!aiPart?.selected}; card.ai=card.ai.concat([a]); card.state.updated_ts=Date.now(); s.items[i]=card; writeClientBlob(s); appendJournal({ts:Date.now(),type:'ai',target:{kind:'card',id},payload:{kind:a.kind,origin:a.origin}}); return card;}
-export function toggleAIStatus(id,aiId,status){const s=readClientBlob(); const i=s.items.findIndex(x=>x.id===id); if(i<0)return null; const card=normalizeCard(s.items[i]); const j=card.ai.findIndex(a=>a.id===aiId); if(j<0)return null; card.ai[j].status=status; card.ai[j].selected=(status==='ok')?true:card.ai[j].selected; card.state.updated_ts=Date.now(); s.items[i]=card; writeClientBlob(s); commitWithEviction(); return card;}
+export function toggleAIStatus(id,aiId,status){
+  const s=readClientBlob(); 
+  const i=s.items.findIndex(x=>x.id===id); 
+  if(i<0)return null; 
+  const card=normalizeCard(s.items[i]); 
+  const j=card.ai.findIndex(a=>a.id===aiId); 
+  if(j<0)return null; card.ai[j].status=status; 
+  card.ai[j].selected=(status==='ok')?true:card.ai[j].selected; 
+  card.state.updated_ts=Date.now(); 
+  s.items[i]=card; 
+  writeClientBlob(s); 
+  appendJournal({ ts: Date.now(), type: 'ai-status', target: { kind: 'card', id }, payload: { aiId, status }});
+  commitWithEviction(); 
+  return card;
+}
+export function removeCardAI(cardId, aiId){
+  const s = readClientBlob();
+  const i = s.items.findIndex(x => x.id === cardId);
+  if (i < 0) return null;
+  const card = normalizeCard(s.items[i]);
+
+  const before = (card.ai?.length || 0);
+  card.ai = (card.ai || []).filter(a => a.id !== aiId);
+  if ((card.ai?.length || 0) === before) return null;
+
+  card.state.updated_ts = Date.now();
+  s.items[i] = card;
+  writeClientBlob(s);
+  appendJournal({ ts: Date.now(), type: 'ai-delete', target: { kind: 'card', id: cardId }, payload: { aiId }});
+  commitWithEviction();
+  return card;
+}
+
+// alias attendu par src/ui/tabs/cards.js
+export const toggleCardAIStatus = (id, aiId, status) => toggleAIStatus(id, aiId, status);
 
 export function getSession(){const s=readClientBlob(); return s.meta?.session||{card_id:'',state:'off',guest_token:''};}
 export function setSession(sess){const s=readClientBlob(); s.meta=s.meta||{}; s.meta.session={...(s.meta.session||{card_id:'',state:'off',guest_token:''}),...sess}; writeClientBlob(s); commitWithEviction(); appendJournal({ts:Date.now(),type:'session',target:{kind:'card',id:s.meta.session.card_id||'*'},payload:{state:sess.state}}); return s.meta.session;}
@@ -173,6 +208,7 @@ export function removeCardFromScenario(scId,cardId){const s=readClientBlob(); co
 export function duplicateCurrentCard(){const s=readClientBlob(); const sess=s.meta?.session; const baseId=sess?.card_id; const src=(Array.isArray(s.items)?s.items:[]).find(x=>x.id===baseId)||(Array.isArray(s.items)?s.items[0]:null); if(!src)return null; const copy={...src,id:undefined,title:(src.title||'Card')+' (copie)',state:{...src.state,deleted:false,updated_ts:Date.now()}}; return createCard(copy);}
 export function importSelectedToCurrentCard(scId){const s=readClientBlob(); const sess=s.meta?.session; const targetId=sess?.card_id||((s.items||[]).find(x=>!x.state?.deleted)?.id); if(!targetId)return null; const sc=(Array.isArray(s.scenarios)?s.scenarios:[]).find(x=>x.id===scId); if(!sc)return null; const byId=new Map((s.items||[]).map(c=>[c.id,c])); const selected=[]; (sc.items||[]).forEach(it=>{const c=byId.get(it.card_id); if(!c)return; (c.ai||[]).forEach(a=>{if(a.selected||a.status==='ok')selected.push({card:c.title,text:a.text});});});
   if(!selected.length){updateCard(targetId,{}); return true;} const tgt=(s.items||[]).find(x=>x.id===targetId); const bullets='\n\n## Propositions importées\n'+selected.map(x=>`- (${x.card}) ${x.text}`).join('\n')+'\n'; const newContent=(tgt?.content||'')+bullets; updateCard(targetId,{content:newContent}); appendJournal({ts:Date.now(),type:'update',target:{kind:'card',id:targetId},payload:{imported_from:scId,count:selected.length}}); return true;}
+
 
 
 
