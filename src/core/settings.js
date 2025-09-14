@@ -1,10 +1,10 @@
-// src/core/settings.js — réglages (client/service + endpoints), workId
+// src/core/settings.js — réglages (client/service, endpoints), workId
 const KEY = 'paria::connections';
 const DEFAULT = {
   client: 'default-client',
   service: 'default-service',
   endpoints: {
-    llm: (window.PARIA_LLM_ENDPOINT || ''), // renseigne via index.html si besoin
+    llm: (window.PARIA_LLM_ENDPOINT || ''),
     git: '',
     gdrive: ''
   },
@@ -12,26 +12,26 @@ const DEFAULT = {
     my_name: 'Moi',
     my_logo_url: '',
     my_address: ''
-  }
+  },
+  budgets: { max_local_bytes: 5 * 1024 * 1024 }
 };
 
 export function getSettings(){
   try{ return JSON.parse(localStorage.getItem(KEY)) || DEFAULT; }
   catch{ return DEFAULT; }
 }
-
 export function saveSettings(patch){
   const cur = getSettings();
   const next = {
     ...cur,
     ...patch,
     endpoints: { ...cur.endpoints, ...(patch?.endpoints||{}) },
-    branding:  { ...cur.branding,  ...(patch?.branding||{}) }
+    branding:  { ...cur.branding,  ...(patch?.branding||{}) },
+    budgets:   { ...cur.budgets,   ...(patch?.budgets||{}) }
   };
   localStorage.setItem(KEY, JSON.stringify(next));
   return next;
 }
-
 export function getWorkId(s=getSettings()){
   return `${s.client}::${s.service}`;
 }
