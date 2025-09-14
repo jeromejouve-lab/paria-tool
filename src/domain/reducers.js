@@ -1,10 +1,9 @@
 import { readClientBlob, writeClientBlob } from '../core/store.js';
-import { commitWithEviction } from '../core/budget.js';
-import { newCard, normalizeCard, newScenario, normalizeScenario } from './models.js';
 import { appendJournal } from './journal.js';
-import { now } from '../core/time.js';
+import { newCard, normalizeCard, newScenario, normalizeScenario, now } from './models.js';
+import { commitWithEviction } from '../core/budget.js';
 
-// ========= CHARTER =========
+// ========== CHARTER (UI conserve les pictos/checkbox, on respecte) ==========
 export function getCharter(){
   const s = readClientBlob();
   return s.charter || { title:'', content:'', tags:[], ai:[], state:{deleted:false, updated_ts:now()} };
@@ -19,7 +18,7 @@ export function saveCharter(patch){
   const s = _ensureCharter();
   s.charter = { ...s.charter, ...patch, state:{ ...(s.charter.state||{}), updated_ts: now() } };
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'update', target:{kind:'charter', id:'charter'}, payload:patch });
+  appendJournal({ type:'update', target:{kind:'charter', id:'charter'}, payload:patch });
   return s.charter;
 }
 export function softDeleteCharter(){ return saveCharter({ state:{ deleted:true, updated_ts:now() } }); }
@@ -40,7 +39,7 @@ export function addAItoCharter(part){
   s.charter.ai.push(a);
   s.charter.state = { ...(s.charter.state||{}), updated_ts: now() };
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'ai-add', target:{kind:'charter', id:'charter'}, payload:{ id:a.id, component:a.component } });
+  appendJournal({ type:'ai-add', target:{kind:'charter', id:'charter'}, payload:{ id:a.id, component:a.component } });
   return a;
 }
 export function toggleCharterAIStatus(aiId, status){
@@ -51,17 +50,17 @@ export function toggleCharterAIStatus(aiId, status){
   if (status==='ok') it.selected = true;
   s.charter.state = { ...(s.charter.state||{}), updated_ts: now() };
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'ai-status', target:{kind:'charter', id:'charter'}, payload:{ id:aiId, status } });
+  appendJournal({ type:'ai-status', target:{kind:'charter', id:'charter'}, payload:{ id:aiId, status } });
   return it;
 }
 export function removeCharterAI(aiId){
   const s = _ensureCharter();
   const before = (s.charter.ai||[]).length;
   s.charter.ai = (s.charter.ai||[]).filter(x=>x.id!==aiId);
-  if (s.charter.ai.length===before) return false;
+  if ((s.charter.ai||[]).length===before) return false;
   s.charter.state = { ...(s.charter.state||{}), updated_ts: now() };
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'ai-delete', target:{kind:'charter', id:'charter'}, payload:{ id:aiId } });
+  appendJournal({ type:'ai-delete', target:{kind:'charter', id:'charter'}, payload:{ id:aiId } });
   return true;
 }
 export function setCharterAISelected(aiId, selected){
@@ -85,6 +84,7 @@ export function importCharterSelectedToCurrentCard(){
   if (idx<0) return false;
   const cur = normalizeCard(s.items[idx]);
 
+  // insertion simple et claire (cases cochées uniquement)
   const block =
 `\n\n## PARIA – Propositions sélectionnées (${new Date().toLocaleString()})
 ${selected.map(a=>`- (${a.component}) ${a.text}`).join('\n')}
@@ -92,19 +92,23 @@ ${selected.map(a=>`- (${a.component}) ${a.text}`).join('\n')}
   const next = { ...cur, content: (cur.content||'') + block, state:{ ...(cur.state||{}), updated_ts: now() } };
   s.items[idx] = next;
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'import', target:{kind:'card', id}, payload:{ from:'charter', count:selected.length } });
+  appendJournal({ type:'import', target:{kind:'card', id}, payload:{ from:'charter', count:selected.length } });
   return true;
 }
 
-// ========= CARDS =========
+// ========== CARDS (modèle central) ==========
 export function listCards(scope='active', query=''){
   const s = readClientBlob();
   let arr = (s.items||[]).map(normalizeCard);
-  if (scope==='active') arr = arr.filter(c=>!c.state?.deleted);
+  if (scope==='active')  arr = arr.filter(c=>!c.state?.deleted);
   if (scope==='deleted') arr = arr.filter(c=> c.state?.deleted);
-  if (scope==='recent') arr = arr.sort((a,b)=> (b.state.updated_ts||0)-(a.state.updated_ts||0));
+  if (scope==='recent')  arr = arr.sort((a,b)=>(b.state.updated_ts||0)-(a.state.updated_ts||0));
   const q = (query||'').toLowerCase().trim();
-  if (q) arr = arr.filter(c => (c.title||'').toLowerCase().includes(q) || (c.content||'').toLowerCase().includes(q) || (c.tags||[]).join(',').toLowerCase().includes(q));
+  if (q) arr = arr.filter(c =>
+    (c.title||'').toLowerCase().includes(q) ||
+    (c.content||'').toLowerCase().includes(q) ||
+    (c.tags||[]).join(',').toLowerCase().includes(q)
+  );
   return arr;
 }
 export function createCard(part={}){
@@ -113,7 +117,7 @@ export function createCard(part={}){
   const c = newCard(part);
   s.items.push(c);
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'create', target:{kind:'card', id:c.id}, payload:{ title:c.title } });
+  appendJournal({ type:'create', target:{kind:'card', id:c.id}, payload:{ title:c.title } });
   return c;
 }
 export function updateCard(id, patch){
@@ -124,22 +128,22 @@ export function updateCard(id, patch){
   const next = { ...cur, ...patch, state:{ ...(cur.state||{}), ...(patch?.state||{}), updated_ts: now() } };
   s.items[idx] = next;
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'update', target:{kind:'card', id}, payload:patch });
+  appendJournal({ type:'update', target:{kind:'card', id}, payload:patch });
   return next;
 }
-export const softDeleteCard = id => updateCard(id, { state:{ deleted:true, updated_ts: now(), deleted_at: now(), deleted_by:'me' } });
-export const restoreCard    = id => updateCard(id, { state:{ deleted:false, updated_ts: now(), deleted_at:0, deleted_by:'' } });
+export const softDeleteCard = id => updateCard(id, { state:{ deleted:true,  updated_ts: now(), deleted_at: now(), deleted_by:'me' } });
+export const restoreCard    = id => updateCard(id, { state:{ deleted:false, updated_ts: now(), deleted_at:0,   deleted_by:''   } });
 
 export function openCard(id){
   const s = readClientBlob();
   s.meta = s.meta || {};
   s.meta.session = { ...(s.meta.session||{}), card_id:id, updated_ts: now() };
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'session', target:{kind:'session', id:'current'}, payload:{ card_id:id }});
+  appendJournal({ type:'session', target:{kind:'session', id:'current'}, payload:{ card_id:id }});
   return id;
 }
 
-// IA sur Card
+// IA sur Card (pictos ✅ 💭 🗑️ attendus par ton UI)
 export function addAItoCard(id, part){
   const s = readClientBlob();
   const idx = (s.items||[]).findIndex(c=>c.id===id);
@@ -159,7 +163,7 @@ export function addAItoCard(id, part){
   card.state = { ...(card.state||{}), updated_ts: now() };
   s.items[idx] = card;
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'ai-add', target:{kind:'card', id}, payload:{ aiId:a.id, component:a.component }});
+  appendJournal({ type:'ai-add', target:{kind:'card', id}, payload:{ aiId:a.id, component:a.component }});
   return card;
 }
 export function toggleAIStatus(id, aiId, status){
@@ -174,7 +178,7 @@ export function toggleAIStatus(id, aiId, status){
   card.state = { ...(card.state||{}), updated_ts: now() };
   s.items[idx] = card;
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'ai-status', target:{kind:'card', id}, payload:{ aiId, status }});
+  appendJournal({ type:'ai-status', target:{kind:'card', id}, payload:{ aiId, status }});
   return card;
 }
 export function removeCardAI(id, aiId){
@@ -188,12 +192,12 @@ export function removeCardAI(id, aiId){
   card.state = { ...(card.state||{}), updated_ts: now() };
   s.items[idx] = card;
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'ai-delete', target:{kind:'card', id}, payload:{ aiId }});
+  appendJournal({ type:'ai-delete', target:{kind:'card', id}, payload:{ aiId }});
   return true;
 }
 export const toggleCardAIStatus = (id, aiId, status)=> toggleAIStatus(id, aiId, status);
 
-// ========= SESSION / PROJECTOR =========
+// ========== SESSION / PROJECTOR (start/pause/stop attendus par l’UI) ==========
 export function getSession(){
   const s = readClientBlob();
   return s?.meta?.session || { status:'idle', card_id:'', started_ts:0, stopped_ts:0, updated_ts: now(), comments:[], annotations:[] };
@@ -204,12 +208,12 @@ export function setSession(patch){
   const base = s.meta.session || { status:'idle', card_id:'', started_ts:0, stopped_ts:0, updated_ts: now(), comments:[], annotations:[] };
   s.meta.session = { ...base, ...patch, updated_ts: now() };
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'session', target:{kind:'session', id:'current'}, payload:{ status:s.meta.session.status, card_id:s.meta.session.card_id }});
+  appendJournal({ type:'session', target:{kind:'session', id:'current'}, payload:{ status:s.meta.session.status, card_id:s.meta.session.card_id }});
   return s.meta.session;
 }
-export const startSession = card_id => setSession({ status:'live', card_id, started_ts: (getSession().started_ts||now()) });
+export const startSession = (card_id)=> setSession({ status:'live', card_id, started_ts: (getSession().started_ts||now()) });
 export const pauseSession = ()=> setSession({ status:'pause' });
-export const stopSession  = ()=> setSession({ status:'idle', stopped_ts: now() });
+export const stopSession  = ()=> setSession({ status:'idle',  stopped_ts: now() });
 
 export function addSessionComment({ text='', actor='moi' }){
   const s = readClientBlob();
@@ -219,17 +223,17 @@ export function addSessionComment({ text='', actor='moi' }){
   sess.comments.push(c);
   s.meta.session = sess;
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'session-note', target:{kind:'session', id:'current'}, payload:{ id:c.id, actor }});
+  appendJournal({ type:'session-note', target:{kind:'session', id:'current'}, payload:{ id:c.id, actor }});
   return c;
 }
 export function listSessionComments(){ return getSession().comments || []; }
 
-// ========= SCENARIOS =========
+// ========== SCENARIOS (soft delete/restore + promote) ==========
 export function listScenarios(scope='active', week=''){
   const s = readClientBlob();
   let arr = (s.scenarios||[]).map(normalizeScenario);
-  if (scope==='active') arr = arr.filter(x=>!x.state?.deleted);
-  if (scope==='deleted') arr = arr.filter(x=>x.state?.deleted);
+  if (scope==='active')  arr = arr.filter(x=>!x.state?.deleted);
+  if (scope==='deleted') arr = arr.filter(x=> x.state?.deleted);
   if (week) arr = arr.filter(x=>x.week===week);
   return arr.sort((a,b)=>(b.working?-1:0)-(a.working?-1:0) || (b.state.updated_ts-a.state.updated_ts));
 }
@@ -239,7 +243,7 @@ export function createScenario(part={}){
   const sc = newScenario(part);
   s.scenarios.push(sc);
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'create', target:{kind:'scenario', id:sc.id}, payload:{ title:sc.title, week:sc.week }});
+  appendJournal({ type:'create', target:{kind:'scenario', id:sc.id}, payload:{ title:sc.title, week:sc.week }});
   return sc;
 }
 export function updateScenario(id, patch){
@@ -250,14 +254,16 @@ export function updateScenario(id, patch){
   const next = { ...cur, ...patch, state:{ ...(cur.state||{}), ...(patch?.state||{}), updated_ts: now() } };
   s.scenarios[idx] = next;
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'update', target:{kind:'scenario', id}, payload:patch });
+  appendJournal({ type:'update', target:{kind:'scenario', id}, payload:patch });
   return next;
 }
-export const softDeleteScenario = id => updateScenario(id, { state:{ deleted:true, updated_ts: now() } });
+export const softDeleteScenario = id => updateScenario(id, { state:{ deleted:true,  updated_ts: now() } });
 export const restoreScenario    = id => updateScenario(id, { state:{ deleted:false, updated_ts: now() } });
+
 export function promoteScenario(id){
+  // snapshot + journal seront déclenchés dans la couche snapshot (Git/Google) — ici on marque working
   const sc = updateScenario(id, { working:true });
-  appendJournal({ ts: now(), type:'promote', target:{kind:'scenario', id}, payload:{} });
+  appendJournal({ type:'promote', target:{kind:'scenario', id}, payload:{} });
   return sc;
 }
 export function addCardToScenario(scId, cardId, slot=''){
@@ -270,7 +276,7 @@ export function addCardToScenario(scId, cardId, slot=''){
   sc.state = { ...(sc.state||{}), updated_ts: now() };
   s.scenarios[idx] = sc;
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'scenario-add-card', target:{kind:'scenario', id:scId}, payload:{ card_id:cardId, slot }});
+  appendJournal({ type:'scenario-add-card', target:{kind:'scenario', id:scId}, payload:{ card_id:cardId, slot }});
   return sc;
 }
 export function removeCardFromScenario(scId, cardId){
@@ -284,7 +290,7 @@ export function removeCardFromScenario(scId, cardId){
   sc.state = { ...(sc.state||{}), updated_ts: now() };
   s.scenarios[idx] = sc;
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'scenario-remove-card', target:{kind:'scenario', id:scId}, payload:{ card_id:cardId }});
+  appendJournal({ type:'scenario-remove-card', target:{kind:'scenario', id:scId}, payload:{ card_id:cardId }});
   return sc;
 }
 export function duplicateCurrentCard(){
@@ -296,21 +302,23 @@ export function duplicateCurrentCard(){
   const copy = newCard({ title:`${src.title} (copie)`, content:src.content, tags:src.tags });
   s.items.push(copy);
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'create', target:{kind:'card', id:copy.id}, payload:{ from:baseId }});
+  appendJournal({ type:'create', target:{kind:'card', id:copy.id}, payload:{ from:baseId }});
   return copy;
 }
+// Insertion partielle depuis Scénario → Card courante (éléments sélectionnés = statuts ok/selected des AI des cards référencées)
 export function importSelectedToCurrentCard(scId){
   const s = readClientBlob();
   const sessId = s?.meta?.session?.card_id || ((s.items||[]).find(x=>!x.state?.deleted)?.id);
   if (!sessId) return false;
-  // collecter uniquement les éléments sélectionnés dans le scénario (impl: sélection par status ok des AI des cards référencées)
   const sc = (s.scenarios||[]).find(x=>x.id===scId);
   if (!sc) return false;
+
   const selected = [];
   (sc.cards||[]).forEach(ref=>{
     const card = (s.items||[]).find(c=>c.id===ref.card_id);
     (card?.ai||[]).forEach(a=>{ if (a.status==='ok' || a.selected) selected.push({ from:card.title, text:a.text, component:a.component }); });
   });
+
   const idx = (s.items||[]).findIndex(x=>x.id===sessId);
   const cur = normalizeCard(s.items[idx]);
   const block =
@@ -320,7 +328,7 @@ ${selected.map(x=>`- (${x.component}) ${x.text}  —  source: ${x.from}`).join('
   const next = { ...cur, content:(cur.content||'')+block, state:{ ...(cur.state||{}), updated_ts: now() } };
   s.items[idx] = next;
   writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: now(), type:'import', target:{kind:'card', id:sessId}, payload:{ from:`scenario:${scId}`, count:selected.length }});
+  appendJournal({ type:'import', target:{kind:'card', id:sessId}, payload:{ from:`scenario:${scId}`, count:selected.length }});
   return true;
 }
 
