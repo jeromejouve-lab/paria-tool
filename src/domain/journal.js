@@ -16,7 +16,6 @@ export function appendJournal(evt){
   writeClientBlob(s);
   return base;
 }
-
 export function listJournal({ types=[], since=0, until=Date.now() }={}){
   const s = readClientBlob();
   const scope = { client:getSettings().client, service:getSettings().service };
