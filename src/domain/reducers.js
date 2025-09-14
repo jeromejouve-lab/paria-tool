@@ -1,9 +1,14 @@
+// src/domain/reducers.js — cœur métier intégral (UI intouchée)
 import { readClientBlob, writeClientBlob } from '../core/store.js';
 import { appendJournal } from './journal.js';
 import { newCard, normalizeCard, newScenario, normalizeScenario, now } from './models.js';
 import { commitWithEviction } from '../core/budget.js';
+import {
+  listGitSnapshots, pushSnapshotToGit, fetchSnapshotFromGit,
+  listDriveSnapshots, pushSnapshotToDrive, fetchSnapshotFromDrive
+} from '../core/net.js';
 
-// ========== CHARTER (UI conserve les pictos/checkbox, on respecte) ==========
+// ====== CHARTER ======
 export function getCharter(){
   const s = readClientBlob();
   return s.charter || { title:'', content:'', tags:[], ai:[], state:{deleted:false, updated_ts:now()} };
@@ -84,7 +89,6 @@ export function importCharterSelectedToCurrentCard(){
   if (idx<0) return false;
   const cur = normalizeCard(s.items[idx]);
 
-  // insertion simple et claire (cases cochées uniquement)
   const block =
 `\n\n## PARIA – Propositions sélectionnées (${new Date().toLocaleString()})
 ${selected.map(a=>`- (${a.component}) ${a.text}`).join('\n')}
@@ -96,7 +100,7 @@ ${selected.map(a=>`- (${a.component}) ${a.text}`).join('\n')}
   return true;
 }
 
-// ========== CARDS (modèle central) ==========
+// ====== CARDS ======
 export function listCards(scope='active', query=''){
   const s = readClientBlob();
   let arr = (s.items||[]).map(normalizeCard);
@@ -143,7 +147,7 @@ export function openCard(id){
   return id;
 }
 
-// IA sur Card (pictos ✅ 💭 🗑️ attendus par ton UI)
+// IA sur Card
 export function addAItoCard(id, part){
   const s = readClientBlob();
   const idx = (s.items||[]).findIndex(c=>c.id===id);
@@ -196,8 +200,10 @@ export function removeCardAI(id, aiId){
   return true;
 }
 export const toggleCardAIStatus = (id, aiId, status)=> toggleAIStatus(id, aiId, status);
+// alias anti-écart éventuel d'UI
+export const removecardai = removeCardAI;
 
-// ========== SESSION / PROJECTOR (start/pause/stop attendus par l’UI) ==========
+// ====== SESSION / PROJECTOR ======
 export function getSession(){
   const s = readClientBlob();
   return s?.meta?.session || { status:'idle', card_id:'', started_ts:0, stopped_ts:0, updated_ts: now(), comments:[], annotations:[] };
@@ -211,7 +217,7 @@ export function setSession(patch){
   appendJournal({ type:'session', target:{kind:'session', id:'current'}, payload:{ status:s.meta.session.status, card_id:s.meta.session.card_id }});
   return s.meta.session;
 }
-export const startSession = (card_id)=> setSession({ status:'live', card_id, started_ts: (getSession().started_ts||now()) });
+export const startSession = (card_id)=> setSession({ status:'live',  card_id, started_ts: (getSession().started_ts||now()) });
 export const pauseSession = ()=> setSession({ status:'pause' });
 export const stopSession  = ()=> setSession({ status:'idle',  stopped_ts: now() });
 
@@ -228,7 +234,7 @@ export function addSessionComment({ text='', actor='moi' }){
 }
 export function listSessionComments(){ return getSession().comments || []; }
 
-// ========== SCENARIOS (soft delete/restore + promote) ==========
+// ====== SCENARIOS ======
 export function listScenarios(scope='active', week=''){
   const s = readClientBlob();
   let arr = (s.scenarios||[]).map(normalizeScenario);
@@ -261,11 +267,38 @@ export const softDeleteScenario = id => updateScenario(id, { state:{ deleted:tru
 export const restoreScenario    = id => updateScenario(id, { state:{ deleted:false, updated_ts: now() } });
 
 export function promoteScenario(id){
-  // snapshot + journal seront déclenchés dans la couche snapshot (Git/Google) — ici on marque working
-  const sc = updateScenario(id, { working:true });
-  appendJournal({ type:'promote', target:{kind:'scenario', id}, payload:{} });
-  return sc;
+  // Spéc: snapshot + journal + *écrasement* de la Card courante par le scénario
+  const s = readClientBlob();
+  const sessId = s?.meta?.session?.card_id || (s.items||[]).find(x=>!x.state?.deleted)?.id;
+  const sc = (s.scenarios||[]).find(x=>x.id===id);
+  if (!sessId || !sc) return null;
+
+  // 1) journal "promote"
+  appendJournal({ type:'promote', target:{kind:'scenario', id}, payload:{ target_card:sessId } });
+
+  // 2) construire contenu depuis sélection (AI ok/selected) de TOUTES les cards du scénario
+  const selected = [];
+  (sc.cards||[]).forEach(ref=>{
+    const card = (s.items||[]).find(c=>c.id===ref.card_id);
+    (card?.ai||[]).forEach(a=>{ if (a.status==='ok' || a.selected) selected.push({ from:card.title, text:a.text, component:a.component }); });
+  });
+  const block =
+`# ${sc.title || 'Scénario'}
+
+## Sélection du scénario (${new Date().toLocaleString()})
+${selected.map(x=>`- (${x.component}) ${x.text} — source: ${x.from}`).join('\n') || '- (aucune sélection)'}
+`;
+
+  // 3) écraser le contenu de la card courante (snapshot géré côté endpoints de backup à l'action utilisateur)
+  const idx = (s.items||[]).findIndex(x=>x.id===sessId);
+  const cur = normalizeCard(s.items[idx]);
+  const next = { ...cur, content:block, state:{ ...(cur.state||{}), updated_ts: now() } };
+  s.items[idx] = next;
+  writeClientBlob(s); commitWithEviction();
+
+  return updateScenario(id, { working:true });
 }
+
 export function addCardToScenario(scId, cardId, slot=''){
   const s = readClientBlob();
   const idx = (s.scenarios||[]).findIndex(x=>x.id===scId);
@@ -305,7 +338,6 @@ export function duplicateCurrentCard(){
   appendJournal({ type:'create', target:{kind:'card', id:copy.id}, payload:{ from:baseId }});
   return copy;
 }
-// Insertion partielle depuis Scénario → Card courante (éléments sélectionnés = statuts ok/selected des AI des cards référencées)
 export function importSelectedToCurrentCard(scId){
   const s = readClientBlob();
   const sessId = s?.meta?.session?.card_id || ((s.items||[]).find(x=>!x.state?.deleted)?.id);
@@ -323,7 +355,7 @@ export function importSelectedToCurrentCard(scId){
   const cur = normalizeCard(s.items[idx]);
   const block =
 `\n\n## Scénario – Sélection (${new Date().toLocaleString()})
-${selected.map(x=>`- (${x.component}) ${x.text}  —  source: ${x.from}`).join('\n')}
+${selected.map(x=>`- (${x.component}) ${x.text}  —  source: ${x.from}`).join('\n') || '- (aucune)'}
 `;
   const next = { ...cur, content:(cur.content||'')+block, state:{ ...(cur.state||{}), updated_ts: now() } };
   s.items[idx] = next;
@@ -332,10 +364,39 @@ ${selected.map(x=>`- (${x.component}) ${x.text}  —  source: ${x.from}`).join('
   return true;
 }
 
+// ====== BACKUPS (sélection/restauration remote) ======
+export async function listSnapshots(where='git'){
+  if (where==='git')   return await listGitSnapshots();
+  if (where==='drive') return await listDriveSnapshots();
+  return [];
+}
+
+// snapshot = { id, ts, label, blob }
+// blob = JSON.stringify(state courant)
+export async function saveSnapshotRemote({ label='', where='git' }={}){
+  const blob = JSON.stringify(readClientBlob());
+  const snap = { id: `snap_${now()}`, ts: now(), label: label||new Date().toLocaleString(), blob };
+  let out = { ok:true };
+  if (where==='git')   out = await pushSnapshotToGit(snap);
+  if (where==='drive') out = await pushSnapshotToDrive(snap);
+  appendJournal({ type:'snapshot-save', target:{kind:'snapshot', id:snap.id}, payload:{ where, label:snap.label }});
+  return out;
+}
+
+export async function restoreSnapshotRemote({ id, where='git' }={}){
+  const snap = (where==='git') ? await fetchSnapshotFromGit(id) : await fetchSnapshotFromDrive(id);
+  if (!snap || !snap.blob) throw new Error('snapshot introuvable');
+  const json = JSON.parse(snap.blob);
+  writeClientBlob(json);
+  appendJournal({ type:'snapshot-restore', target:{kind:'snapshot', id}, payload:{ where }});
+  return true;
+}
+
 /*
 INDEX reducers.js:
 - Charter: getCharter, saveCharter, softDeleteCharter, restoreCharter, addAItoCharter, toggleCharterAIStatus, removeCharterAI, setCharterAISelected, importCharterSelectedToCurrentCard
-- Cards: listCards, createCard, updateCard, softDeleteCard, restoreCard, openCard, addAItoCard, toggleAIStatus, removeCardAI, toggleCardAIStatus
-- Session: getSession, setSession, startSession, pauseSession, stopSession, addSessionComment, listSessionComments
+- Cards: listCards, createCard, updateCard, softDeleteCard, restoreCard, openCard, addAItoCard, toggleAIStatus, removeCardAI, toggleCardAIStatus (alias), removecardai (alias)
+- Session/Projector: getSession, setSession, startSession, pauseSession, stopSession, addSessionComment, listSessionComments
 - Scenarios: listScenarios, createScenario, updateScenario, softDeleteScenario, restoreScenario, promoteScenario, addCardToScenario, removeCardFromScenario, duplicateCurrentCard, importSelectedToCurrentCard
+- Backups: listSnapshots(where), saveSnapshotRemote({label,where}), restoreSnapshotRemote({id,where})
 */
