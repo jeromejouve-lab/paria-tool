@@ -1,21 +1,75 @@
-// src/ui/settings.js — onglet Réglages (robuste "page vide")
-// ⚠️ Ne modifie pas l'UI : lit seulement des #ids existants.
-// IDs attendus côté HTML :
-//   #settings-client, #settings-service,
-//   #settings-llm, #settings-git, #settings-gdrive,
-//   #settings-proxy-url, #settings-proxy-token,
+// src/ui/settings.js — Onglet Réglages robuste (UI existante ou vide)
+// - Ne plante jamais si l'état est vide
+// - Si le HTML existe déjà: on ne le modifie pas (juste remplissage + handlers)
+// - Si le HTML est vide: on injecte un fallback minimal (mêmes IDs)
+
+// IDs attendus (dans ton HTML existant ou en fallback) :
+//   #settings-client, #settings-service
+//   #settings-llm, #settings-git, #settings-gdrive
+//   #settings-proxy-url, #settings-proxy-token
 //   #settings-save, #settings-diag, #settings-diag-output
 
 import { settingsLoad, settingsSave } from '../../core/settings.js';
 import { diag } from '../../core/net.js';
 
-// ---------- Helpers ----------
-const $ = (sel) => document.querySelector(sel);
+// ---------- Utils DOM ----------
+const $ = (sel, from = document) => from.querySelector(sel);
+const allIds = [
+  'settings-client','settings-service',
+  'settings-llm','settings-git','settings-gdrive',
+  'settings-proxy-url','settings-proxy-token',
+  'settings-save','settings-diag','settings-diag-output'
+];
 
-// Normalise l’objet settings pour garantir que chaque lecture a une valeur.
+function getSettingsContainer() {
+  // Essaie d'abord une zone dédiée si elle existe dans ton UI
+  return (
+    $('[data-tab="settings"]') ||
+    $('#tab-settings') ||
+    $('#settings-tab') ||
+    $('#settings') ||
+    // sinon, fallback sur le conteneur courant
+    document.querySelector('[data-tab].active') ||
+    document.body
+  );
+}
+
+function ensureFallbackUI(container) {
+  // Si tous les IDs existent déjà, on ne touche pas au markup
+  const haveAll = allIds.every(id => container.querySelector('#' + id));
+  if (haveAll) return;
+
+  // Fallback minimal (propre, pas d’impact si ton HTML existe déjà ailleurs)
+  container.innerHTML = `
+    <div class="settings-form" style="display:grid; gap:.75rem; max-width:720px">
+      <div><label>Client<br><input id="settings-client" type="text" /></label></div>
+      <div><label>Service<br><input id="settings-service" type="text" /></label></div>
+
+      <hr>
+      <div><label>LLM endpoint<br><input id="settings-llm" type="text" placeholder="https://…/llm" /></label></div>
+      <div><label>Git endpoint / repo URL<br><input id="settings-git" type="text" placeholder="https://github.com/… ou https://…/git" /></label></div>
+      <div><label>Google Drive endpoint<br><input id="settings-gdrive" type="text" placeholder="https://…/drive" /></label></div>
+
+      <div style="display:grid; gap:.5rem;">
+        <label>Proxy URL<br><input id="settings-proxy-url" type="text" placeholder="https://script.google.com/macros/s/…/exec" /></label>
+        <label>Proxy Token<br><input id="settings-proxy-token" type="text" placeholder="token (facultatif)" /></label>
+      </div>
+
+      <div style="display:flex; gap:.5rem; align-items:center;">
+        <button id="settings-save">Sauver la conf</button>
+        <button id="settings-diag">Diag</button>
+      </div>
+
+      <pre id="settings-diag-output" style="white-space:pre-wrap; background:#111; color:#eee; padding:.5rem; border-radius:.5rem; min-height:2.5rem;"></pre>
+    </div>
+  `;
+}
+
+// ---------- Normalisation (pour éviter tout undefined) ----------
 function safeSettingsShape(s = {}) {
-  const asStr = (v, d = '') => (typeof v === 'string' ? v : d);
-  const urlOf = (v) => (typeof v === 'string' ? v : (v && typeof v === 'object' ? asStr(v.url) : ''));
+  const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+  const asStr = (v, d='') => typeof v === 'string' ? v : d;
+  const urlOf = v => (typeof v === 'string' ? v : (isObj(v) ? asStr(v.url) : ''));
 
   const top = {
     client: asStr(s?.client),
@@ -43,7 +97,6 @@ function safeSettingsShape(s = {}) {
     }
   };
 
-  // Miroir connections (ce que l’UI peut lire ailleurs)
   const connections = {
     client:  asStr(s?.connections?.client)  || top.client,
     service: asStr(s?.connections?.service) || top.service,
@@ -73,38 +126,42 @@ function safeSettingsShape(s = {}) {
   return { ...top, connections };
 }
 
-function setText(el, text) { if (el) el.textContent = text; }
-function setVal(el, val)   { if (el) el.value = val ?? ''; }
-
-// ---------- Mount (appelé par l’onglet) ----------
+// ---------- Mount principal ----------
 export async function mountSettingsTab() {
-  // 1) Lire settings (via core) et le normaliser pour éviter tout undefined
+  // 0) Conteneur onglet
+  const root = getSettingsContainer();
+  if (!root) return;
+
+  // 1) Si l'onglet est vide, on injecte un fallback minimal (sinon on n'y touche pas)
+  ensureFallbackUI(root);
+
+  // 2) Charge et normalise l'état
   const raw = (window.settings && (window.settings.__raw || window.settings)) || settingsLoad();
   const s = safeSettingsShape(raw);
 
-  // 2) Récupérer les éléments UI (ne change pas l’HTML)
-  const $client     = $('#settings-client');
-  const $service    = $('#settings-service');
-  const $llm        = $('#settings-llm');
-  const $git        = $('#settings-git');
-  const $gdrive     = $('#settings-gdrive');
-  const $proxyUrl   = $('#settings-proxy-url');
-  const $proxyToken = $('#settings-proxy-token');
+  // 3) Récupère les éléments (qu'ils viennent de ton HTML ou du fallback)
+  const $client     = $('#settings-client', root);
+  const $service    = $('#settings-service', root);
+  const $llm        = $('#settings-llm', root);
+  const $git        = $('#settings-git', root);
+  const $gdrive     = $('#settings-gdrive', root);
+  const $proxyUrl   = $('#settings-proxy-url', root);
+  const $proxyToken = $('#settings-proxy-token', root);
 
-  const $saveBtn    = $('#settings-save');
-  const $diagBtn    = $('#settings-diag');
-  const $diagOut    = $('#settings-diag-output');
+  const $saveBtn    = $('#settings-save', root);
+  const $diagBtn    = $('#settings-diag', root);
+  const $diagOut    = $('#settings-diag-output', root);
 
-  // 3) Remplir les champs (si l’input n’existe pas, on ignore)
-  setVal($client,     s.connections.client);
-  setVal($service,    s.connections.service);
-  setVal($llm,        s.connections.endpoints.llm.url);
-  setVal($git,        s.connections.endpoints.git.url);
-  setVal($gdrive,     s.connections.endpoints.gdrive.url);
-  setVal($proxyUrl,   s.connections.endpoints.proxy.url);
-  setVal($proxyToken, s.connections.endpoints.proxy.token);
+  // 4) Remplir (aucun undefined possible)
+  if ($client)     $client.value     = s.connections.client;
+  if ($service)    $service.value    = s.connections.service;
+  if ($llm)        $llm.value        = s.connections.endpoints.llm.url;
+  if ($git)        $git.value        = s.connections.endpoints.git.url;
+  if ($gdrive)     $gdrive.value     = s.connections.endpoints.gdrive.url;
+  if ($proxyUrl)   $proxyUrl.value   = s.connections.endpoints.proxy.url;
+  if ($proxyToken) $proxyToken.value = s.connections.endpoints.proxy.token;
 
-  // 4) Binder Sauver la conf (écrit top-level + connections.*)
+  // 5) Sauver la conf
   if ($saveBtn) {
     $saveBtn.onclick = async () => {
       const client  = ($client?.value || '').trim();
@@ -117,8 +174,8 @@ export async function mountSettingsTab() {
 
       await settingsSave({
         client, service,
-        endpoints: { llm, git, gdrive, proxy:{ url:pUrl, token:pTok } },
-        proxy: { url:pUrl, token:pTok },
+        endpoints: { llm, git, gdrive, proxy: { url: pUrl, token: pTok } },
+        proxy: { url: pUrl, token: pTok },
         connections: {
           client, service,
           endpoints: {
@@ -131,30 +188,33 @@ export async function mountSettingsTab() {
         }
       });
 
-      setText($diagOut, '✅ Config sauvegardée.');
+      if ($diagOut) $diagOut.textContent = '✅ Config sauvegardée.';
     };
   }
 
-  // 5) Binder Diag (sans planter si vide)
+  // 6) Diag (safe)
   if ($diagBtn) {
     $diagBtn.onclick = async () => {
       try {
         const r = await diag();
-        setText($diagOut, JSON.stringify(r, null, 2));
+        if ($diagOut) $diagOut.textContent = JSON.stringify(r, null, 2);
+        else console.log('diag:', r);
       } catch (e) {
-        setText($diagOut, `diag: ${e?.message || e}`);
+        if ($diagOut) $diagOut.textContent = `diag: ${e?.message || e}`;
+        else console.warn('diag error', e);
       }
     };
   }
 }
 
-// Pour compat éventuelle (si l'app attend settings.mount)
+// Compat : certaines architectures appellent "mount"
 export const mount = mountSettingsTab;
+// Compat : default export objet { mount }
+export default { mount: mountSettingsTab };
 
 /*
 INDEX settings UI:
-- safeSettingsShape(s)
 - mountSettingsTab()
 - mount (alias)
+- default export { mount }
 */
-
