@@ -1,4 +1,7 @@
-// src/domain/models.js
+// src/domain/models.js — modèles + exports client (MD/HTML) intégrant Charter/branding
+import { getSettings } from '../core/settings.js';
+import { readClientBlob } from '../core/store.js';
+
 export const now = ()=> Date.now();
 
 export function newCard(part={}){
@@ -41,60 +44,69 @@ export const normalizeScenario = s => ({
   state:s?.state || { deleted:false, updated_ts: now() }
 });
 
-/**
- * Exporte une card en Markdown.
- * - Titre H1
- * - Contenu brut
- * - Liste des propositions IA sélectionnées (status 'ok' ou selected=true)
- */
+// -------- Exports client (intègrent Charter + branding) --------
+function selectedAIList(c){
+  return (c.ai||[]).filter(a => a?.status === 'ok' || a?.selected)
+                   .map(a=>`- (${a.component||'P'}) ${a.text||''}`).join('\n') || '- (aucune sélection)';
+}
+
 export function cardToMarkdown(card){
   const c = normalizeCard(card||{});
-  const selected = (c.ai||[]).filter(a => a?.status === 'ok' || a?.selected);
-  const aiBlock = selected.length
-    ? selected.map(a=>`- (${a.component||'P'}) ${a.text||''}`).join('\n')
-    : '- (aucune sélection)';
-  return `# ${c.title || c.id || 'Card'}
+  const s = getSettings();
+  const blob = readClientBlob();
+  const charter = blob.charter || { title:'', content:'', tags:[] };
+
+  return `---
+client: ${s.client}
+service: ${s.service}
+auteur: ${s.branding.my_name||''}
+logo: ${s.branding.my_logo_url||''}
+adresse: ${s.branding.my_address||''}
+date: ${new Date().toLocaleString()}
+---
+
+# ${c.title || c.id || 'Card'}
 
 ${c.content || ''}
 
 ## Sélections PARIA
-${aiBlock}
+${selectedAIList(c)}
+
+---
+
+## Rappel — Charter du service
+**${charter.title||''}**
+
+${charter.content||''}
 `;
 }
 
-/**
- * Exporte une card en HTML très simple (pas de dépendance externe).
- * Conversion minimale depuis le Markdown généré par cardToMarkdown.
- */
 export function cardToHTML(card){
+  // conversion minimaliste depuis le MD ci-dessus (pour rester UI-agnostique)
   const md = cardToMarkdown(card);
   const html = md
+    .replace(/^---[\s\S]*?---\s*/,'') // supprime le front-matter du rendu HTML
     .replace(/^# (.*)$/m, '<h1>$1</h1>')
     .replace(/^## (.*)$/mg, '<h2>$1</h2>')
+    .replace(/^\*\*(.*)\*\*$/mg, '<strong>$1</strong>')
     .replace(/^- (.*)$/mg, '<li>$1</li>')
-    .replace(/\n{2,}/g, '\n\n')
-    .split('\n')
-    .map(line=>{
-      if (line.startsWith('<h1>') || line.startsWith('<h2>') || line.startsWith('<li>')) return line;
+    .split('\n').map(line=>{
       if (!line.trim()) return '<br>';
+      if (line.startsWith('<h1>')||line.startsWith('<h2>')||line.startsWith('<li>')) return line;
       return `<p>${line.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>`;
-    })
-    .join('\n')
-    .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>'); // regroupe la liste simple
-
+    }).join('\n')
+    .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
+  const s = getSettings();
   return `<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Export Card</title></head>
+<title>${(card?.title||'Card')} — ${s.client}/${s.service}</title></head>
 <body>${html}</body></html>`;
 }
 
 /*
 INDEX models.js:
 - now()
-- newCard(part)
-- normalizeCard(c)
-- newScenario(part)
-- normalizeScenario(s)
-- cardToMarkdown(card)
-- cardToHTML(card)
+- newCard(part), normalizeCard(c)
+- newScenario(part), normalizeScenario(s)
+- cardToMarkdown(card), cardToHTML(card)
 */
