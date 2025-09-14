@@ -1,5 +1,5 @@
 import { readClientBlob, writeClientBlob } from '../core/store.js';
-import { getWorkId, getSettings } from '../core/settings.js';
+import { getSettings } from '../core/settings.js';
 
 export function appendJournal(evt){
   const s = readClientBlob();
