@@ -1,13 +1,7 @@
-// src/ui/settings.js — Onglet Réglages robuste (UI existante ou vide)
+// src/ui/tabs/settings.js — Onglet Réglages robuste (UI existante ou vide)
 // - Ne plante jamais si l'état est vide
-// - Si le HTML existe déjà: on ne le modifie pas (juste remplissage + handlers)
-// - Si le HTML est vide: on injecte un fallback minimal (mêmes IDs)
-
-// IDs attendus (dans ton HTML existant ou en fallback) :
-//   #settings-client, #settings-service
-//   #settings-llm, #settings-git, #settings-gdrive
-//   #settings-proxy-url, #settings-proxy-token
-//   #settings-save, #settings-diag, #settings-diag-output
+// - Si le HTML existe déjà: on ne le modifie pas (remplissage + handlers)
+// - Si l'onglet est vide: on injecte un fallback minimal (mêmes IDs)
 
 import { settingsLoad, settingsSave } from '../../core/settings.js';
 import { diag } from '../../core/net.js';
@@ -21,25 +15,26 @@ const allIds = [
   'settings-save','settings-diag','settings-diag-output'
 ];
 
+// essaie plusieurs conteneurs probables sans casser l'UI
 function getSettingsContainer() {
-  // Essaie d'abord une zone dédiée si elle existe dans ton UI
   return (
     $('[data-tab="settings"]') ||
     $('#tab-settings') ||
     $('#settings-tab') ||
     $('#settings') ||
-    // sinon, fallback sur le conteneur courant
     document.querySelector('[data-tab].active') ||
     document.body
   );
 }
 
+// n'injecte un fallback QUE si aucun des inputs attendus n'existe ET que le conteneur est vide
 function ensureFallbackUI(container) {
-  // Si tous les IDs existent déjà, on ne touche pas au markup
-  const haveAll = allIds.every(id => container.querySelector('#' + id));
-  if (haveAll) return;
+  const haveAny = allIds.some(id => container.querySelector('#' + id));
+  if (haveAny) return;
 
-  // Fallback minimal (propre, pas d’impact si ton HTML existe déjà ailleurs)
+  const isEmpty = !container.children || container.children.length === 0 || !container.innerHTML.trim();
+  if (!isEmpty) return;
+
   container.innerHTML = `
     <div class="settings-form" style="display:grid; gap:.75rem; max-width:720px">
       <div><label>Client<br><input id="settings-client" type="text" /></label></div>
@@ -65,7 +60,7 @@ function ensureFallbackUI(container) {
   `;
 }
 
-// ---------- Normalisation (pour éviter tout undefined) ----------
+// ---------- Normalisation (zéro undefined) ----------
 function safeSettingsShape(s = {}) {
   const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
   const asStr = (v, d='') => typeof v === 'string' ? v : d;
@@ -128,88 +123,102 @@ function safeSettingsShape(s = {}) {
 
 // ---------- Mount principal ----------
 export async function mountSettingsTab() {
-  // 0) Conteneur onglet
-  const root = getSettingsContainer();
-  if (!root) return;
+  try {
+    const root = getSettingsContainer();
+    if (!root) return;
 
-  // 1) Si l'onglet est vide, on injecte un fallback minimal (sinon on n'y touche pas)
-  ensureFallbackUI(root);
+    // n'injecte le fallback que si l'onglet est vraiment vide
+    ensureFallbackUI(root);
 
-  // 2) Charge et normalise l'état
-  const raw = (window.settings && (window.settings.__raw || window.settings)) || settingsLoad();
-  const s = safeSettingsShape(raw);
+    // état
+    const raw = (window.settings && (window.settings.__raw || window.settings)) || settingsLoad();
+    const s = safeSettingsShape(raw);
 
-  // 3) Récupère les éléments (qu'ils viennent de ton HTML ou du fallback)
-  const $client     = $('#settings-client', root);
-  const $service    = $('#settings-service', root);
-  const $llm        = $('#settings-llm', root);
-  const $git        = $('#settings-git', root);
-  const $gdrive     = $('#settings-gdrive', root);
-  const $proxyUrl   = $('#settings-proxy-url', root);
-  const $proxyToken = $('#settings-proxy-token', root);
+    // éléments (depuis ton HTML ou le fallback)
+    const $client     = $('#settings-client', root);
+    const $service    = $('#settings-service', root);
+    const $llm        = $('#settings-llm', root);
+    const $git        = $('#settings-git', root);
+    const $gdrive     = $('#settings-gdrive', root);
+    const $proxyUrl   = $('#settings-proxy-url', root);
+    const $proxyToken = $('#settings-proxy-token', root);
 
-  const $saveBtn    = $('#settings-save', root);
-  const $diagBtn    = $('#settings-diag', root);
-  const $diagOut    = $('#settings-diag-output', root);
+    const $saveBtn    = $('#settings-save', root);
+    const $diagBtn    = $('#settings-diag', root);
+    const $diagOut    = $('#settings-diag-output', root);
 
-  // 4) Remplir (aucun undefined possible)
-  if ($client)     $client.value     = s.connections.client;
-  if ($service)    $service.value    = s.connections.service;
-  if ($llm)        $llm.value        = s.connections.endpoints.llm.url;
-  if ($git)        $git.value        = s.connections.endpoints.git.url;
-  if ($gdrive)     $gdrive.value     = s.connections.endpoints.gdrive.url;
-  if ($proxyUrl)   $proxyUrl.value   = s.connections.endpoints.proxy.url;
-  if ($proxyToken) $proxyToken.value = s.connections.endpoints.proxy.token;
+    // remplissage (aucun undefined possible)
+    if ($client)     $client.value     = s.connections.client;
+    if ($service)    $service.value    = s.connections.service;
+    if ($llm)        $llm.value        = s.connections.endpoints.llm.url;
+    if ($git)        $git.value        = s.connections.endpoints.git.url;
+    if ($gdrive)     $gdrive.value     = s.connections.endpoints.gdrive.url;
+    if ($proxyUrl)   $proxyUrl.value   = s.connections.endpoints.proxy.url;
+    if ($proxyToken) $proxyToken.value = s.connections.endpoints.proxy.token;
 
-  // 5) Sauver la conf
-  if ($saveBtn) {
-    $saveBtn.onclick = async () => {
-      const client  = ($client?.value || '').trim();
-      const service = ($service?.value || '').trim();
-      const llm     = ($llm?.value || '').trim();
-      const git     = ($git?.value || '').trim();
-      const gdrive  = ($gdrive?.value || '').trim();
-      const pUrl    = ($proxyUrl?.value || '').trim();
-      const pTok    = ($proxyToken?.value || '').trim();
+    // Sauver la conf
+    if ($saveBtn) {
+      $saveBtn.onclick = async () => {
+        const client  = ($client?.value || '').trim();
+        const service = ($service?.value || '').trim();
+        const llm     = ($llm?.value || '').trim();
+        const git     = ($git?.value || '').trim();
+        const gdrive  = ($gdrive?.value || '').trim();
+        const pUrl    = ($proxyUrl?.value || '').trim();
+        const pTok    = ($proxyToken?.value || '').trim();
 
-      await settingsSave({
-        client, service,
-        endpoints: { llm, git, gdrive, proxy: { url: pUrl, token: pTok } },
-        proxy: { url: pUrl, token: pTok },
-        connections: {
+        await settingsSave({
           client, service,
-          endpoints: {
-            llm:    { url: llm },
-            git:    { url: git },
-            gdrive: { url: gdrive },
-            proxy:  { url: pUrl, token: pTok }
-          },
-          proxy: { url: pUrl, token: pTok }
+          endpoints: { llm, git, gdrive, proxy: { url: pUrl, token: pTok } },
+          proxy: { url: pUrl, token: pTok },
+          connections: {
+            client, service,
+            endpoints: {
+              llm:    { url: llm },
+              git:    { url: git },
+              gdrive: { url: gdrive },
+              proxy:  { url: pUrl, token: pTok }
+            },
+            proxy: { url: pUrl, token: pTok }
+          }
+        });
+
+        if ($diagOut) $diagOut.textContent = '✅ Config sauvegardée.';
+      };
+    }
+
+    // Diag (safe)
+    if ($diagBtn) {
+      $diagBtn.onclick = async () => {
+        const hasAnyEndpoint =
+          s.connections.endpoints.llm.url ||
+          s.connections.endpoints.git.url ||
+          s.connections.endpoints.gdrive.url ||
+          s.connections.endpoints.proxy.url;
+
+        if (!hasAnyEndpoint) {
+          if ($diagOut) $diagOut.textContent = '— Renseigne au moins un endpoint pour tester le diag.';
+          return;
         }
-      });
 
-      if ($diagOut) $diagOut.textContent = '✅ Config sauvegardée.';
-    };
-  }
-
-  // 6) Diag (safe)
-  if ($diagBtn) {
-    $diagBtn.onclick = async () => {
-      try {
-        const r = await diag();
-        if ($diagOut) $diagOut.textContent = JSON.stringify(r, null, 2);
-        else console.log('diag:', r);
-      } catch (e) {
-        if ($diagOut) $diagOut.textContent = `diag: ${e?.message || e}`;
-        else console.warn('diag error', e);
-      }
-    };
+        try {
+          const r = await diag();
+          if ($diagOut) $diagOut.textContent = JSON.stringify(r, null, 2);
+          else console.log('diag:', r);
+        } catch (e) {
+          if ($diagOut) $diagOut.textContent = `diag: ${e?.message || e}`;
+          else console.warn('diag error', e);
+        }
+      };
+    }
+  } catch (e) {
+    // on ne plante jamais l'onglet, on log seulement
+    console.error('mountSettingsTab error:', e);
   }
 }
 
 // Compat : certaines architectures appellent "mount"
 export const mount = mountSettingsTab;
-// Compat : default export objet { mount }
 export default { mount: mountSettingsTab };
 
 /*
