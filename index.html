@@ -22,6 +22,28 @@
     .card{border:1px solid var(--line);border-radius:.6rem;background:#111418;padding:.75rem}
     .list{display:flex;flex-direction:column;gap:.5rem}
     .mono-pre{white-space:pre-wrap} .sep{height:1px;background:var(--line);margin:.5rem 0}
+    /* Tabs — style par défaut */
+    .tab-btn {
+      border: 2px solid transparent;           /* épaisseur constante (pas de “saut” à l’activation) */
+      border-radius: 10px;
+      transition: box-shadow .2s ease, border-color .2s ease, transform .05s ease;
+    }
+    
+    /* Onglet actif = LED blanche */
+    .tab-btn.is-active {
+      border-color: #fff;                       /* bordure blanche “LED” */
+      box-shadow:
+        0 0 0 2px rgba(255,255,255,.35),        /* halo externe doux */
+        0 0 10px rgba(255,255,255,.85),         /* glow */
+        inset 0 0 12px rgba(255,255,255,.25);   /* léger glow interne */
+    }
+    
+    /* (bonus accessibilité clavier) focus visible */
+    .tab-btn:focus-visible {
+      outline: 2px solid #fff;
+      outline-offset: 2px;
+    }
+
   </style>
 </head>
 <body>
@@ -51,3 +73,4 @@
 <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
