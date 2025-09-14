@@ -1,71 +1,76 @@
+// src/app.js — câblé sur ton index.html, UI intouchée
 import { mountCardsTab } from './ui/tabs/cards.js';
 import { mountCharterTab } from './ui/tabs/charter.js';
 import { mountScenariosTab } from './ui/tabs/scenarios.js';
 import { mountProjectorTab } from './ui/tabs/projector.js';
 import { mountJournalTab } from './ui/tabs/journal.js';
 import { mountSettingsTab } from './ui/tabs/settings.js';
+import { watchBudget } from './core/budget.js';
 
-import { getSettings, saveSettings, getWorkId } from './core/settings.js';
-import { getBudget, watchBudget } from './core/budget.js';
-import { readClientBlob, writeClientBlob, ensureBaseBlob } from './core/store.js';
+const TAB_MAP = {
+  settings:   { section: 'tab-settings',   mount: mountSettingsTab },
+  charter:    { section: 'tab-charter',    mount: mountCharterTab },
+  cards:      { section: 'tab-cards',      mount: mountCardsTab },
+  scenarios:  { section: 'tab-scenarios',  mount: mountScenariosTab },
+  projector:  { section: 'tab-projector',  mount: mountProjectorTab },
+  journal:    { section: 'tab-journal',    mount: mountJournalTab },
+};
 
-ensureBaseBlob(); // initialise un blob vide si absent
-
-const TABS = [
-  { id:'cards',      title:'Cards',      mount:mountCardsTab },
-  { id:'charter',    title:'Charter',    mount:mountCharterTab },
-  { id:'scenarios',  title:'Scénarios',  mount:mountScenariosTab },
-  { id:'projector',  title:'Projecteur', mount:mountProjectorTab },
-  { id:'journal',    title:'Journal',    mount:mountJournalTab },
-  { id:'settings',   title:'Réglages',   mount:mountSettingsTab },
-];
-
-function mountNav(){
-  const nav = document.getElementById('tabs');
-  nav.innerHTML = '';
-  TABS.forEach(t=>{
-    const b = document.createElement('button');
-    b.textContent = t.title;
-    b.onclick = ()=> showTab(t.id);
-    b.id = `tab-${t.id}`;
-    nav.appendChild(b);
-  });
-}
+function getButtons(){ return Array.from(document.querySelectorAll('header nav [data-tab]')); }
+function getSections(){ return Object.values(TAB_MAP).map(t => document.getElementById(t.section)).filter(Boolean); }
 
 export function showTab(id){
-  const root = document.getElementById('root');
-  root.innerHTML = '';
-  TABS.forEach(t=>{
-    const btn = document.getElementById(`tab-${t.id}`);
-    if (!btn) return;
-    btn.classList.toggle('active', t.id===id);
+  const cfg = TAB_MAP[id] || TAB_MAP.cards;
+
+  // masquer toutes les sections, afficher la cible
+  getSections().forEach(sec => { sec.style.display = 'none'; });
+  const target = document.getElementById(cfg.section);
+  if (target) target.style.display = '';
+
+  // état actif des boutons (pour ta bordure LED blanche)
+  getButtons().forEach(b=>{
+    b.classList.toggle('is-active', b.getAttribute('data-tab') === id);
   });
-  const tab = TABS.find(x=>x.id===id) || TABS[0];
-  tab.mount(root);
+
+  // monter le contenu dans la section (sans créer de conteneur)
+  if (cfg.mount && target){
+    cfg.mount(target);
+  }
 }
 
 function boot(){
-  mountNav();
-  showTab('cards');
-  watchBudget(usage=>{
-    const el = document.getElementById('quotaHint');
-    if (!el) return;
-    const pct = Math.round(usage*100);
-    let note = '';
-    if (pct>=90) note = '⚠️ 90% — snapshots locaux suspendus, backup Git/Google.';
-    else if (pct>=70) note = '⚠️ 70% — alerte.';
-    else if (pct>=45) note = 'ℹ️ 45% — préventif.';
-    el.textContent = `Stockage ${pct}% ${note}`;
+  // câblage des boutons d’onglet
+  getButtons().forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const id = btn.getAttribute('data-tab');
+      showTab(id);
+    });
   });
+
+  // badge quota (déjà présent dans ton header : #quotaBadge)
+  const badge = document.getElementById('quotaBadge');
+  watchBudget(usage=>{
+    if (!badge) return;
+    const pct = Math.round(usage*100);
+    badge.textContent = `local ${pct}%`;
+    badge.classList.remove('b-green','b-orange','b-red');
+    if (pct >= 90)      badge.classList.add('b-red');
+    else if (pct >= 70) badge.classList.add('b-orange');
+    else                badge.classList.add('b-green');
+  });
+
+  // onglet par défaut
+  showTab('cards');
 }
 
+// ton index.html charge app.js en bas de <body> → DOM déjà prêt
 boot();
 
 /*
 INDEX app.js:
-- TABS[]
-- mountNav()
+- TAB_MAP {settings,charter,cards,scenarios,projector,journal}
+- getButtons()
+- getSections()
 - showTab(id)
 - boot()
-- imports: mount*Tab, getSettings/saveSettings/getWorkId, getBudget/watchBudget, readClientBlob/writeClientBlob/ensureBaseBlob
 */
