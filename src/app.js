@@ -19,6 +19,13 @@ function showTab(name){
   if(name==='scenarios')mountScenariosTab(document.getElementById('tab-scenarios'));
   if(name==='projector')mountProjectorTab(document.getElementById('tab-projector'));
   if(name==='journal')mountJournalTab(document.getElementById('tab-journal'));
+ 
+  // --- maj état visuel du bouton d’onglet actif ---
+  document.querySelectorAll('header nav [data-tab].is-active')
+    .forEach(b => b.classList.remove('is-active'));
+  const activeBtn = document.querySelector(`header nav [data-tab="${name}"]`);
+  if (activeBtn) activeBtn.classList.add('is-active');
+
 }
 
 function boot(){
@@ -28,3 +35,4 @@ function boot(){
   if(location.hash==='#guest'){ showTab('projector'); }
 }
 boot();
+
