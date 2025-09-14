@@ -1,134 +1,159 @@
-import { settingsLoad, settingsSave, setProxyConfig, setWorkContext, currentWorkId } from '../../core/settings.js';
-import { updateStorageBadge, ensurePreRestoreBudget, consolidateAfterRestore, commitWithEviction } from '../../core/budget.js';
-import { combineAt } from '../../core/time.js';
-import { diag, gitFind, gdrvFind, gitLoad, gdrvLoad, loadFromGoogle } from '../../core/net.js';
-import { mergeIntoCurrentService } from '../../core/store.js';
-import { appendJournal } from '../../domain/journal.js';
-import { readClientBlob } from '../../core/store.js';
-import { saveToGoogle, gitSnapshot } from '../../core/net.js';
+// src/ui/settings.js — onglet Réglages (robuste "page vide")
+// ⚠️ Ne modifie pas l'UI : lit seulement des #ids existants.
+// IDs attendus côté HTML :
+//   #settings-client, #settings-service,
+//   #settings-llm, #settings-git, #settings-gdrive,
+//   #settings-proxy-url, #settings-proxy-token,
+//   #settings-save, #settings-diag, #settings-diag-output
 
-export function mountSettingsTab(host){
-  host.innerHTML = `
-    <h2>Réglages & Restauration</h2>
-    <fieldset>
-      <legend>Proxy Apps Script</legend>
-      <div class="row">
-        <div><label>URL Apps Script</label><input id="GAS_URL" placeholder="https://script.google.com/macros/s/XXX/exec"></div>
-        <div><label>Secret</label><input id="PROXY_SECRET" placeholder="******"></div>
-      </div>
-      <div class="row">
-        <div><label>Repo Git</label><input id="GH_REPO" placeholder="owner/repo"></div>
-        <div><label>Auto-sync</label>
-          <select id="AUTO_SYNC"><option value="true">Activé</option><option value="false">Désactivé</option></select>
-        </div>
-      </div>
-      <div class="btns">
-        <button id="btnSaveCfg">Sauver la conf</button>
-        <span class="muted small">diag: <span id="diagState" class="pill">—</span></span>
-      </div>
-    </fieldset>
+import { settingsLoad, settingsSave } from '../../core/settings.js';
+import { diag } from '../../core/net.js';
 
-    <fieldset>
-      <legend>Work ID & Date</legend>
-      <div class="row">
-        <div><label>Client</label><input id="CLIENT" placeholder="ACME"></div>
-        <div><label>Service</label><input id="SERVICE" placeholder="Compta"></div>
-      </div>
-      <div class="row">
-        <div><label>Jour (YYYY-MM-DD)</label><input id="DATE" placeholder="2025-08-31"></div>
-        <div><label>Heure (HH:mm, optionnel)</label><input id="TIME" placeholder="10:50"></div>
-      </div>
-      <div class="btns">
-        <button id="btnLinkWID" class="secondary">Lier ce WorkID</button>
-        <button id="btnPropose">Proposer</button>
-        <button id="btnRestore">Restaurer</button>
-        <span id="gitState" class="pill mono">—</span>
-      </div>
-      <div class="small muted">WorkID actuel: <span id="widNow" class="mono">—</span></div>
-    </fieldset>
+// ---------- Helpers ----------
+const $ = (sel) => document.querySelector(sel);
 
-    <fieldset>
-      <legend>Charger depuis Google (état courant)</legend>
-      <div class="btns">
-        <button id="btnLoad">Charger</button>
-        <button id="btnSnapshotNow" class="secondary">Snapshot maintenant</button>
-        <span id="loadState" class="pill mono">—</span>
-      </div>
-    </fieldset>
-  `;
+// Normalise l’objet settings pour garantir que chaque lecture a une valeur.
+function safeSettingsShape(s = {}) {
+  const asStr = (v, d = '') => (typeof v === 'string' ? v : d);
+  const urlOf = (v) => (typeof v === 'string' ? v : (v && typeof v === 'object' ? asStr(v.url) : ''));
 
-  const st=settingsLoad();
-  host.querySelector('#GAS_URL').value=st.proxy.url;
-  host.querySelector('#PROXY_SECRET').value=st.proxy.secret;
-  host.querySelector('#GH_REPO').value=st.proxy.repo;
-  host.querySelector('#AUTO_SYNC').value=String(st.proxy.auto_sync!==false);
-  host.querySelector('#CLIENT').value=st.work.client||'ACME';
-  host.querySelector('#SERVICE').value=st.work.service||'Compta';
-  host.querySelector('#DATE').value=st.ui.date||st.work.restore_at?.slice(0,10)||'';
-  host.querySelector('#TIME').value=st.ui.time||(st.work.restore_at?.split('T')[1]||'');
-  host.querySelector('#widNow').textContent=currentWorkId()||'—';
-  updateStorageBadge();
-
-  host.querySelector('#btnSaveCfg').onclick=async ()=>{
-    setProxyConfig({
-      url:host.querySelector('#GAS_URL').value,
-      secret:host.querySelector('#PROXY_SECRET').value,
-      repo:host.querySelector('#GH_REPO').value,
-      auto_sync:host.querySelector('#AUTO_SYNC').value==='true'
-    });
-    settingsSave({ui:{date:host.querySelector('#DATE').value,time:host.querySelector('#TIME').value}});
-    const j=await diag(); host.querySelector('#diagState').textContent=(j&&j.ok)?'ok':(j?.error||'ko');
+  const top = {
+    client: asStr(s?.client),
+    service: asStr(s?.service),
+    endpoints: {
+      llm:    asStr(s?.endpoints?.llm),
+      git:    asStr(s?.endpoints?.git),
+      gdrive: asStr(s?.endpoints?.gdrive),
+      proxy: {
+        url:   asStr(s?.endpoints?.proxy?.url)   || asStr(s?.proxy?.url),
+        token: asStr(s?.endpoints?.proxy?.token) || asStr(s?.proxy?.token)
+      }
+    },
+    proxy: {
+      url:   asStr(s?.proxy?.url)   || asStr(s?.endpoints?.proxy?.url),
+      token: asStr(s?.proxy?.token) || asStr(s?.endpoints?.proxy?.token)
+    },
+    branding: {
+      my_name:     asStr(s?.branding?.my_name),
+      my_logo_url: asStr(s?.branding?.my_logo_url),
+      my_address:  asStr(s?.branding?.my_address)
+    },
+    budgets: {
+      max_local_bytes: Number(s?.budgets?.max_local_bytes) || 5 * 1024 * 1024
+    }
   };
 
-  host.querySelector('#btnLinkWID').onclick=()=>{
-    const client=host.querySelector('#CLIENT').value.trim()||'ACME';
-    const service=host.querySelector('#SERVICE').value.trim()||'Compta';
-    const dateISO=host.querySelector('#DATE').value.trim();
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(dateISO)){alert('Date invalide');return;}
-    const work_id=`${client}|${service}|${dateISO}`;
-    setWorkContext({client,service,work_id,restore_at:combineAt(dateISO,host.querySelector('#TIME').value.trim())});
-    host.querySelector('#widNow').textContent=currentWorkId();
+  // Miroir connections (ce que l’UI peut lire ailleurs)
+  const connections = {
+    client:  asStr(s?.connections?.client)  || top.client,
+    service: asStr(s?.connections?.service) || top.service,
+    endpoints: {
+      llm:    { url: s?.connections?.endpoints?.llm?.url    ?? urlOf(top.endpoints.llm)    },
+      git:    { url: s?.connections?.endpoints?.git?.url    ?? urlOf(top.endpoints.git)    },
+      gdrive: { url: s?.connections?.endpoints?.gdrive?.url ?? urlOf(top.endpoints.gdrive) },
+      proxy:  {
+        url:   s?.connections?.endpoints?.proxy?.url   ?? top.endpoints.proxy.url,
+        token: s?.connections?.endpoints?.proxy?.token ?? top.endpoints.proxy.token
+      }
+    },
+    proxy: {
+      url:   s?.connections?.proxy?.url   ?? top.proxy.url,
+      token: s?.connections?.proxy?.token ?? top.proxy.token
+    },
+    branding: {
+      my_name:     s?.connections?.branding?.my_name     ?? top.branding.my_name,
+      my_logo_url: s?.connections?.branding?.my_logo_url ?? top.branding.my_logo_url,
+      my_address:  s?.connections?.branding?.my_address  ?? top.branding.my_address
+    },
+    budgets: {
+      max_local_bytes: Number(s?.connections?.budgets?.max_local_bytes ?? top.budgets.max_local_bytes)
+    }
   };
 
-  host.querySelector('#btnPropose').onclick=async ()=>{
-    const wid=currentWorkId(); if(!wid){alert('Lier un WorkID');return;}
-    const at=combineAt(host.querySelector('#DATE').value.trim(),host.querySelector('#TIME').value.trim());
-    host.querySelector('#gitState').textContent='Recherche…';
-    let j=await gitFind(wid,at); if(!j||!j.ok||!j.hit) j=await gdrvFind(wid,at);
-    if(!j||!j.ok||!j.hit){host.querySelector('#gitState').textContent='Aucun snapshot';return;}
-    window.__hit=j.hit; const t=new Date(j.hit.ts||Date.now()).toLocaleString(); host.querySelector('#gitState').textContent=`Hit: ${t}`;
-  };
-
-  host.querySelector('#btnRestore').onclick=async ()=>{
-    const wid=currentWorkId(); if(!wid){alert('Lier un WorkID');return;}
-    const at=combineAt(host.querySelector('#DATE').value.trim(),host.querySelector('#TIME').value.trim());
-    host.querySelector('#gitState').textContent='Préparation…';
-    let hit=window.__hit; if(!hit){ let j=await gitFind(wid,at); if(!j||!j.ok||!j.hit) j=await gdrvFind(wid,at); if(!j||!j.ok||!j.hit){host.querySelector('#gitState').textContent='Aucun snapshot';return;} hit=window.__hit=j.hit; }
-    await ensurePreRestoreBudget(); host.querySelector('#gitState').textContent='Chargement…';
-    let ok=false,resp=null; if(hit.sha||hit.json_path){resp=await gitLoad(wid,hit.sha,hit.json_path); ok=resp&&resp.ok;}
-    if(!ok&&hit.id){resp=await gdrvLoad(wid,hit.id); ok=resp&&resp.ok;} if(!ok){host.querySelector('#gitState').textContent='Erreur chargement';return;}
-    mergeIntoCurrentService(resp.state||resp.data||{}); await consolidateAfterRestore();
-    appendJournal({ts:Date.now(),type:'load',target:{kind:'state',id:'*'},snapshot:{source:(hit.sha||hit.json_path)?'git':'gdrive',...hit}});
-    const t=new Date(hit.ts||Date.now()).toLocaleString(); host.querySelector('#gitState').textContent=`Restauré: ${t}`;
-  };
-
-  host.querySelector('#btnLoad').onclick=async ()=>{
-    const wid=currentWorkId(); if(!wid){alert('Lier un WorkID');return;}
-    host.querySelector('#loadState').textContent='Chargement…';
-    const j=await loadFromGoogle(wid);
-    if(!j||!j.ok||!j.data){host.querySelector('#loadState').textContent=j?.error||'ko'; return;}
-    mergeIntoCurrentService(j.data); await commitWithEviction(); appendJournal({ts:Date.now(),type:'load',target:{kind:'state',id:'*'}});
-    host.querySelector('#loadState').textContent='OK';
-  };
-
-  host.querySelector('#btnSnapshotNow').onclick=async ()=>{
-    const wid=currentWorkId(); if(!wid){alert('Lier un WorkID');return;}
-    const state = readClientBlob();
-    host.querySelector('#loadState').textContent='Snapshot…';
-    try{ await saveToGoogle(wid, state); }catch{}
-    const gh = await gitSnapshot(wid, state);
-    host.querySelector('#loadState').textContent = (gh && gh.ok) ? 'Snapshot OK' : 'Snapshot Drive OK';
-  };
-  
+  return { ...top, connections };
 }
 
+function setText(el, text) { if (el) el.textContent = text; }
+function setVal(el, val)   { if (el) el.value = val ?? ''; }
+
+// ---------- Mount (appelé par l’onglet) ----------
+export async function mountSettingsTab() {
+  // 1) Lire settings (via core) et le normaliser pour éviter tout undefined
+  const raw = (window.settings && (window.settings.__raw || window.settings)) || settingsLoad();
+  const s = safeSettingsShape(raw);
+
+  // 2) Récupérer les éléments UI (ne change pas l’HTML)
+  const $client     = $('#settings-client');
+  const $service    = $('#settings-service');
+  const $llm        = $('#settings-llm');
+  const $git        = $('#settings-git');
+  const $gdrive     = $('#settings-gdrive');
+  const $proxyUrl   = $('#settings-proxy-url');
+  const $proxyToken = $('#settings-proxy-token');
+
+  const $saveBtn    = $('#settings-save');
+  const $diagBtn    = $('#settings-diag');
+  const $diagOut    = $('#settings-diag-output');
+
+  // 3) Remplir les champs (si l’input n’existe pas, on ignore)
+  setVal($client,     s.connections.client);
+  setVal($service,    s.connections.service);
+  setVal($llm,        s.connections.endpoints.llm.url);
+  setVal($git,        s.connections.endpoints.git.url);
+  setVal($gdrive,     s.connections.endpoints.gdrive.url);
+  setVal($proxyUrl,   s.connections.endpoints.proxy.url);
+  setVal($proxyToken, s.connections.endpoints.proxy.token);
+
+  // 4) Binder Sauver la conf (écrit top-level + connections.*)
+  if ($saveBtn) {
+    $saveBtn.onclick = async () => {
+      const client  = ($client?.value || '').trim();
+      const service = ($service?.value || '').trim();
+      const llm     = ($llm?.value || '').trim();
+      const git     = ($git?.value || '').trim();
+      const gdrive  = ($gdrive?.value || '').trim();
+      const pUrl    = ($proxyUrl?.value || '').trim();
+      const pTok    = ($proxyToken?.value || '').trim();
+
+      await settingsSave({
+        client, service,
+        endpoints: { llm, git, gdrive, proxy:{ url:pUrl, token:pTok } },
+        proxy: { url:pUrl, token:pTok },
+        connections: {
+          client, service,
+          endpoints: {
+            llm:    { url: llm },
+            git:    { url: git },
+            gdrive: { url: gdrive },
+            proxy:  { url: pUrl, token: pTok }
+          },
+          proxy: { url: pUrl, token: pTok }
+        }
+      });
+
+      setText($diagOut, '✅ Config sauvegardée.');
+    };
+  }
+
+  // 5) Binder Diag (sans planter si vide)
+  if ($diagBtn) {
+    $diagBtn.onclick = async () => {
+      try {
+        const r = await diag();
+        setText($diagOut, JSON.stringify(r, null, 2));
+      } catch (e) {
+        setText($diagOut, `diag: ${e?.message || e}`);
+      }
+    };
+  }
+}
+
+// Pour compat éventuelle (si l'app attend settings.mount)
+export const mount = mountSettingsTab;
+
+/*
+INDEX settings UI:
+- safeSettingsShape(s)
+- mountSettingsTab()
+- mount (alias)
+*/
