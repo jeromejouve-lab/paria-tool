@@ -1,3 +1,4 @@
+// src/core/store.js — blob local "courant"
 import { getSettings, getWorkId } from './settings.js';
 
 const LS_PREFIX = 'paria::';
