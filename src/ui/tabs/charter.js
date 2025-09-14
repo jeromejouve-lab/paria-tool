@@ -127,19 +127,20 @@ export function mountCharterTab(host){
     tags:(host.querySelector('#chTags').value||'').split(',').map(s=>s.trim()).filter(Boolean)
   }); alert('Charter enregistré');};
   host.querySelector('#btnChDelete').onclick = () => {
-  if (!confirm('Supprimer le Charter ? (soft-delete)')) return;
-  softDeleteCharter();
-  // feedback UI discret
-  const ed = host.querySelector('.charter-editor');
-  const info = document.createElement('div');
-  info.className = 'charter-empty-hint';
-  info.textContent = 'Charter supprimé (soft). Vous pouvez le restaurer.';
-  ed.prepend(info);
-};
+    if (!confirm('Supprimer le Charter ? (soft-delete)')) return;
+    softDeleteCharter();
+    // feedback UI discret
+    const ed = host.querySelector('.charter-editor') || host;
+    const info = document.createElement('div');
+    info.className = 'charter-empty-hint';
+    info.textContent = 'Charter supprimé (soft). Vous pouvez le restaurer.';
+    (host.firstElementChild || host).before(info);
+  };
 
   host.querySelector('#btnChRestore').onclick=()=>{restoreCharter(); alert('Charter restauré');};
   host.querySelector('#btnChExportMD').onclick=()=>{const md=`# ${host.querySelector('#chTitle').value}\n\n${host.querySelector('#chContent').value}`; download(new Blob([md],{type:'text/markdown'}),'charter.md');};
   host.querySelector('#btnChExportHTML').onclick=()=>{const esc=s=>String(s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); const html=`<!doctype html><meta charset="utf-8"><article><h1>${esc(host.querySelector('#chTitle').value)}</h1><div>${esc(host.querySelector('#chContent').value).replace(/\n/g,'<br>')}</div></article>`; download(new Blob([html],{type:'text/html'}),'charter.html');};
   host.querySelector('#btnChExportJSON').onclick=()=>download(new Blob([JSON.stringify(getCharter(),null,2)],{type:'application/json'}),'charter.json');
 }
+
 
