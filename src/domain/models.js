@@ -1,8 +1,7 @@
-// src/domain/models.js — modèles + exports client (MD/HTML) intégrant Charter/branding
+// src/domain/models.js — modèles + exports client
+import { now } from '../core/time.js';
 import { getSettings } from '../core/settings.js';
 import { readClientBlob } from '../core/store.js';
-
-export const now = ()=> Date.now();
 
 export function newCard(part={}){
   return {
@@ -14,13 +13,9 @@ export function newCard(part={}){
     state: { deleted:false, updated_ts: now() }
   };
 }
-
 export const normalizeCard = c => ({
-  id:c?.id,
-  title:c?.title || '',
-  content:c?.content || '',
-  tags:Array.isArray(c?.tags)?c.tags:[],
-  ai:Array.isArray(c?.ai)?c.ai:[],
+  id:c?.id, title:c?.title||'', content:c?.content||'',
+  tags:Array.isArray(c?.tags)?c.tags:[], ai:Array.isArray(c?.ai)?c.ai:[],
   state:c?.state || { deleted:false, updated_ts: now() }
 });
 
@@ -34,22 +29,17 @@ export function newScenario(part={}){
     state: { deleted:false, updated_ts: now() }
   };
 }
-
 export const normalizeScenario = s => ({
-  id:s?.id,
-  title:s?.title || '',
-  week:s?.week || '',
-  working:!!s?.working,
-  cards:Array.isArray(s?.cards)?s.cards:[],
+  id:s?.id, title:s?.title||'', week:s?.week||'',
+  working:!!s?.working, cards:Array.isArray(s?.cards)?s.cards:[],
   state:s?.state || { deleted:false, updated_ts: now() }
 });
 
-// -------- Exports client (intègrent Charter + branding) --------
+// -------- Exports (intègrent Charter + branding) --------
 function selectedAIList(c){
-  return (c.ai||[]).filter(a => a?.status === 'ok' || a?.selected)
+  return (c.ai||[]).filter(a => a?.status==='ok' || a?.selected)
                    .map(a=>`- (${a.component||'P'}) ${a.text||''}`).join('\n') || '- (aucune sélection)';
 }
-
 export function cardToMarkdown(card){
   const c = normalizeCard(card||{});
   const s = getSettings();
@@ -80,32 +70,27 @@ ${selectedAIList(c)}
 ${charter.content||''}
 `;
 }
-
 export function cardToHTML(card){
-  // conversion minimaliste depuis le MD ci-dessus (pour rester UI-agnostique)
   const md = cardToMarkdown(card);
   const html = md
-    .replace(/^---[\s\S]*?---\s*/,'') // supprime le front-matter du rendu HTML
-    .replace(/^# (.*)$/m, '<h1>$1</h1>')
-    .replace(/^## (.*)$/mg, '<h2>$1</h2>')
-    .replace(/^\*\*(.*)\*\*$/mg, '<strong>$1</strong>')
-    .replace(/^- (.*)$/mg, '<li>$1</li>')
+    .replace(/^---[\s\S]*?---\s*/,'')
+    .replace(/^# (.*)$/m,'<h1>$1</h1>')
+    .replace(/^## (.*)$/mg,'<h2>$1</h2>')
+    .replace(/^\*\*(.*)\*\*$/mg,'<strong>$1</strong>')
+    .replace(/^- (.*)$/mg,'<li>$1</li>')
     .split('\n').map(line=>{
       if (!line.trim()) return '<br>';
       if (line.startsWith('<h1>')||line.startsWith('<h2>')||line.startsWith('<li>')) return line;
       return `<p>${line.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>`;
     }).join('\n')
-    .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
+    .replace(/(<li>.*<\/li>)/gs,'<ul>$1</ul>');
   const s = getSettings();
-  return `<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${(card?.title||'Card')} — ${s.client}/${s.service}</title></head>
-<body>${html}</body></html>`;
+  return `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${(card?.title||'Card')} — ${s.client}/${s.service}</title><body>${html}</body></html>`;
 }
 
 /*
 INDEX models.js:
-- now()
 - newCard(part), normalizeCard(c)
 - newScenario(part), normalizeScenario(s)
 - cardToMarkdown(card), cardToHTML(card)
