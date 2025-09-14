@@ -3,124 +3,153 @@ import { commitWithEviction } from '../core/budget.js';
 import { newCard, normalizeCard, newScenario, normalizeScenario } from './models.js';
 import { appendJournal } from './journal.js';
 
-export function getCharter(){
+// --- util interne
+function _now(){ return Date.now(); }
+function _withJournal(evt){
   const s = readClientBlob();
-  return (s && s.charter) ? s.charter : {
-    title: '',
-    content: '',
-    tags: [],
-    state: { deleted: false, updated_ts: Date.now() }
-  };
-}
-
-export function saveCharter(patch){
-  const s = readClientBlob();
-  const base = s.charter || { title:'', content:'', tags:[], state:{ deleted:false, updated_ts:Date.now() } };
-  s.charter = { ...base, ...patch };
-  s.charter.state = { ...(s.charter.state||{}), updated_ts: Date.now() };
-  writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: Date.now(), type: 'update', target: { kind: 'charter', id: 'charter' }, payload: patch });
-  return s.charter;
-}
-
-export const softDeleteCharter=()=>saveCharter({state:{deleted:true,updated_ts:Date.now()}}); 
-export const restoreCharter=()=>saveCharter({state:{deleted:false,updated_ts:Date.now()}});
-
-// === IA sur Charter ===
-export function ensureCharter(){
-  const s=readClientBlob();
-  s.charter = s.charter || {title:'',content:'',tags:[],state:{deleted:false,updated_ts:Date.now()}};
-  if (!Array.isArray(s.charter.ai)) s.charter.ai = [];
+  s.journal = Array.isArray(s.journal) ? s.journal : [];
+  s.journal.push({ ts:_now(), ...evt });
+  writeClientBlob(s);
   return s;
 }
 
-export function addAItoCharter(part){
-  const s = ensureCharter();
-  const a = {
-    id: part.id || `ai_${Math.random().toString(36).slice(2,8)}`,
-    component: part.component || 'P',
-    kind: 'paria',
-    status: part.status || 'todo',
-    origin: part.origin || 'heuristic',
-    text: part.text || '',
-    ts: Date.now(),
-    selected: !!part.selected,
-  };
-  s.charter.ai.push(a);
-  s.charter.state = {...(s.charter.state||{}), updated_ts: Date.now()};
+// Charter: lecture/écriture minimales (idempotentes)
+export function getCharter(){
+  const s = readClientBlob();
+  return s.charter || { title:'', content:'', tags:[], ai:[], state:{ deleted:false, updated_ts:_now() } };
+}
+
+export function ensureCharter(){
+  const s = readClientBlob();
+  if (!s.charter) s.charter = { title:'', content:'', tags:[], ai:[], state:{ deleted:false, updated_ts:_now() } };
   writeClientBlob(s);
-  appendJournal({ts:Date.now(), type:'ai', target:{kind:'charter', id:'charter'}, payload:{component:a.component}});
-  return a;
+  return s;
 }
 
-export function toggleCharterAIStatus(aiId, status){
+export function saveCharter(patch){
   const s = ensureCharter();
-  const i = s.charter.ai.findIndex(x => x.id === aiId);
-  if (i < 0) return null;
-  s.charter.ai[i].status = status;
-  if (status === 'ok') s.charter.ai[i].selected = true;
-  s.charter.state = {...(s.charter.state||{}), updated_ts: Date.now()};
-  writeClientBlob(s); commitWithEviction();
-  return s.charter.ai[i];
+  s.charter = { ...s.charter, ...patch };
+  s.charter.state = { ...(s.charter.state||{}), updated_ts:_now() };
+  writeClientBlob(s);
+  _withJournal({ type:'update', target:{kind:'charter', id:'charter'}, payload:patch });
+  return s.charter;
 }
 
-export function setCharterAISelected(aiId, selected){
+// --- IA: ajouter / supprimer / changer statut / sélectionner
+let _aiIdSeq = 0;
+
+export function addAItoCharter(proposal){
   const s = ensureCharter();
-  const i = s.charter.ai.findIndex(x => x.id === aiId);
-  if (i < 0) return null;
-  s.charter.ai[i].selected = !!selected;
-  s.charter.state = {...(s.charter.state||{}), updated_ts: Date.now()};
-  writeClientBlob(s); commitWithEviction();
-  return s.charter.ai[i];
+  s.charter.ai = Array.isArray(s.charter.ai) ? s.charter.ai : [];
+  const id = proposal.id ?? `${_now()}_${++_aiIdSeq}`;
+  const item = {
+    id,
+    ts: proposal.ts ?? _now(),
+    component: proposal.component ?? 'P',
+    text: proposal.text ?? '',
+    status: proposal.status ?? 'todo',
+    selected: !!proposal.selected
+  };
+  s.charter.ai.push(item);
+  s.charter.state = { ...(s.charter.state||{}), updated_ts:_now() };
+  writeClientBlob(s);
+  _withJournal({ type:'ai-add', target:{kind:'charter.ai', id}, payload:{ component:item.component } });
+  return item;
 }
 
-export function importCharterSelectedToCurrentCard(){
+export function removeCharterAI(id){
   const s = ensureCharter();
-  const selected = (s.charter.ai||[]).filter(a => a.selected || a.status === 'ok');
-  if (!selected.length) return false;
-
-  const sess = s.meta?.session;
-  const targetId = sess?.card_id || ((s.items||[]).find(x=>!x.state?.deleted)?.id);
-  if (!targetId) return false;
-
-  const bullets = '\n\n## PARIA – Propositions sélectionnées\n' +
-    selected.map(a => `- (${a.component}) ${a.text}`).join('\n') + '\n';
-
-  const tgt = (s.items||[]).find(x => x.id === targetId);
-  const newContent = (tgt?.content || '') + bullets;
-  updateCard(targetId, { content: newContent });
-
-  appendJournal({
-    ts: Date.now(),
-    type: 'update',
-    target: { kind: 'card', id: targetId },
-    payload: { from: 'charter.ai', count: selected.length }
-  });
+  const arr = Array.isArray(s.charter.ai) ? s.charter.ai : [];
+  const idx = arr.findIndex(x => String(x.id) === String(id));
+  if (idx < 0) return false;
+  const [removed] = arr.splice(idx,1);
+  s.charter.ai = arr;
+  s.charter.state = { ...(s.charter.state||{}), updated_ts:_now() };
+  writeClientBlob(s);
+  _withJournal({ type:'ai-delete', target:{kind:'charter.ai', id}, payload:{ component:removed?.component } });
   return true;
 }
 
+export function toggleCharterAIStatus(id, status){
+  const s = ensureCharter();
+  const arr = Array.isArray(s.charter.ai) ? s.charter.ai : [];
+  const it = arr.find(x => String(x.id) === String(id));
+  if (!it) return null;
 
-export function listCards(mode='active',q=''){const s=readClientBlob(); let arr=Array.isArray(s.items)?s.items.map(normalizeCard):[]; if(mode==='active')arr=arr.filter(c=>!c.state.deleted); if(mode==='deleted')arr=arr.filter(c=>c.state.deleted);
-  if(mode==='recent')arr=arr.sort((a,b)=>b.state.updated_ts-a.state.updated_ts).slice(0,50); if(q){const qq=q.toLowerCase(); arr=arr.filter(c=>(c.title||'').toLowerCase().includes(qq)||(c.content||'').toLowerCase().includes(qq));} return arr;}
-export function createCard(part={}){const s=readClientBlob(); const c=newCard(part); s.items=Array.isArray(s.items)?s.items:[]; s.items.push(c); writeClientBlob(s); appendJournal({ts:Date.now(),type:'create',target:{kind:'card',id:c.id},payload:{title:c.title}}); return c;}
+  if (status === 'hold'){ it.status = (it.status==='hold'?'todo':'hold'); }
+  else if (status === 'ok'){ it.status = (it.status==='ok'?'todo':'ok'); }
+  else if (status === 'drop'){ it.status = (it.status==='drop'?'todo':'drop'); }
+  else { it.status = status || 'todo'; }
+
+  s.charter.state = { ...(s.charter.state||{}), updated_ts:_now() };
+  writeClientBlob(s);
+  _withJournal({ type:'ai-status', target:{kind:'charter.ai', id}, payload:{ status: it.status } });
+  return it;
+}
+
+export function setCharterAISelected(id, selected){
+  const s = ensureCharter();
+  const it = (s.charter.ai||[]).find(x => String(x.id) === String(id));
+  if (!it) return false;
+  it.selected = !!selected;
+  s.charter.state = { ...(s.charter.state||{}), updated_ts:_now() };
+  writeClientBlob(s);
+  return true;
+}
+
+// --- Charter: soft delete / restore
+export function softDeleteCharter(){
+  const s = ensureCharter();
+  s.charter.state = { ...(s.charter.state||{}), deleted:true, updated_ts:_now() };
+  writeClientBlob(s);
+  _withJournal({ type:'delete', target:{kind:'charter', id:'charter'} });
+  return true;
+}
+
+export function restoreCharter(){
+  const s = ensureCharter();
+  s.charter.state = { ...(s.charter.state||{}), deleted:false, updated_ts:_now() };
+  writeClientBlob(s);
+  _withJournal({ type:'restore', target:{kind:'charter', id:'charter'} });
+  return true;
+}
+
+// --- Cards (pour import sélection depuis Charter) : garder ta version si déjà ok
 export function updateCard(id, patch){
   const s = readClientBlob();
   s.items = Array.isArray(s.items) ? s.items : [];
   const idx = s.items.findIndex(c => c.id === id);
   if (idx < 0) return null;
-
   const cur = s.items[idx] || {};
-  const next = {
-    ...cur,
-    ...patch,
-    state: { ...(cur.state||{}), updated_ts: Date.now() }
-  };
+  const next = { ...cur, ...patch, state: { ...(cur.state||{}), updated_ts:_now() } };
   s.items[idx] = next;
-
-  writeClientBlob(s); commitWithEviction();
-  appendJournal({ ts: Date.now(), type: 'update', target: { kind: 'card', id }, payload: patch });
+  writeClientBlob(s);
+  _withJournal({ ts:_now(), type:'update', target:{kind:'card', id}, payload:patch });
   return next;
 }
+
+export function importCharterSelectedToCurrentCard(){
+  const s = ensureCharter();
+  const selected = (s.charter.ai||[]).filter(a => a.selected || a.status==='ok');
+  if (!selected.length) return false;
+
+  const cardId = s.meta?.session?.card_id || (s.items||[]).find(x=>!x.state?.deleted)?.id;
+  if (!cardId) return false;
+
+  const bullets = '\n\n## PARIA – Propositions sélectionnées\n' +
+                  selected.map(a => `- (${a.component}) ${a.text}`).join('\n') + '\n';
+
+  const cur = (s.items||[]).find(x=>x.id===cardId);
+  updateCard(cardId, { content: (cur?.content||'') + bullets });
+
+  _withJournal({ type:'import', target:{kind:'card', id:cardId}, payload:{ from:'charter.ai', count:selected.length } });
+  return true;
+}
+
+export function listCards(mode='active',q=''){const s=readClientBlob(); let arr=Array.isArray(s.items)?s.items.map(normalizeCard):[]; if(mode==='active')arr=arr.filter(c=>!c.state.deleted); if(mode==='deleted')arr=arr.filter(c=>c.state.deleted);
+  if(mode==='recent')arr=arr.sort((a,b)=>b.state.updated_ts-a.state.updated_ts).slice(0,50); if(q){const qq=q.toLowerCase(); arr=arr.filter(c=>(c.title||'').toLowerCase().includes(qq)||(c.content||'').toLowerCase().includes(qq));} return arr;}
+export function createCard(part={}){const s=readClientBlob(); const c=newCard(part); s.items=Array.isArray(s.items)?s.items:[]; s.items.push(c); writeClientBlob(s); appendJournal({ts:Date.now(),type:'create',target:{kind:'card',id:c.id},payload:{title:c.title}}); return c;}
+
 
 export const softDeleteCard=id=>updateCard(id,{state:{deleted:true,deleted_at:Date.now(),deleted_by:'me',updated_ts:Date.now()}});
 export const restoreCard=id=>updateCard(id,{state:{deleted:false,deleted_at:0,deleted_by:'',updated_ts:Date.now()}});
@@ -144,5 +173,6 @@ export function removeCardFromScenario(scId,cardId){const s=readClientBlob(); co
 export function duplicateCurrentCard(){const s=readClientBlob(); const sess=s.meta?.session; const baseId=sess?.card_id; const src=(Array.isArray(s.items)?s.items:[]).find(x=>x.id===baseId)||(Array.isArray(s.items)?s.items[0]:null); if(!src)return null; const copy={...src,id:undefined,title:(src.title||'Card')+' (copie)',state:{...src.state,deleted:false,updated_ts:Date.now()}}; return createCard(copy);}
 export function importSelectedToCurrentCard(scId){const s=readClientBlob(); const sess=s.meta?.session; const targetId=sess?.card_id||((s.items||[]).find(x=>!x.state?.deleted)?.id); if(!targetId)return null; const sc=(Array.isArray(s.scenarios)?s.scenarios:[]).find(x=>x.id===scId); if(!sc)return null; const byId=new Map((s.items||[]).map(c=>[c.id,c])); const selected=[]; (sc.items||[]).forEach(it=>{const c=byId.get(it.card_id); if(!c)return; (c.ai||[]).forEach(a=>{if(a.selected||a.status==='ok')selected.push({card:c.title,text:a.text});});});
   if(!selected.length){updateCard(targetId,{}); return true;} const tgt=(s.items||[]).find(x=>x.id===targetId); const bullets='\n\n## Propositions importées\n'+selected.map(x=>`- (${x.card}) ${x.text}`).join('\n')+'\n'; const newContent=(tgt?.content||'')+bullets; updateCard(targetId,{content:newContent}); appendJournal({ts:Date.now(),type:'update',target:{kind:'card',id:targetId},payload:{imported_from:scId,count:selected.length}}); return true;}
+
 
 
