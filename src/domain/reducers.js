@@ -296,4 +296,122 @@ export function promoteScenario(id){
 `# ${sc.title || 'Scénario'}
 
 ## Sélection du scénario (${new Date().toLocaleString()})
-${selected.ma
+${selected.map(x=>`- (${x.component}) ${x.text} — source: ${x.from}`).join('\n') || '- (aucune sélection)'}
+`;
+
+  const idx = (s.items||[]).findIndex(x=>x.id===sessId);
+  const cur = normalizeCard(s.items[idx]);
+  const next = { ...cur, content:block, state:{ ...(cur.state||{}), updated_ts: now() } };
+  s.items[idx] = next;
+  writeClientBlob(s); commitWithEviction();
+
+  return updateScenario(id, { working:true });
+}
+export function addCardToScenario(scId, cardId, slot=''){
+  const s = readClientBlob();
+  const idx = (s.scenarios||[]).findIndex(x=>x.id===scId);
+  if (idx<0) return null;
+  const sc = normalizeScenario(s.scenarios[idx]);
+  sc.cards = Array.isArray(sc.cards)?sc.cards:[];
+  sc.cards.push({ card_id:cardId, slot });
+  sc.state = { ...(sc.state||{}), updated_ts: now() };
+  s.scenarios[idx] = sc;
+  writeClientBlob(s); commitWithEviction();
+  appendJournal({ type:'scenario-add-card', target:{kind:'scenario', id:scId}, payload:{ card_id:cardId, slot }});
+  return sc;
+}
+export function removeCardFromScenario(scId, cardId){
+  const s = readClientBlob();
+  const idx = (s.scenarios||[]).findIndex(x=>x.id===scId);
+  if (idx<0) return null;
+  const sc = normalizeScenario(s.scenarios[idx]);
+  const before = (sc.cards||[]).length;
+  sc.cards = (sc.cards||[]).filter(x=>x.card_id!==cardId);
+  if ((sc.cards||[]).length===before) return sc;
+  sc.state = { ...(sc.state||{}), updated_ts: now() };
+  s.scenarios[idx] = sc;
+  writeClientBlob(s); commitWithEviction();
+  appendJournal({ type:'scenario-remove-card', target:{kind:'scenario', id:scId}, payload:{ card_id:cardId }});
+  return sc;
+}
+export function duplicateCurrentCard(){
+  const s = readClientBlob();
+  const baseId = s?.meta?.session?.card_id || ((s.items||[]).find(x=>!x.state?.deleted)?.id);
+  if (!baseId) return null;
+  const baseIdx = (s.items||[]).findIndex(x=>x.id===baseId);
+  const src = normalizeCard(s.items[baseIdx]);
+  const copy = newCard({ title:`${src.title} (copie)`, content:src.content, tags:src.tags });
+  s.items.push(copy);
+  writeClientBlob(s); commitWithEviction();
+  appendJournal({ type:'create', target:{kind:'card', id:copy.id}, payload:{ from:baseId }});
+  return copy;
+}
+export function importSelectedToCurrentCard(scId){
+  const s = readClientBlob();
+  const sessId = s?.meta?.session?.card_id || ((s.items||[]).find(x=>!x.state?.deleted)?.id);
+  if (!sessId) return false;
+  const sc = (s.scenarios||[]).find(x=>x.id===scId);
+  if (!sc) return false;
+
+  const selected = [];
+  (sc.cards||[]).forEach(ref=>{
+    const card = (s.items||[]).find(c=>c.id===ref.card_id);
+    (card?.ai||[]).forEach(a=>{ if (a.status==='ok' || a.selected) selected.push({ from:card.title, text:a.text, component:a.component }); });
+  });
+
+  const idx = (s.items||[]).findIndex(x=>x.id===sessId);
+  const cur = normalizeCard(s.items[idx]);
+  const block =
+`\n\n## Scénario – Sélection (${new Date().toLocaleString()})
+${selected.map(x=>`- (${x.component}) ${x.text}  —  source: ${x.from}`).join('\n') || '- (aucune)'}
+`;
+  const next = { ...cur, content:(cur.content||'')+block, state:{ ...(cur.state||{}), updated_ts: now() } };
+  s.items[idx] = next;
+  writeClientBlob(s); commitWithEviction();
+  appendJournal({ type:'import', target:{kind:'card', id:sessId}, payload:{ from:`scenario:${scId}`, count:selected.length }});
+  return true;
+}
+
+// ====== BACKUPS (sélection/restauration remote) ======
+export async function listSnapshots(where='git'){
+  if (where==='git')   return await listGitSnapshots();
+  if (where==='drive') return await listDriveSnapshots();
+  return [];
+}
+export async function saveSnapshotRemote({ label='', where='git' }={}){
+  const blob = JSON.stringify(readClientBlob());
+  const snap = { id:`snap_${now()}`, ts:now(), label:label||new Date().toLocaleString(), blob };
+  let out = { ok:true };
+  if (where==='git')   out = await pushSnapshotToGit(snap);
+  if (where==='drive') out = await pushSnapshotToDrive(snap);
+  appendJournal({ type:'snapshot-save', target:{kind:'snapshot', id:snap.id}, payload:{ where, label:snap.label }});
+  return out;
+}
+export async function restoreSnapshotRemote({ id, where='git' }={}){
+  const snap = (where==='git') ? await fetchSnapshotFromGit(id) : await fetchSnapshotFromDrive(id);
+  if (!snap || !snap.blob) throw new Error('snapshot introuvable');
+  const json = JSON.parse(snap.blob);
+  writeClientBlob(json);
+  appendJournal({ type:'snapshot-restore', target:{kind:'snapshot', id}, payload:{ where }});
+  return true;
+}
+
+// ====== HELPERS pour le Journal (UI: afficher JSON + bouton Restaurer) ======
+export function getJournalEntryPayload(e){ return e?.payload || {}; }
+export function restoreByTarget(target){
+  if (!target || !target.kind) return false;
+  if (target.kind==='card')    return restoreCard(target.id);
+  if (target.kind==='scenario')return restoreScenario(target.id);
+  if (target.kind==='charter') return restoreCharter();
+  return false;
+}
+
+/*
+INDEX reducers.js:
+- Charter: getCharter, saveCharter, softDeleteCharter, restoreCharter, addAItoCharter, toggleCharterAIStatus, removeCharterAI, setCharterAISelected, importCharterSelectedToCurrentCard
+- Cards: listCards, createCard, updateCard, softDeleteCard, restoreCard, openCard, addAItoCard, toggleAIStatus, removeCardAI, toggleCardAIStatus (alias), removecardai (alias)
+- Session: getSession, setSession, startSession, pauseSession, stopSession, addSessionComment, listSessionComments, addSessionAnnotation
+- Scenarios: listScenarios, createScenario, updateScenario, softDeleteScenario, restoreScenario, promoteScenario, addCardToScenario, removeCardFromScenario, duplicateCurrentCard, importSelectedToCurrentCard
+- Backups: listSnapshots(where), saveSnapshotRemote({label,where}), restoreSnapshotRemote({id,where})
+- Journal helpers: getJournalEntryPayload(e), restoreByTarget(target)
+*/
