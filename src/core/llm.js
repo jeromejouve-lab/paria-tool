@@ -1,4 +1,4 @@
-// src/core/llm.js — point d’entrée unique IA PARIA
+// src/core/llm.js — point d’entrée IA PARIA
 import { postLLM } from './net.js';
 
 export async function generateParia({ title='', content='', tags=[], components=['P','A','R','I'] }){
