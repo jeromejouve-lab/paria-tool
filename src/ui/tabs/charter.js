@@ -1,5 +1,4 @@
-// ui/tabs/charter.js — injection, 2 colonnes (gauche: saisie + actions, droite: analyse)
-// Feedback visible + logs console pour l’IA
+// ui/tabs/charter.js — 2 colonnes stables + statut + champs multi-lignes
 import {
   getCharter, saveCharter,
   setCharterAISelected, toggleCharterAIStatus, removeCharterAI,
@@ -17,7 +16,7 @@ function renderProposals(ch){
       ${list.map(p=>`
         <li class="proposal" data-id="${p.id}">
           <label class="sel">
-            <input type="checkbox" class="chk-sel" ${p?.state?.selected?'checked':''} />
+            <input type="checkbox" class="chk-sel" ${p?.state?.selected?'checked':''}/>
             <span>Sélectionner</span>
           </label>
           <div class="proposal-body">
@@ -36,30 +35,40 @@ function renderProposals(ch){
 function html(ch){
   return `
   <div class="charter cols">
-    <!-- Colonne gauche : saisie + actions -->
+    <!-- Colonne gauche -->
     <div class="col">
       <section class="block">
         <h3>Charter</h3>
+
         <div class="row">
-          <label>Titre<br><input id="charter-title" type="text" value="${ch.title||''}"></label>
-        </div>
-        <div class="row">
-          <label>Contenu<br><textarea id="charter-content" rows="6">${ch.content||''}</textarea></label>
-        </div>
-        <div class="row">
-          <label>Tags (séparés par virgule)<br>
-            <input id="charter-tags" type="text" value="${(ch.tags||[]).join(', ')}">
+          <label>Titre<br>
+            <textarea id="charter-title" rows="2" style="resize:vertical">${ch.title||''}</textarea>
           </label>
         </div>
+
         <div class="row">
+          <label>Contenu<br>
+            <textarea id="charter-content" rows="8" style="resize:vertical">${ch.content||''}</textarea>
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Tags (séparés par virgule)<br>
+            <textarea id="charter-tags" rows="2" style="resize:vertical">${(ch.tags||[]).join(', ')}</textarea>
+          </label>
+        </div>
+
+        <!-- barre de boutons locale (pas .row pour éviter l’étalement) -->
+        <div class="btns" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
           <button id="charter-gen" type="button">Analyser</button>
           <button id="charter-push" type="button">Envoyer les sélectionnés vers Cards</button>
         </div>
-        <div id="charter-status" class="muted">—</div>
+
+        <div id="charter-status" class="muted" style="margin-top:8px">—</div>
       </section>
     </div>
 
-    <!-- Colonne droite : résultats IA -->
+    <!-- Colonne droite -->
     <div class="col">
       <section class="block">
         <h3>Propositions IA</h3>
@@ -81,7 +90,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     return { title:t, content:c, tags };
   };
 
-  // Sauvegarde debounce sur input
+  // autosave
   let to;
   host.addEventListener('input', (ev)=>{
     if (!ev.target.closest('#charter-title,#charter-content,#charter-tags')) return;
@@ -89,14 +98,13 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     to = setTimeout(()=>{ saveCharter(getVals(host)); }, 200);
   });
 
-  // Analyser (IA)
+  // Analyse IA
   const btnGen = $('#charter-gen', host);
   const $status = $('#charter-status', host);
   btnGen.onclick = async ()=>{
     const vals = getVals(host);
     btnGen.disabled = true;
     $status.textContent = '⏳ Analyse en cours…';
-
     try{
       const r = await askAI({
         mode:'paria',
@@ -104,7 +112,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         payload:{ title:vals.title, content:vals.content, tags:vals.tags, components:['P','A','R','I'] },
         context:{ tab:'charter' }
       });
-      console.log('[Charter][askAI] result =', r);
+      console.log('[Charter][askAI]', r);
 
       if (r.status === 'ok' && r.results?.length){
         applyAIResults({kind:'charter'}, r.results, {mode:'replace'});
@@ -117,7 +125,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       } else {
         $status.textContent = `❌ IA: ${r.error||'erreur'}`;
       }
-    } catch (e){
+    } catch(e){
       console.error('[Charter][askAI] error', e);
       $status.textContent = `❌ IA: ${e?.message||e}`;
     } finally {
@@ -131,18 +139,17 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     $('#charter-status', host).textContent = '➡️ Envoyé vers Cards.';
   };
 
-  // Délégation : checkbox + pictos
+  // Sélection + pictos
   host.addEventListener('change', (ev)=>{
     const chk = ev.target.closest('.chk-sel'); if (!chk) return;
     const id = ev.target.closest('[data-id]')?.dataset?.id; if (!id) return;
     setCharterAISelected(id, chk.checked);
   });
-
   host.addEventListener('click', (ev)=>{
     const btn = ev.target.closest('[data-action]'); if (!btn) return;
     const id = btn.closest('[data-id]')?.dataset?.id; if (!id) return;
-    if (btn.dataset.action==='prop-delete') { removeCharterAI(id); }
-    if (btn.dataset.action==='prop-think')  { toggleCharterAIStatus(id,'think'); }
+    if (btn.dataset.action==='prop-delete') removeCharterAI(id);
+    if (btn.dataset.action==='prop-think')  toggleCharterAIStatus(id,'think');
     $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
   });
 }
