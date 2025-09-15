@@ -7,15 +7,31 @@ export async function postJSON(url, data){
   return r.json();
 }
 
-function getGAS(){ const s=settingsLoad(); const url = s?.endpoints?.proxy?.url || s?.proxy?.url || ''; const token = s?.endpoints?.proxy?.token || s?.proxy?.token || ''; return { url, token }; }
+export function getGAS(){
+  const s = settingsLoad();
+  const url = s?.endpoints?.proxy?.url || s?.proxy?.url || '';
+  const secret = s?.endpoints?.proxy?.token || s?.proxy?.token || '';
+  return { url, secret };
+}
 
+// POST text/plain (évite preflight CORS)
+export async function postPlain(url, obj){
+  const body = JSON.stringify(obj || {});
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const txt = await res.text();
+  try { return JSON.parse(txt); } catch { return { ok:true, text:txt }; }
+}
+
+// Diag GET conforme à code.gs ?route=diag&secret=...
 export async function diag(){
-  const s=settingsLoad(); const {url,token}=getGAS();
-  const out={ workId:`${s.client}::${s.service}`, proxy:{configured:!!url, ok:false, detail:''}, llm:{configured:!!s?.endpoints?.llm, ok:false, detail:''}, git:{configured:!!s?.endpoints?.git, ok:false, detail:''}, gdrive:{configured:!!s?.endpoints?.gdrive, ok:false, detail:''} };
-  try{ if (url){ await postJSON(url,{action:'ping', token}); out.proxy.ok=true; out.proxy.detail='pong'; } }catch(e){ out.proxy.detail=e?.message||'fail'; }
-  try{ if (s?.endpoints?.llm){ await postJSON(s.endpoints.llm,{mode:'ping'}); out.llm.ok=true; out.llm.detail='pong'; } }catch(e){ out.llm.detail=e?.message||'fail'; }
-  // git/gdrive pings optionnels via GAS
-  return out;
+  const { url, secret } = getGAS();
+  if (!url) return { proxy:{configured:false, ok:false} };
+  const u = new URL(url); u.searchParams.set('route','diag'); u.searchParams.set('secret',secret);
+  const r = await fetch(u.toString(), { method:'GET' });
+  const txt = await r.text();
+  let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
+  return { proxy:{configured:true, ok:r.ok, detail:r.ok?'pong':`HTTP ${r.status}`}, data };
 }
 
 // Snapshots / bootstrap via GAS (safe if not configured)
@@ -49,4 +65,5 @@ export async function bootstrapWorkspace(client, service){
 - saveToGoogle/listDriveSnapshots/loadFromGoogle
 - gitEnsure, bootstrapWorkspace()
 */
+
 
