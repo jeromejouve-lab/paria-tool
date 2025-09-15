@@ -130,32 +130,6 @@ export async function postJson(url, obj) {
   return { ok: res.ok, status: res.status, data };
 }
 
-/**
- * Compat: bootstrapWorkspace (attendu par reducers.js).
- * Lecture conf + tests non bloquants, sans effet de bord.
- */
-export async function bootstrapWorkspace() {
-  const s = settingsLoad();
-  const status = { proxy:false, git:false };
-
-  // test proxy si complet
-  try {
-    const { url, secret } = getGAS();
-    if (url && secret) {
-      const r = await diag();
-      status.proxy = !!r?.ok;
-    }
-  } catch {}
-
-  // test git si URL présente
-  try {
-    const r2 = await testGit();
-    status.git = !!r2?.ok;
-  } catch {}
-
-  // contrat minimal
-  return { settings: s, status };
-}
 
 
 
