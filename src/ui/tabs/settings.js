@@ -329,6 +329,25 @@ function bindWorkId(root){
   const btnProp = $('#btn-restore-propose', root);
   const btnApplySel = $('#btn-restore-apply', root);
   const listEl = $('#restore-list', root);
+  
+  // ——— Compact typographique pour la liste des snapshots (sans toucher au thème global)
+  (function ensureRestoreListCSS(){
+    const prev = document.getElementById('paria-restore-compact-css');
+    if (prev) prev.remove();
+    const st = document.createElement('style');
+    st.id = 'paria-restore-compact-css';
+    st.textContent = `
+      #restore-list{ font-size:.88em; line-height:1.25; }
+      #restore-list .snap{ display:grid; grid-template-columns: 56px 1fr; align-items:center; gap:6px; padding:2px 0; }
+      #restore-list .snap .t{ font-weight:600; text-align:right; }
+      #restore-list .snap .info{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+      #restore-list .snap .name{ opacity:.7; font-size:.86em; }
+      #restore-list code.mono{ font-size:.78em; opacity:.65; }
+      #restore-list input[type="radio"]{ margin-right:6px; }
+    `;
+    document.head.appendChild(st);
+  })();
+
 
   let __snaps = [];
   let __picked = null;
@@ -440,30 +459,46 @@ function bindWorkId(root){
           }) : [];
       }
   
-      // tri ascendant
-      items.sort((a,b)=> Date.parse(a.at) - Date.parse(b.at));
+      // tri DESC (plus récent en haut)
+      items.sort((a,b)=> Date.parse(b.at) - Date.parse(a.at));
   
       if (!items.length){
         listEl.innerHTML = `<div class="muted">Aucun snapshot/backup pour ${dateStr}.</div>`;
         btnApplySel && (btnApplySel.disabled = true);
         __picked = null;
       } else {
-        listEl.innerHTML = items.map((x,i)=>`
-          <label class="row" style="gap:8px;align-items:center">
-            <input type="radio" name="snap" value="${i}">
-            <span><b>${new Date(x.at).toLocaleString()}</b> · ${x.name}</span>
-            <code class="mono">${x.path}</code>
-          </label>
-        `).join('');
+        listEl.innerHTML = items.map((x,i)=>{
+          const d = new Date(x.at);
+          const hh = d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
+          const dateShort = d.toLocaleDateString();
+          return `
+            <label class="snap">
+              <input type="radio" name="snap" value="${i}">
+              <span class="t">${hh}</span>
+              <span class="info">
+                <span>${dateShort}</span>
+                <span class="name">${x.name}</span>
+                <code class="mono">${x.path}</code>
+              </span>
+            </label>
+          `;
+        }).join('');
   
-        // auto-pick : premier ≥ HH:MM si heure saisie, sinon dernier du jour
-        const at = timeStr ? `${dateStr}T${timeStr}:00` : `${dateStr}T23:59:59`;
-        const after = items.find(o => Date.parse(o.at) >= Date.parse(at));
-        const chosen = after || items[items.length-1];
-        const idx = items.findIndex(o => o.path === chosen.path);
-  
-        const radio = listEl.querySelector(`input[name="snap"][value="${idx}"]`);
-        if (radio){ radio.checked = true; __picked = items[idx]; btnApplySel.disabled = false; }
+        // auto-pick : premier ≥ HH:MM si heure saisie, sinon le plus récent (liste triée DESC)
+        const atIso = timeStr ? `${dateStr}T${timeStr}:00` : null;
+        if (atIso){
+          // calcul sur copie ASC pour la règle "≥ HH:MM"
+          const asc = [...items].sort((a,b)=> Date.parse(a.at) - Date.parse(b.at));
+          const after = asc.find(o => Date.parse(o.at) >= Date.parse(atIso));
+          const chosen = after || asc[asc.length-1];
+          const idx = items.findIndex(o => o.path === chosen.path); // items est DESC
+          const radio = listEl.querySelector(`input[name="snap"][value="${idx}"]`);
+          if (radio){ radio.checked = true; __picked = items[idx]; btnApplySel.disabled = false; }
+        } else {
+          // par défaut : premier (plus récent)
+          const radio = listEl.querySelector(`input[name="snap"][value="0"]`);
+          if (radio){ radio.checked = true; __picked = items[0]; btnApplySel.disabled = false; }
+        }
   
         listEl.addEventListener('change', (e)=>{
           if (e.target?.name === 'snap'){
@@ -473,7 +508,7 @@ function bindWorkId(root){
           }
         }, { once:true });
       }
-  
+
       console.table(items.map(x=>({at:x.at, path:x.path})));
     }catch(e){
       console.error('[RESTORE][git] proposer error', e);
@@ -731,6 +766,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
