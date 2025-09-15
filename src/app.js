@@ -28,9 +28,10 @@ export function showTab(tab){
   const fn = mounts[tab];
   if (typeof fn === 'function') { try { fn(); } catch (e) { console.error('mount error:', tab, e); } }
   // marquer l’onglet actif sur la nav si tu as des classes .active
-  document.querySelectorAll('[data-tab]').forEach(b=>{
+  document.querySelectorAll('header nav [data-tab]').forEach(b=>{
     b.classList.toggle('active', b.dataset.tab === tab);
   });
+
   // optionnel: hash (pas obligatoire)
   try { history.replaceState(null,'',`#${tab}`); } catch {}
 }
@@ -62,3 +63,4 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
