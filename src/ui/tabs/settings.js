@@ -338,13 +338,16 @@ function bindWorkId(root){
     st.id = 'paria-restore-compact-css';
     st.textContent = `
       #restore-list{ font-size:.88em; line-height:1.25; }
-      #restore-list .snap{ display:grid; grid-template-columns: 56px 1fr; align-items:center; gap:6px; padding:2px 0; }
-      #restore-list .snap .t{ font-weight:600; text-align:right; }
-      #restore-list .snap .info{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-      #restore-list .snap .name{ opacity:.7; font-size:.86em; }
-      #restore-list code.mono{ font-size:.78em; opacity:.65; }
-      #restore-list input[type="radio"]{ margin-right:6px; }
+      /* grille: [radio] [info extensible] [heure alignée droite] */
+      #restore-list .snap{ display:grid; grid-template-columns: 20px 1fr auto; align-items:center; gap:8px; padding:4px 0; }
+      #restore-list .snap .info{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; min-width:0; }
+      #restore-list .snap .date{ opacity:.8; }
+      #restore-list .snap .name{ opacity:.7; font-size:.86em; overflow-wrap:anywhere; }
+      #restore-list code.mono{ font-size:.78em; opacity:.65; overflow-wrap:anywhere; }
+      #restore-list .snap .time{ text-align:right; width:56px; font-variant-numeric:tabular-nums; opacity:.85; }
+      #restore-list input[type="radio"]{ margin:0; }
     `;
+
     document.head.appendChild(st);
   })();
 
@@ -474,12 +477,12 @@ function bindWorkId(root){
           return `
             <label class="snap">
               <input type="radio" name="snap" value="${i}">
-              <span class="t">${hh}</span>
               <span class="info">
-                <span>${dateShort}</span>
+                <span class="date">${dateShort}</span>
                 <span class="name">${x.name}</span>
                 <code class="mono">${x.path}</code>
               </span>
+              <span class="time">${hh}</span>
             </label>
           `;
         }).join('');
@@ -766,6 +769,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
