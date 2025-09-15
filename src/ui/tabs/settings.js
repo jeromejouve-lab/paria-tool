@@ -391,45 +391,131 @@ function bindWorkId(root){
   }
 
   if (btnProp) btnProp.onclick = async ()=>{
-    const statusEl = $('#restore-status', root);
+    console.group('[RESTORE][git] proposer snapshots');
     const _oldText_prop = btnProp.textContent;
     btnProp.disabled = true;
     btnProp.textContent = 'Proposition…';
-
     try{
-      const work_id = buildWorkIdLocal();
-      const atIso = currentWhenISO() || null;
-      const res = await callGAS('git_find', { work_id, at: atIso });
-      const items = Array.isArray(res?.data?.items) ? res.data.items
-                   : Array.isArray(res?.items) ? res.items : [];
-      __snaps = items.sort((a,b)=> Date.parse(a.at)-Date.parse(b.at));
-      renderSnapList(__snaps);
-      if (statusEl) statusEl.textContent = items.length ? `✅ ${items.length} snapshot(s)` : '—';
+      const s = settingsLoad() || {};
+      const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
+      const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
+      const branch = (document.querySelector('#git-branch') ?.value || s.git_branch || 'main').trim();
+      const token  = (document.querySelector('#git-token')  ?.value || s.git_token  || '').trim();
+  
+      const client  = (document.querySelector('#client')?.value  || s.client  || '').trim();
+      const service = (document.querySelector('#service')?.value || s.service || '').trim();
+      const dateStr = (document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10)).trim();
+  
+      if (!owner || !repo || !client || !service || !dateStr){
+        if (listEl) listEl.innerHTML = `<div class="muted">Paramètres manquants (owner/repo/client/service/date).</div>`;
+        return;
+      }
+  
+      // Liste le dossier de la journée
+      const base = `clients/${client}/${service}/${dateStr}`;
+      const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
+      console.log('GET', url);
+      const r = await fetch(url, {
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
+      const arr = (r.status===200 ? await r.json() : []);
+      // Filtrer les fichiers snapshot-*.json
+      const items = Array.isArray(arr) ? arr
+        .filter(x => x && x.type==='file' && /^snapshot-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.json$/.test(x.name))
+        .map(x => ({
+          at: x.name.slice('snapshot-'.length, 'snapshot-'.length+19).replace('_','T').replace(/-/g, (m, off)=> off===13?':':off===16?':':'-'), // "YYYY-MM-DDTHH:MM:SS"
+          source: 'git',
+          path: x.path
+        }))
+        : [];
+  
+      // Tri ascendant
+      items.sort((a,b)=> Date.parse(a.at) - Date.parse(b.at));
+  
+      // Rendu liste
+      if (!items.length){
+        listEl.innerHTML = `<div class="muted">Aucun snapshot pour ${dateStr}.</div>`;
+        btnApplySel && (btnApplySel.disabled = true);
+        __picked = null;
+      } else {
+        listEl.innerHTML = items.map((x,i)=>`
+          <label class="row" style="gap:8px;align-items:center">
+            <input type="radio" name="snap" value="${i}">
+            <span><b>${new Date(x.at).toLocaleString()}</b> · ${x.source}</span>
+            <code class="mono">${x.path}</code>
+          </label>
+        `).join('');
+  
+        // Auto-pick selon l'heure (≥, sinon dernier <, sinon dernier du jour)
+        const timeEl = document.querySelector('#work-time');
+        const at = timeEl?.value ? `${dateStr}T${timeEl.value}:00` : `${dateStr}T23:59:59`;
+        const after = items.find(o => Date.parse(o.at) >= Date.parse(at));
+        const chosen = after || items[items.length-1];
+        const idx = items.findIndex(o => o.path===chosen.path);
+        const radio = listEl.querySelector(`input[name="snap"][value="${idx}"]`);
+        if (radio){ radio.checked = true; __picked = items[idx]; btnApplySel.disabled = false; }
+  
+        listEl.addEventListener('change', (e)=>{
+          if (e.target?.name === 'snap'){
+            const i = Number(e.target.value);
+            __picked = items[i] || null;
+            btnApplySel.disabled = !__picked;
+          }
+        }, { once:true });
+      }
+  
+      console.table(items.map(x=>({ at:x.at, path:x.path })));
     }catch(e){
-      console.error('[restore][propose]', e);
-      if (statusEl) statusEl.textContent = '❌ proposition impossible';
+      console.error('[RESTORE][git] proposer error', e);
+      listEl.innerHTML = `<div class="muted">❌ Erreur lors de la proposition Git.</div>`;
+      btnApplySel && (btnApplySel.disabled = true);
+      __picked = null;
+    }finally{
+      btnProp.textContent = _oldText_prop;
+      btnProp.disabled = false;
+      console.groupEnd();
     }
-    // restore état bouton
-    btnProp.textContent = _oldText_prop;
-    btnProp.disabled = false;
   };
 
   if (btnApplySel) btnApplySel.onclick = async ()=>{
-    if (!__picked) return;
-    const statusEl = $('#restore-status', root);
-    btnApplySel.disabled = true; btnApplySel.textContent = 'Restauration…';
+    console.group('[RESTORE][git] apply selection');
+    const _old = btnApplySel.textContent;
+    btnApplySel.disabled = true;
+    btnApplySel.textContent = 'Restauration…';
     try{
-      const work_id = buildWorkIdLocal();
-      const res = await callGAS('git_load', { work_id, path: __picked.path });
-      const payload = res?.data || res || {};
-      const snap = payload?.content ? payload : { content: payload };
-      // Applique local (remplace par défaut)
-      const content = snap?.content?.local ?? snap?.content?.state ?? snap?.content;
-      if (!content || typeof content!=='object') throw new Error('snapshot vide');
+      if (!__picked?.path) throw new Error('no candidate');
+  
+      const s = settingsLoad() || {};
+      const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
+      const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
+      const branch = (document.querySelector('#git-branch') ?.value || s.git_branch || 'main').trim();
+      const token  = (document.querySelector('#git-token')  ?.value || s.git_token  || '').trim();
+  
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(__picked.path)}?ref=${encodeURIComponent(branch)}`;
+      console.log('GET', url);
+      const r = await fetch(url, {
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
+      if (r.status !== 200) throw new Error('not_found');
+      const meta = await r.json();
+      const raw  = atob((meta.content||'').replace(/\n/g,''));
+      let snap=null; try { snap = JSON.parse(raw); } catch { throw new Error('bad_json'); }
+  
+      // Snapshot → applique (replace namespace paria.*)
+      const content = snap?.local || snap?.content?.local || snap?.content || snap || {};
+      if (!content || typeof content !== 'object') throw new Error('empty');
+  
       // backup
-      const keys = Object.keys(localStorage).filter(k=>k.startsWith('paria'));
+      const keys = Object.keys(localStorage).filter(k=>k.startsWith('paria') && k!=='paria.__backup__');
       const bak = keys.reduce((a,k)=>(a[k]=localStorage.getItem(k),a),{});
       localStorage.setItem('paria.__backup__', JSON.stringify({ stamp:new Date().toISOString(), bak }));
+  
       // replace namespace
       for (const k of Object.keys(localStorage)){
         if (k.startsWith('paria') && !k.endsWith('.__backup__')) localStorage.removeItem(k);
@@ -438,17 +524,22 @@ function bindWorkId(root){
         const key = k.startsWith('paria') ? k : `paria.${k}`;
         localStorage.setItem(key, typeof v==='string' ? v : JSON.stringify(v));
       }
-      if (statusEl) statusEl.textContent = '✅ restauré';
+  
+      const statusEl = $('#restore-status', root);
+      if (statusEl) statusEl.textContent = '✅ restauré (Git)';
       try { await bootstrapWorkspace(); } catch {}
       setTimeout(()=> location.reload(), 120);
     }catch(e){
-      console.error('[restore][apply]', e);
-      if (statusEl) statusEl.textContent = '❌ restauration échouée';
+      console.error('[RESTORE][git] apply error', e);
+      const statusEl = $('#restore-status', root);
+      if (statusEl) statusEl.textContent = '❌ restauration (Git)';
     }finally{
-      btnApplySel.textContent = 'Restaurer la sélection';
+      btnApplySel.textContent = _old;
       btnApplySel.disabled = false;
+      console.groupEnd();
     }
   };
+
 
   if (btnRestore) btnRestore.onclick = async ()=>{
     const _oldText_restore = btnRestore.textContent;
@@ -631,6 +722,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
