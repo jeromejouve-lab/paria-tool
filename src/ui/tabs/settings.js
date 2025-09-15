@@ -2,8 +2,6 @@
 
 import { settingsLoad, settingsSave, updateLocalUsageBadge, buildWorkId } from '../../core/settings.js';
 import { bootstrapWorkspace } from '../../core/net.js';
-import '../../core/restore.js';
-
 
 const $ = (s, r=document) => r.querySelector(s);
 
@@ -873,6 +871,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
