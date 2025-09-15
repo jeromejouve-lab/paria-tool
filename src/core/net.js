@@ -4,11 +4,9 @@ import { settingsLoad } from './settings.js';
 
 // GAS settings
 export function getGAS() {
-  const s = settingsLoad();
-  const url = s?.endpoints?.proxy?.url || s?.proxy?.url || '';
-  const secret = s?.endpoints?.proxy?.secret || s?.proxy?.secret || s?.endpoints?.proxy?.token || s?.proxy?.token || '';
-  return { url: (url||'').trim(), secret: (secret||'').trim() };
+  return { url: '', secret: '' }; // Git-only
 }
+
 
 // POST text/plain (évite preflight)
 export async function postPlain(url, obj) {
@@ -93,14 +91,8 @@ export async function bootstrapWorkspace() {
  * Retourne { ok, status, data } comme postPlain.
  */
 export async function callGAS(route, payload = {}) {
-  const { url, secret } = getGAS();
-  if (!url) return { ok:false, status:0, data:{ ok:false, error:'no_proxy_url' } };
-  const body = { ...payload, route, secret };
-  try {
-    return await postPlain(url, body);
-  } catch (e) {
-    return { ok:false, status:0, data:{ ok:false, error:String(e?.message||e) } };
-  }
+  console.warn('[GAS disabled][git-only]', route, payload);
+  return { ok: false, disabled: 'git-only' };
 }
 
 /**
@@ -116,7 +108,8 @@ export async function loadFromGoogle(path) {
  * Selon ton Apps Script, adapte la route si besoin ('save', 'gdrive_save', etc.).
  */
 export async function saveToGoogle(path, content, meta = {}) {
-  return callGAS('save', { path, content, meta });
+  console.warn('[GAS disabled][git-only] save', path);
+  return { ok: false, disabled: 'git-only' };
 }
 
 /**
@@ -129,6 +122,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
