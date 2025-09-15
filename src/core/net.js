@@ -57,3 +57,30 @@ export async function testGit() {
     return { ok:false, status:0, detail:String(e?.message||e) };
   }
 }
+
+// --- compat: bootstrapWorkspace (utilisé par reducers.js) ---
+export async function bootstrapWorkspace() {
+  // lecture conf courante
+  const s = settingsLoad();
+  const status = { proxy:false, git:false };
+
+  // test proxy si complet
+  try {
+    const { url, secret } = getGAS();
+    if (url && secret) {
+      const r = await diag();
+      status.proxy = !!r?.ok;
+    }
+  } catch {}
+
+  // test git si URL présente
+  try {
+    const r2 = await testGit();
+    status.git = !!r2?.ok;
+  } catch {}
+
+  // contrat: retourne au moins settings + status
+  return { settings: s, status };
+}
+
+
