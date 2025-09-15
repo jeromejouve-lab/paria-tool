@@ -570,9 +570,6 @@ function bindWorkId(root){
     console.log('target path =', path);
     console.log('local keys =', Object.keys(data).length);
 
-    // feedback
-    const _old = btnSnap.textContent; btnSnap.disabled = true; btnSnap.textContent = 'Snapshot…';
-
     try{
       return; // Google désactivé tant que non résolu
       const res = await saveToGoogle(path, { local: data }, { kind:'snapshot', client, service, date: dateStr, at: ts.toISOString() });
@@ -634,6 +631,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
