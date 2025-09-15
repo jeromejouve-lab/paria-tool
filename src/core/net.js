@@ -83,4 +83,80 @@ export async function bootstrapWorkspace() {
   return { settings: s, status };
 }
 
+// ---------------------------------------------------------------------------
+// COMPATIBILITÉ (NE PAS SUPPRIMER) — Exports historiques attendus ailleurs
+// Ces wrappers utilisent la conf actuelle et les helpers déjà présents.
+// ---------------------------------------------------------------------------
+
+/**
+ * Appel générique GAS par route (POST text/plain). 
+ * Retourne { ok, status, data } comme postPlain.
+ */
+export async function callGAS(route, payload = {}) {
+  const { url, secret } = getGAS();
+  if (!url) return { ok:false, status:0, data:{ ok:false, error:'no_proxy_url' } };
+  const body = { ...payload, route, secret };
+  try {
+    return await postPlain(url, body);
+  } catch (e) {
+    return { ok:false, status:0, data:{ ok:false, error:String(e?.message||e) } };
+  }
+}
+
+/**
+ * Compat: chargement côté Google (alias historique).
+ * Selon ton Apps Script, adapte la route si besoin ('load', 'gdrive_load', etc.).
+ */
+export async function loadFromGoogle(path) {
+  return callGAS('load', { path });
+}
+
+/**
+ * Compat: sauvegarde côté Google (alias historique).
+ * Selon ton Apps Script, adapte la route si besoin ('save', 'gdrive_save', etc.).
+ */
+export async function saveToGoogle(path, content, meta = {}) {
+  return callGAS('save', { path, content, meta });
+}
+
+/**
+ * Compat: alias JSON (certain code appelait postJson).
+ */
+export async function postJson(url, obj) {
+  // même transport que postPlain mais avec JSON explicite si besoin
+  const res = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(obj||{}) });
+  const txt = await res.text();
+  let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
+  return { ok: res.ok, status: res.status, data };
+}
+
+/**
+ * Compat: bootstrapWorkspace (attendu par reducers.js).
+ * Lecture conf + tests non bloquants, sans effet de bord.
+ */
+export async function bootstrapWorkspace() {
+  const s = settingsLoad();
+  const status = { proxy:false, git:false };
+
+  // test proxy si complet
+  try {
+    const { url, secret } = getGAS();
+    if (url && secret) {
+      const r = await diag();
+      status.proxy = !!r?.ok;
+    }
+  } catch {}
+
+  // test git si URL présente
+  try {
+    const r2 = await testGit();
+    status.git = !!r2?.ok;
+  } catch {}
+
+  // contrat minimal
+  return { settings: s, status };
+}
+
+
+
 
