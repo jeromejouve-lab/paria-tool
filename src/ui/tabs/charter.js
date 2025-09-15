@@ -1,44 +1,116 @@
-// PARIA-V2-CLEAN v1.0.0 | ui/tabs/charter.js
-import { getCharter, saveCharter, setCharterAISelected, toggleCharterAIStatus, removeCharterAI, pushSelectedCharterToCards } from '../../domain/reducers.js';
+// PARIA-V2-CLEAN v1.0.0 | ui/tabs/charter.js (injection)
+import {
+  getCharter, saveCharter,
+  setCharterAISelected, toggleCharterAIStatus, removeCharterAI,
+  pushSelectedCharterToCards
+} from '../../domain/reducers.js';
 import { askAI, applyAIResults } from '../../core/ai.js';
-import { logEvent } from '../../domain/journal.js';
 
-const $=(s,r=document)=>r.querySelector(s);
+const $ = (s,r=document)=>r.querySelector(s);
 
-export function mountCharterTab(){
-  const root=document.getElementById('tab-charter'); if(!root) return;
+function renderProposals(ch){
+  const list = (ch.ai||[]).filter(p=>!p?.state?.deleted);
+  if (!list.length) return `<div class="muted">— Aucune proposition.</div>`;
+  return `
+    <ul class="charter-proposals">
+      ${list.map(p=>`
+        <li class="proposal" data-id="${p.id}">
+          <label class="sel">
+            <input type="checkbox" class="chk-sel" ${p?.state?.selected?'checked':''} />
+            <span>Sélectionner</span>
+          </label>
+          <div class="proposal-body">
+            <h4 class="proposal-title">${p.title||''}</h4>
+            <div class="proposal-content">${(p.content||'').replace(/\n/g,'<br>')}</div>
+            ${p.tags?.length?`<div class="tags">${p.tags.map(t=>`<span class="tag">#${t}</span>`).join(' ')}</div>`:''}
+          </div>
+          <div class="actions">
+            <button class="icon-think" title="À réfléchir" data-action="prop-think">${p?.state?.think?'🤔':'💡'}</button>
+            <button class="icon-trash" title="Supprimer" data-action="prop-delete">🗑️</button>
+          </div>
+        </li>`).join('')}
+    </ul>`;
+}
 
-  // Bind boutons existants (tolérant sur les sélecteurs)
-  const btnAnalyze = root.querySelector('[data-action="charter-analyze"], #charter-gen, #btnCharterAnalyze');
-  const btnPush    = root.querySelector('[data-action="charter-push"], #charter-push, #btnCharterPush');
+function html(ch){
+  return `
+  <div class="charter">
+    <section class="block">
+      <div class="row">
+        <label>Titre<br><input id="charter-title" type="text" value="${ch.title||''}"></label>
+      </div>
+      <div class="row">
+        <label>Contenu<br><textarea id="charter-content" rows="6">${ch.content||''}</textarea></label>
+      </div>
+      <div class="row">
+        <label>Tags (séparés par des virgules)<br><input id="charter-tags" type="text" value="${(ch.tags||[]).join(', ')}"></label>
+      </div>
+      <div class="row">
+        <button id="charter-gen" type="button">Analyser</button>
+        <button id="charter-push" type="button">Envoyer les sélectionnés vers Cards</button>
+      </div>
+    </section>
+    <section class="block">
+      <h3>Propositions</h3>
+      <div id="charter-proposals-box">${renderProposals(ch)}</div>
+    </section>
+  </div>`;
+}
 
-  if (btnAnalyze) btnAnalyze.onclick = async ()=>{
-    const ch=getCharter();
-    const task={ mode:'paria', subject:{kind:'charter'}, payload:{ title:ch.title, content:ch.content, tags:ch.tags, components:['P','A','R','I'] }, context:{ tab:'charter' } };
-    const r=await askAI(task); if (r.status!=='ok') { console.warn('AI status:', r.status); return; }
+export function mountCharterTab(host = document.getElementById('tab-charter')) {
+  if (!host) return;
+  const ch = getCharter();
+  host.innerHTML = html(ch);
+
+  // Bind inputs -> saveCharter (debounce simple)
+  const getVals = (root)=>{
+    const t = $('#charter-title', root)?.value?.trim() || '';
+    const c = $('#charter-content', root)?.value || '';
+    const tags = ($('#charter-tags', root)?.value || '').split(',').map(s=>s.trim()).filter(Boolean);
+    return { title:t, content:c, tags };
+  };
+  let to;
+  host.addEventListener('input', (ev)=>{
+    if (!ev.target.closest('#charter-title,#charter-content,#charter-tags')) return;
+    clearTimeout(to);
+    to = setTimeout(()=>{ saveCharter(getVals(host)); }, 250);
+  });
+
+  // Analyser (IA via GAS)
+  $('#charter-gen', host).onclick = async ()=>{
+    const vals = getVals(host);
+    const r = await askAI({
+      mode:'paria',
+      subject:{kind:'charter'},
+      payload:{ title:vals.title, content:vals.content, tags:vals.tags, components:['P','A','R','I'] },
+      context:{ tab:'charter' }
+    });
+    if (r.status!=='ok') return;
     applyAIResults({kind:'charter'}, r.results, {mode:'replace'});
+    mountCharterTab(host); // re-render
   };
 
-  if (btnPush) btnPush.onclick = ()=>{ const n=pushSelectedCharterToCards(); logEvent('charter/push',{kind:'charter',id:'_'},{count:n}); };
+  // Push sélectionnés -> Cards
+  $('#charter-push', host).onclick = ()=>{
+    pushSelectedCharterToCards();
+  };
 
-  // Délégation pour cases & pictos (tu gardes tes classes/icônes)
-  root.addEventListener('change', (ev)=>{
-    const el=ev.target;
-    if (!(el instanceof HTMLInputElement)) return;
-    if (el.matches('[data-proposal-id][type="checkbox"], .chk-sel')) {
-      const id = el.dataset.proposalId || el.closest('[data-proposal-id]')?.dataset?.proposalId || el.closest('[data-id]')?.dataset?.id;
-      if (id) setCharterAISelected(id, el.checked);
-    }
+  // Délégation : checkbox select + pictos
+  host.addEventListener('change', (ev)=>{
+    const chk = ev.target.closest('.chk-sel'); if (!chk) return;
+    const id = ev.target.closest('[data-id]')?.dataset?.id; if (!id) return;
+    setCharterAISelected(id, chk.checked);
   });
-  root.addEventListener('click', (ev)=>{
-    const b=ev.target.closest('.icon-trash, .icon-think, [data-action="prop-delete"], [data-action="prop-think"]');
-    if(!b) return;
-    const wrap=b.closest('[data-proposal-id], [data-id]');
-    const id=wrap?.dataset?.proposalId || wrap?.dataset?.id;
-    if(!id) return;
-    if (b.classList.contains('icon-trash') || b.dataset.action==='prop-delete') removeCharterAI(id);
-    else toggleCharterAIStatus(id,'think');
+  host.addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('[data-action]');
+    if (!btn) return;
+    const id = btn.closest('[data-id]')?.dataset?.id; if (!id) return;
+    if (btn.dataset.action==='prop-delete') { removeCharterAI(id); }
+    if (btn.dataset.action==='prop-think')  { toggleCharterAIStatus(id,'think'); }
+    // rafraîchir uniquement la zone propositions
+    $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
   });
 }
 
-export const mount=mountCharterTab; export default { mount };
+export const mount = mountCharterTab;
+export default { mount };
