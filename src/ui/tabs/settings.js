@@ -1,147 +1,140 @@
-// src/ui/tabs/settings.js — mount non bloquant, tests auto si conf complète, coloration, save explicite
-
-import { settingsLoad, settingsSave, updateLocalUsageBadge } from '../../core/settings.js';
-import { diag, testGit } from '../../core/net.js';
-
-const $ = (s, r=document) => r.querySelector(s);
-
-// helpers robustes: on tente plusieurs ids/names possibles
-function pick(root, candidates) {
-  for (const sel of candidates) {
-    const el = root.querySelector(sel);
-    if (el) return el;
-  }
-  return null;
-}
-
-function setError(el, on){
-  if (!el) return;
-  if (on) {
-    el.style.outline = '2px solid #ff99aa';
-    el.style.outlineOffset = '2px';
-  } else {
-    el.style.outline = '';
-    el.style.outlineOffset = '';
-  }
-}
-
-// lit le formulaire (tolérant aux IDs)
-function readForm(root) {
-  const client = (pick(root, ['#client','[name="client"]'])?.value || '').trim();
-  const service = (pick(root, ['#service','[name="service"]'])?.value || '').trim();
-
-  const proxyUrl = (pick(root, ['#proxy-url','#proxy','[name="proxy-url"]','[name="endpoints.proxy.url"]'])?.value || '').trim();
-  const proxySecret = (pick(root, ['#proxy-secret','#proxy-token','[name="proxy-secret"]','[name="endpoints.proxy.secret"]','[name="endpoints.proxy.token"]'])?.value || '').trim();
-
-  const gitUrl = (pick(root, ['#git-url','#github-url','[name="git-url"]','[name="endpoints.git.url"]'])?.value || '').trim();
-  const gitToken = (pick(root, ['#git-token','#github-token','[name="git-token"]','[name="endpoints.git.token"]'])?.value || '').trim();
-
-  const autoSyncEl = pick(root, ['#AUTO_SYNC','[name="AUTO_SYNC"]','[data-flag="auto-sync"]']);
-  const autoSync = !!(autoSyncEl && (autoSyncEl.checked || autoSyncEl.value === 'on'));
-
-  const out = { client, service, endpoints: { proxy:{ url: proxyUrl, secret: proxySecret }, git:{ url: gitUrl, token: gitToken } }, flags: { auto_sync: autoSync } };
-  return out;
-}
-
-// remplit le formulaire depuis la conf
-function fillForm(root, cfg) {
-  const s = cfg || {};
-  const set = (selArr, v)=>{ const el = pick(root, selArr); if (el) el.value = v ?? ''; };
-
-  set(['#client','[name="client"]'], s.client || '');
-  set(['#service','[name="service"]'], s.service || '');
-
-  set(['#proxy-url','#proxy','[name="proxy-url"]','[name="endpoints.proxy.url"]'], s?.endpoints?.proxy?.url || s?.proxy?.url || '');
-  set(['#proxy-secret','#proxy-token','[name="proxy-secret"]','[name="endpoints.proxy.secret"]','[name="endpoints.proxy.token"]'], s?.endpoints?.proxy?.secret || s?.proxy?.secret || s?.endpoints?.proxy?.token || s?.proxy?.token || '');
-
-  set(['#git-url','#github-url','[name="git-url"]','[name="endpoints.git.url"]'], s?.endpoints?.git?.url || s?.git?.url || '');
-  set(['#git-token','#github-token','[name="git-token"]','[name="endpoints.git.token"]'], s?.endpoints?.git?.token || s?.git?.token || '');
-
-  const autoSyncEl = pick(root, ['#AUTO_SYNC','[name="AUTO_SYNC"]','[data-flag="auto-sync"]']);
-  if (autoSyncEl) autoSyncEl.checked = !!(s?.flags?.auto_sync);
-}
-
-async function autoTestsAndColor(root) {
-  // reset coloration
-  [ ['proxy', ['#proxy-url','#proxy','[name="proxy-url"]','[name="endpoints.proxy.url"]'], ['#proxy-secret','#proxy-token','[name="proxy-secret"]','[name="endpoints.proxy.secret"]','[name="endpoints.proxy.token"]']],
-    ['git',   ['#git-url','#github-url','[name="git-url"]','[name="endpoints.git.url"]'], ['#git-token','#github-token','[name="git-token"]','[name="endpoints.git.token"]']]
-  ].forEach(([_, a, b])=>{
-    setError(pick(root,a), false);
-    setError(pick(root,b), false);
-  });
-
-  const cfg = readForm(root);
-
-  // PROXY: test seulement si complet
-  if (cfg.endpoints.proxy.url && cfg.endpoints.proxy.secret) {
-    try {
-      const r = await diag();
-      const ok = !!r.ok;
-      setError(pick(root, ['#proxy-url','#proxy','[name="proxy-url"]','[name="endpoints.proxy.url"]']), !ok);
-      setError(pick(root, ['#proxy-secret','#proxy-token','[name="proxy-secret"]','[name="endpoints.proxy.secret"]','[name="endpoints.proxy.token"]']), !ok);
-      const badge = $('#proxy-status', root) || document.getElementById('proxy-status');
-      if (badge) { badge.textContent = ok ? 'Proxy ✅' : 'Proxy ❌'; }
-    } catch {
-      setError(pick(root, ['#proxy-url','#proxy','[name="proxy-url"]','[name="endpoints.proxy.url"]']), true);
-      setError(pick(root, ['#proxy-secret','#proxy-token','[name="proxy-secret"]','[name="endpoints.proxy.secret"]','[name="endpoints.proxy.token"]']), true);
-      const badge = $('#proxy-status', root) || document.getElementById('proxy-status');
-      if (badge) { badge.textContent = 'Proxy ❌'; }
-    }
-  } else {
-    const badge = $('#proxy-status', root) || document.getElementById('proxy-status');
-    if (badge) badge.textContent = 'Proxy —'; // incomplet
-  }
-
-  // GIT: test seulement si URL présente (et token si requis)
-  if (cfg.endpoints.git.url) {
-    try {
-      const r = await testGit();
-      const ok = !!r.ok;
-      setError(pick(root, ['#git-url','#github-url','[name="git-url"]','[name="endpoints.git.url"]']), !ok);
-      // token: on ne colore que si 401/403
-      if (!ok && (r.status === 401 || r.status === 403)) {
-        setError(pick(root, ['#git-token','#github-token','[name="git-token"]','[name="endpoints.git.token"]']), true);
-      }
-      const badge = $('#git-status', root) || document.getElementById('git-status');
-      if (badge) { badge.textContent = ok ? 'Git ✅' : 'Git ❌'; }
-    } catch {
-      setError(pick(root, ['#git-url','#github-url','[name="git-url"]','[name="endpoints.git.url"]']), true);
-      const badge = $('#git-status', root) || document.getElementById('git-status');
-      if (badge) { badge.textContent = 'Git ❌'; }
-    }
-  } else {
-    const badge = $('#git-status', root) || document.getElementById('git-status');
-    if (badge) badge.textContent = 'Git —'; // incomplet
-  }
-
-  // MAJ badge Local %
-  try { updateLocalUsageBadge(); } catch {}
-}
-
+// --- MOUNT: injecte le formulaire puis bind (pas de dépendance à l'index) ---
 export function mountSettingsTab(host) {
-  // 👉 robustifier la résolution du conteneur : on ne dépend plus d’un id unique
   const root =
     host
     || document.querySelector('#tab-settings, [data-tab-pane="settings"], #settings, .tab-pane.settings, [data-pane="settings"]')
-    || document; // fallback document si pas de conteneur dédié
+    || document.body;
 
-  const cfg = settingsLoad();
-  fillForm(root, cfg);
-  autoTestsAndColor(root);
+  // 1) INJECTION du markup (UI identique à ce qu’on avait)
+  root.innerHTML = `
+    <section class="block">
+      <h3>Réglages</h3>
 
-  // Bouton "Diag"
-  const btnDiag = pick(root, ['#btn-diag','[data-action="diag"]']);
-  if (btnDiag) btnDiag.onclick = ()=> autoTestsAndColor(root);
+      <div class="row">
+        <label>Client<br>
+          <input id="client" name="client" type="text" placeholder="Nom du client">
+        </label>
+        <label>Service<br>
+          <input id="service" name="service" type="text" placeholder="Nom du service">
+        </label>
+      </div>
 
-  // Bouton "Sauver la conf"
-  const btnSave = pick(root, ['#btn-save-conf','#save-settings','[data-action="save-settings"]']);
-  if (btnSave) btnSave.onclick = ()=>{
-    const patch = readForm(root);
-    settingsSave(patch);
-    autoTestsAndColor(root);
-  };
+      <div class="row">
+        <fieldset style="min-width:280px">
+          <legend>Proxy (Apps Script)</legend>
+          <label>URL<br>
+            <input id="proxy-url" name="endpoints.proxy.url" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+          </label>
+          <label>Secret<br>
+            <input id="proxy-secret" name="endpoints.proxy.secret" type="password" placeholder="secret">
+          </label>
+          <div class="muted" style="margin-top:6px" id="proxy-status">Proxy —</div>
+        </fieldset>
+
+        <fieldset style="min-width:280px">
+          <legend>GitHub</legend>
+          <label>Repo URL<br>
+            <input id="git-url" name="endpoints.git.url" type="url" placeholder="https://github.com/owner/repo">
+          </label>
+          <label>Token<br>
+            <input id="git-token" name="endpoints.git.token" type="password" placeholder="ghp_xxx (si privé)">
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:8px">
+            <input id="AUTO_SYNC" type="checkbox"> Auto-sync snapshots (≥70%)
+          </label>
+          <div class="muted" style="margin-top:6px" id="git-status">Git —</div>
+        </fieldset>
+      </div>
+
+      <div class="btns" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:8px">
+        <button id="btn-diag" type="button">Diag</button>
+        <button id="btn-save-conf" type="button">Sauver la conf</button>
+        <span id="local-usage" class="muted" style="margin-left:auto">Local —</span>
+      </div>
+    </section>
+  `;
+
+  // 2) BIND: remplissage depuis la conf + tests auto non bloquants
+  import('../../core/settings.js').then(({ settingsLoad, settingsSave, updateLocalUsageBadge })=>{
+    import('../../core/net.js').then(({ diag, testGit })=>{
+
+      const cfg = settingsLoad() || {};
+      // Remplir
+      const set = (sel, val)=>{ const el = root.querySelector(sel); if (el) el.value = val ?? ''; };
+      set('#client', cfg.client || '');
+      set('#service', cfg.service || '');
+      set('#proxy-url', cfg?.endpoints?.proxy?.url || cfg?.proxy?.url || '');
+      set('#proxy-secret', cfg?.endpoints?.proxy?.secret || cfg?.proxy?.secret || cfg?.endpoints?.proxy?.token || cfg?.proxy?.token || '');
+      set('#git-url', cfg?.endpoints?.git?.url || cfg?.git?.url || '');
+      set('#git-token', cfg?.endpoints?.git?.token || cfg?.git?.token || '');
+      const autoSync = root.querySelector('#AUTO_SYNC'); if (autoSync) autoSync.checked = !!(cfg?.flags?.auto_sync);
+
+      const markErr = (sel, on)=>{ const el = root.querySelector(sel); if (!el) return; el.style.outline = on ? '2px solid #ff99aa' : ''; el.style.outlineOffset = on ? '2px' : ''; };
+
+      async function autoTests(){
+        // reset
+        ['#proxy-url','#proxy-secret','#git-url','#git-token'].forEach(s=>markErr(s,false));
+
+        // proxy si complet
+        const purl = root.querySelector('#proxy-url')?.value?.trim();
+        const psec = root.querySelector('#proxy-secret')?.value?.trim();
+        const proxBadge = root.querySelector('#proxy-status');
+        if (purl && psec) {
+          try {
+            const r = await diag();
+            const ok = !!r.ok;
+            markErr('#proxy-url', !ok); markErr('#proxy-secret', !ok);
+            if (proxBadge) proxBadge.textContent = ok ? 'Proxy ✅' : 'Proxy ❌';
+          } catch {
+            markErr('#proxy-url', true); markErr('#proxy-secret', true);
+            if (proxBadge) proxBadge.textContent = 'Proxy ❌';
+          }
+        } else if (proxBadge) proxBadge.textContent = 'Proxy —';
+
+        // git si URL
+        const gurl = root.querySelector('#git-url')?.value?.trim();
+        const gtok = root.querySelector('#git-token')?.value?.trim();
+        const gitBadge = root.querySelector('#git-status');
+        if (gurl) {
+          try {
+            const r = await testGit();
+            const ok = !!r.ok;
+            markErr('#git-url', !ok);
+            if (!ok && (r.status===401 || r.status===403)) markErr('#git-token', true);
+            if (gitBadge) gitBadge.textContent = ok ? 'Git ✅' : 'Git ❌';
+          } catch {
+            markErr('#git-url', true);
+            if (gitBadge) gitBadge.textContent = 'Git ❌';
+          }
+        } else if (gitBadge) gitBadge.textContent = 'Git —';
+
+        try { updateLocalUsageBadge(); } catch {}
+      }
+
+      autoTests();
+
+      // Diag
+      const btnDiag = root.querySelector('#btn-diag');
+      if (btnDiag) btnDiag.onclick = ()=> autoTests();
+
+      // Sauver la conf (écriture explicite)
+      const btnSave = root.querySelector('#btn-save-conf');
+      if (btnSave) btnSave.onclick = ()=>{
+        const out = {
+          client: root.querySelector('#client')?.value?.trim() || '',
+          service: root.querySelector('#service')?.value?.trim() || '',
+          endpoints: {
+            proxy: { url: root.querySelector('#proxy-url')?.value?.trim() || '', secret: root.querySelector('#proxy-secret')?.value?.trim() || '' },
+            git:   { url: root.querySelector('#git-url')?.value?.trim() || '',   token:  root.querySelector('#git-token')?.value?.trim()  || '' }
+          },
+          flags: { auto_sync: !!root.querySelector('#AUTO_SYNC')?.checked }
+        };
+        settingsSave(out);
+        autoTests();
+      };
+    });
+  });
 }
 
 export const mount = mountSettingsTab;
-export default { mount };
-
+export default { mount: mountSettingsTab };
