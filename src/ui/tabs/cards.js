@@ -1,37 +1,109 @@
-// PARIA-V2-CLEAN v1.0.0 | ui/tabs/cards.js
-import { listCards, toggleThink, softDeleteCard, addNote, addComment, addAItoCard } from '../../domain/reducers.js';
+// PARIA-V2-CLEAN v1.0.0 | ui/tabs/cards.js (injection)
+import {
+  listCards, toggleThink, softDeleteCard,
+  addNote, addComment, addAItoCard
+} from '../../domain/reducers.js';
 import { askAI } from '../../core/ai.js';
 
-export function mountCardsTab(){
-  const root=document.getElementById('tab-cards'); if(!root) return;
+const $ = (s,r=document)=>r.querySelector(s);
 
-  root.addEventListener('click',(ev)=>{
-    const btn=ev.target.closest('[data-card-id] .icon-trash, [data-card-id] .icon-think, [data-action="card-delete"], [data-action="card-think"]');
-    if(!btn) return;
-    const wrap=btn.closest('[data-card-id]'); const id=wrap?.dataset?.cardId;
-    if(!id) return;
-    if (btn.classList.contains('icon-trash') || btn.dataset.action==='card-delete') softDeleteCard(id);
-    else toggleThink(id);
+function renderCard(c){
+  const notes = (c.notes||[]).map(n=>`<li><b>${n.author||'—'}</b> — ${n.text||''}</li>`).join('') || '<li class="muted">—</li>';
+  const comments = (c.comments||[]).map(n=>`<li><b>${n.author||'—'}</b> — ${n.text||''}</li>`).join('') || '<li class="muted">—</li>';
+  const ai = (c.ai||[]).filter(a=>!a?.state?.deleted).map(a=>`
+      <li data-ai-id="${a.id}">
+        <div><b>${a.title||''}</b> ${a.tags?.length? a.tags.map(t=>`<span class="tag">#${t}</span>`).join(' '):''}</div>
+        <div>${(a.content||'').replace(/\n/g,'<br>')}</div>
+      </li>
+    `).join('') || '<li class="muted">—</li>';
+
+  return `
+  <article class="card" data-card-id="${c.id}">
+    <header class="row">
+      <h3 class="title">${c.title||'(sans titre)'}</h3>
+      <div class="actions">
+        <button class="icon-think" data-action="card-think" title="À réfléchir">${c?.state?.think?'🤔':'💡'}</button>
+        <button class="icon-trash" data-action="card-delete" title="Supprimer">🗑️</button>
+      </div>
+    </header>
+    <div class="content">${(c.content||'').replace(/\n/g,'<br>')}</div>
+    ${c.tags?.length?`<div class="tags">${c.tags.map(t=>`<span class="tag">#${t}</span>`).join(' ')}</div>`:''}
+
+    <section class="block">
+      <div class="row">
+        <button class="btn" data-action="card-analyze">Analyser (idées)</button>
+      </div>
+      <h4>Propositions IA</h4>
+      <ul class="ai-list">${ai}</ul>
+    </section>
+
+    <section class="block">
+      <h4>Notes</h4>
+      <ul class="notes">${notes}</ul>
+      <form data-form="note" class="inline">
+        <input name="text" type="text" placeholder="Ajouter une note…" required />
+        <select name="author"><option value="moi">moi</option><option value="gpt">gpt</option><option value="client">client</option></select>
+        <button type="submit">Ajouter</button>
+      </form>
+    </section>
+
+    <section class="block">
+      <h4>Commentaires</h4>
+      <ul class="comments">${comments}</ul>
+      <form data-form="comment" class="inline">
+        <input name="text" type="text" placeholder="Ajouter un commentaire…" required />
+        <select name="author"><option value="moi">moi</option><option value="gpt">gpt</option><option value="client">client</option></select>
+        <button type="submit">Commenter</button>
+      </form>
+    </section>
+  </article>`;
+}
+
+function html(){
+  const cards = listCards();
+  return `
+  <div class="cards">
+    ${cards.length? cards.map(renderCard).join('') : `<div class="muted">— Aucune card.</div>`}
+  </div>`;
+}
+
+export function mountCardsTab(host = document.getElementById('tab-cards')){
+  if (!host) return;
+  host.innerHTML = html();
+
+  // Actions (think / delete / analyze)
+  host.addEventListener('click', async (ev)=>{
+    const act = ev.target.closest('[data-action]');
+    if (!act) return;
+    const wrap = ev.target.closest('[data-card-id]'); if (!wrap) return;
+    const id = wrap.dataset.cardId;
+
+    if (act.dataset.action==='card-delete'){ softDeleteCard(id); return mountCardsTab(host); }
+    if (act.dataset.action==='card-think'){ toggleThink(id); return mountCardsTab(host); }
+    if (act.dataset.action==='card-analyze'){
+      const r = await askAI({ mode:'ideas', subject:{kind:'card', id}, payload:{}, context:{ tab:'cards' } });
+      if (r.status==='ok') addAItoCard(id, r.results);
+      return mountCardsTab(host);
+    }
   });
 
-  // Analyse IA sur la card sélectionnée (sel: [data-action="card-analyze"] avec data-card-id)
-  root.addEventListener('click', async (ev)=>{
-    const b=ev.target.closest('[data-action="card-analyze"]'); if(!b) return;
-    const id=b.dataset.cardId || b.closest('[data-card-id]')?.dataset?.cardId; if(!id) return;
-    const task={ mode:'ideas', subject:{kind:'card', id}, payload:{}, context:{ tab:'cards' } };
-    const r=await askAI(task); if (r.status!=='ok') return;
-    addAItoCard(id, r.results);
-  });
+  // Notes & commentaires
+  host.addEventListener('submit', (ev)=>{
+    const f = ev.target;
+    if (!f.matches('[data-form="note"],[data-form="comment"]')) return;
+    ev.preventDefault();
+    const id = f.closest('[data-card-id]')?.dataset?.cardId; if (!id) return;
+    const fd = new FormData(f);
+    const text=(fd.get('text')||'').toString().trim();
+    const author=(fd.get('author')||'moi').toString();
+    if (!text) return;
 
-  // Notes / commentaires (si tu as des boutons ou forms)
-  root.addEventListener('submit',(ev)=>{
-    const f=ev.target; if(!f.closest('[data-card-id]')) return;
-    ev.preventDefault(); const id=f.closest('[data-card-id]')?.dataset?.cardId; if(!id) return;
-    const txt=(new FormData(f).get('text')||'').toString().trim(); const author=(new FormData(f).get('author')||'moi').toString();
-    if (f.matches('[data-form="note"]')) addNote(id,{author,text:txt});
-    if (f.matches('[data-form="comment"]')) addComment(id,{author,text:txt});
-    f.reset();
+    if (f.dataset.form==='note') addNote(id,{author,text});
+    else addComment(id,{author,text});
+
+    f.reset(); mountCardsTab(host);
   });
 }
 
-export const mount=mountCardsTab; export default { mount };
+export const mount = mountCardsTab;
+export default { mount };
