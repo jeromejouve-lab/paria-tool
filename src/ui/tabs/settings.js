@@ -118,32 +118,30 @@ async function autoTestsAndColor(root) {
   try { updateLocalUsageBadge(); } catch {}
 }
 
-export function mountSettingsTab(host = document.getElementById('tab-settings')) {
-  if (!host) return;
+export function mountSettingsTab(host) {
+  // 👉 robustifier la résolution du conteneur : on ne dépend plus d’un id unique
+  const root =
+    host
+    || document.querySelector('#tab-settings, [data-tab-pane="settings"], #settings, .tab-pane.settings, [data-pane="settings"]')
+    || document; // fallback document si pas de conteneur dédié
+
   const cfg = settingsLoad();
-  // on ne change pas l'UI : on remplit si champs trouvés
-  fillForm(host, cfg);
+  fillForm(root, cfg);
+  autoTestsAndColor(root);
 
-  // Tests auto non bloquants (seulement si conf complète)
-  autoTestsAndColor(host);
+  // Bouton "Diag"
+  const btnDiag = pick(root, ['#btn-diag','[data-action="diag"]']);
+  if (btnDiag) btnDiag.onclick = ()=> autoTestsAndColor(root);
 
-  // Bouton "Diag" si présent
-  const btnDiag = pick(host, ['#btn-diag','[data-action="diag"]']);
-  if (btnDiag) {
-    btnDiag.onclick = ()=> autoTestsAndColor(host);
-  }
-
-  // Bouton "Sauver la conf" si présent
-  const btnSave = pick(host, ['#btn-save-conf','#save-settings','[data-action="save-settings"]']);
-  if (btnSave) {
-    btnSave.onclick = ()=>{
-      const patch = readForm(host);
-      settingsSave(patch);
-      // relance des tests après save
-      autoTestsAndColor(host);
-    };
-  }
+  // Bouton "Sauver la conf"
+  const btnSave = pick(root, ['#btn-save-conf','#save-settings','[data-action="save-settings"]']);
+  if (btnSave) btnSave.onclick = ()=>{
+    const patch = readForm(root);
+    settingsSave(patch);
+    autoTestsAndColor(root);
+  };
 }
 
 export const mount = mountSettingsTab;
 export default { mount };
+
