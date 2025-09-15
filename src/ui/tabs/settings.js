@@ -1,7 +1,7 @@
 // src/ui/tabs/settings.js — injection au mount, diag sur CHAMPS, WorkID + Restore
 
 import { settingsLoad, settingsSave, updateLocalUsageBadge, buildWorkId } from '../../core/settings.js';
-import { callGAS, bootstrapWorkspace, saveToGoogle } from '../../core/net.js';
+import { callGAS, bootstrapWorkspace, saveToGoogle, getGAS } from '../../core/net.js';
 import '../../core/restore.js';
 
 
@@ -513,17 +513,29 @@ function bindWorkId(root){
     const stamp = `${ts.getFullYear()}-${pad(ts.getMonth()+1)}-${pad(ts.getDate())}_${pad(ts.getHours())}-${pad(ts.getMinutes())}-${pad(ts.getSeconds())}`;
     const path = `clients/${client}/${service}/${dateStr}/snapshot-${stamp}.json`;
 
+    // --- TRACE CONSOLE ---
+    const gas = getGAS();
+    const mask = s => (s ? (s.slice(0,3) + '…' + s.slice(-3)) : '');
+    console.group('[SNAPSHOT][now]');
+    console.log('GAS.url =', gas.url || '(vide)');
+    console.log('GAS.secret =', mask(gas.secret || ''));
+    console.log('target path =', path);
+    console.log('local keys =', Object.keys(data).length);
+
     // feedback
     const _old = btnSnap.textContent; btnSnap.disabled = true; btnSnap.textContent = 'Snapshot…';
 
     try{
       const res = await saveToGoogle(path, { local: data }, { kind:'snapshot', client, service, date: dateStr, at: ts.toISOString() });
+      console.log('saveToGoogle → res =', res);
+      console.log('res.status =', res?.status, 'res.ok =', res?.ok, 'data.ok =', res?.data?.ok);
       const ok = (res?.ok !== false) && (res?.data?.ok ?? true);
       if (statusEl) statusEl.textContent = ok ? `✅ ${path}` : '❌ échec snapshot';
     }catch(e){
       console.error('[snapshot][now]', e);
       if (statusEl) statusEl.textContent = '❌ erreur snapshot';
     }finally{
+      console.groupEnd();
       btnSnap.textContent = _old; btnSnap.disabled = false;
     }
   };
@@ -573,6 +585,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
