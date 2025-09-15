@@ -87,4 +87,124 @@ function protectContainer(root, onRestored) {
       restoring = true;
       root.innerHTML = snapshot;
       restoring = false;
-      try { onRest
+      try { onRestored && onRestored(); } catch {}
+    }
+  });
+  obs.observe(root, { childList: true, subtree: false });
+  return () => obs.disconnect();
+}
+
+// --- Mount principal (aucune écriture automatique)
+export function mountSettingsTab() {
+  const root = $(SEL.root) || document.getElementById('tab-settings') || document.querySelector('[data-tab="settings"]');
+  if (!root) return;
+
+  // Protéger l’onglet contre tout clear externe
+  const unprotect = protectContainer(root, () => {
+    // si on a dû restaurer, on re-binde les handlers
+    bind(root);
+  });
+
+  // Si les inputs n’existent pas dans le HTML, on ne fait rien (pas d’injection)
+  if (!allInputsExist(root)) {
+    // on laisse l’onglet tel quel, visible, sans planter
+    return;
+  }
+
+  // Préremplissage optionnel (une seule fois si localStorage vide)
+  if (PRESEED && !localStorage.getItem('paria::connections')) {
+    const p = PRESEED_DEFAULTS;
+    try {
+      settingsSave({
+        client: p.client, service: p.service,
+        endpoints: { llm: p.llm, git: p.git, gdrive: p.gdrive, proxy: { url: p.proxy.url, token: p.proxy.token } },
+        proxy: { url: p.proxy.url, token: p.proxy.token },
+        connections: {
+          client: p.client, service: p.service,
+          endpoints: { llm:{url:p.llm}, git:{url:p.git}, gdrive:{url:p.gdrive}, proxy:{ url:p.proxy.url, token:p.proxy.token } },
+          proxy: { url:p.proxy.url, token:p.proxy.token }
+        }
+      });
+    } catch {}
+  }
+
+  // Bind & remplissage
+  bind(root);
+
+  // Si tu démontes l’onglet, pense à appeler unprotect() depuis ton routeur (facultatif)
+  // return unprotect;
+}
+
+// --- Binding des champs et handlers (lecture seule tant que tu ne cliques pas)
+function bind(root) {
+  const s = normalize(settingsLoad());
+
+  const $client     = $(SEL.client, root);
+  const $service    = $(SEL.service, root);
+  const $llm        = $(SEL.llm, root);
+  const $git        = $(SEL.git, root);
+  const $gdrive     = $(SEL.gdrive, root);
+  const $proxyUrl   = $(SEL.proxyUrl, root);
+  const $proxyToken = $(SEL.proxyToken, root);
+  const $saveBtn    = $(SEL.save, root);
+  const $diagBtn    = $(SEL.diag, root);
+  const $diagOut    = $(SEL.diagOut, root);
+
+  // Remplissage passif (aucune écriture système)
+  if ($client)     $client.value     = s.connections.client || '';
+  if ($service)    $service.value    = s.connections.service || '';
+  if ($llm)        $llm.value        = s.connections.endpoints.llm.url || '';
+  if ($git)        $git.value        = s.connections.endpoints.git.url || '';
+  if ($gdrive)     $gdrive.value     = s.connections.endpoints.gdrive.url || '';
+  if ($proxyUrl)   $proxyUrl.value   = s.connections.endpoints.proxy.url || '';
+  if ($proxyToken) $proxyToken.value = s.connections.endpoints.proxy.token || '';
+
+  // Sauver (sur clic uniquement)
+  if ($saveBtn) {
+    $saveBtn.onclick = async () => {
+      const client  = ($client?.value || '').trim();
+      const service = ($service?.value || '').trim();
+      const llm     = ($llm?.value || '').trim();
+      const git     = ($git?.value || '').trim();
+      const gdrive  = ($gdrive?.value || '').trim();
+      const pUrl    = ($proxyUrl?.value || '').trim();
+      const pTok    = ($proxyToken?.value || '').trim();
+
+      try {
+        await settingsSave({
+          client, service,
+          endpoints: { llm, git, gdrive, proxy: { url: pUrl, token: pTok } },
+          proxy: { url: pUrl, token: pTok },
+          connections: {
+            client, service,
+            endpoints: { llm:{url:llm}, git:{url:git}, gdrive:{url:gdrive}, proxy:{ url:pUrl, token:pTok } },
+            proxy: { url:pUrl, token:pTok }
+          }
+        });
+        if ($diagOut) $diagOut.textContent = '✅ Config sauvegardée.';
+      } catch (e) {
+        if ($diagOut) $diagOut.textContent = `❌ Save: ${e?.message || e}`;
+      }
+    };
+  }
+
+  // Diag (ne lance rien si aucun endpoint saisi)
+  if ($diagBtn) {
+    $diagBtn.onclick = async () => {
+      const cur = normalize(settingsLoad());
+      if (!hasAnyEndpoint(cur)) {
+        if ($diagOut) $diagOut.textContent = '— Renseigne au moins un endpoint (LLM / Git / Drive / Proxy) avant Diag.';
+        return;
+      }
+      try {
+        const r = await diag();
+        if ($diagOut) $diagOut.textContent = JSON.stringify(r, null, 2);
+      } catch (e) {
+        if ($diagOut) $diagOut.textContent = `❌ Diag: ${e?.message || e}`;
+      }
+    };
+  }
+}
+
+export const mount = mountSettingsTab;
+export default { mount: mountSettingsTab };
