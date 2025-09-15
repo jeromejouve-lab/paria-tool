@@ -1,22 +1,64 @@
-// PARIA-V2-CLEAN v1.0.0 | app.js
-import * as Settings from './ui/tabs/settings.js';
-import * as Charter  from './ui/tabs/charter.js';
-import * as Cards    from './ui/tabs/cards.js';
-import * as Scens    from './ui/tabs/scenarios.js';
-import * as Proj     from './ui/tabs/projector.js';
-import * as Journal  from './ui/tabs/journal.js';
+// PARIA-V2-CLEAN v1.0.0 | src/app.js — routeur d’onglets (bind-only, pas d’injection)
+import * as Settings  from './ui/tabs/settings.js';
+import * as Charter   from './ui/tabs/charter.js';
+import * as Cards     from './ui/tabs/cards.js';
+import * as Scenarios from './ui/tabs/scenarios.js';
+import * as Projector from './ui/tabs/projector.js';
+import * as Journal   from './ui/tabs/journal.js';
 
-const mounts={ settings:Settings.mount, charter:Charter.mount, cards:Cards.mount, scenarios:Scens.mount, projector:Proj.mount, journal:Journal.mount };
+const mounts = {
+  settings : Settings.mount,
+  charter  : Charter.mount,
+  cards    : Cards.mount,
+  scenarios: Scenarios.mount,
+  projector: Projector.mount,
+  journal  : Journal.mount,
+};
+
+const TABS = Object.keys(mounts);
 
 export function showTab(tab){
-  const all=['settings','charter','cards','scenarios','projector','journal'];
-  all.forEach(id=>{ const sec=document.getElementById(`tab-${id}`); if (sec) sec.style.display=(id===tab?'':'none'); });
-  const fn=mounts[tab]; if(typeof fn==='function'){ try{ fn(); }catch(e){ console.error('mount error',tab,e); } }
+  if (!TABS.includes(tab)) return;
+  // afficher/masquer les sections
+  for (const id of TABS){
+    const sec = document.getElementById(`tab-${id}`);
+    if (sec) sec.style.display = (id === tab ? '' : 'none');
+  }
+  // appeler le mount de l’onglet
+  const fn = mounts[tab];
+  if (typeof fn === 'function') { try { fn(); } catch (e) { console.error('mount error:', tab, e); } }
+  // marquer l’onglet actif sur la nav si tu as des classes .active
+  document.querySelectorAll('[data-tab]').forEach(b=>{
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  // optionnel: hash (pas obligatoire)
+  try { history.replaceState(null,'',`#${tab}`); } catch {}
 }
 
 export function boot(){
-  document.querySelectorAll('nav [data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
-  showTab('settings');
+  // délégation de clic sur toute la page (boutons, liens, etc. portant data-tab)
+  document.addEventListener('click', (ev)=>{
+    const el = ev.target.closest('[data-tab]');
+    if (!el) return;
+    const tab = el.dataset.tab;
+    if (!TABS.includes(tab)) return;
+    ev.preventDefault();
+    showTab(tab);
+  });
+
+  // onglet par défaut: hash si présent, sinon premier bouton, sinon settings
+  const hash = (location.hash||'').replace('#','');
+  const firstBtn = document.querySelector('[data-tab]');
+  const first = TABS.includes(hash) ? hash : (firstBtn?.dataset?.tab && TABS.includes(firstBtn.dataset.tab) ? firstBtn.dataset.tab : 'settings');
+  showTab(first);
 }
-if (document.readyState==='complete'||document.readyState==='interactive') setTimeout(boot,0);
-else document.addEventListener('DOMContentLoaded',boot);
+
+// auto-boot
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  setTimeout(boot, 0);
+} else {
+  document.addEventListener('DOMContentLoaded', boot);
+}
+
+// utile au besoin depuis la console
+try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
