@@ -1,4 +1,5 @@
-// PARIA-V2-CLEAN v1.0.0 | ui/tabs/charter.js (injection)
+// ui/tabs/charter.js — injection, 2 colonnes (gauche: saisie + actions, droite: analyse)
+// Feedback visible + logs console pour l’IA
 import {
   getCharter, saveCharter,
   setCharterAISelected, toggleCharterAIStatus, removeCharterAI,
@@ -34,26 +35,37 @@ function renderProposals(ch){
 
 function html(ch){
   return `
-  <div class="charter">
-    <section class="block">
-      <div class="row">
-        <label>Titre<br><input id="charter-title" type="text" value="${ch.title||''}"></label>
-      </div>
-      <div class="row">
-        <label>Contenu<br><textarea id="charter-content" rows="6">${ch.content||''}</textarea></label>
-      </div>
-      <div class="row">
-        <label>Tags (séparés par des virgules)<br><input id="charter-tags" type="text" value="${(ch.tags||[]).join(', ')}"></label>
-      </div>
-      <div class="row">
-        <button id="charter-gen" type="button">Analyser</button>
-        <button id="charter-push" type="button">Envoyer les sélectionnés vers Cards</button>
-      </div>
-    </section>
-    <section class="block">
-      <h3>Propositions</h3>
-      <div id="charter-proposals-box">${renderProposals(ch)}</div>
-    </section>
+  <div class="charter cols">
+    <!-- Colonne gauche : saisie + actions -->
+    <div class="col">
+      <section class="block">
+        <h3>Charter</h3>
+        <div class="row">
+          <label>Titre<br><input id="charter-title" type="text" value="${ch.title||''}"></label>
+        </div>
+        <div class="row">
+          <label>Contenu<br><textarea id="charter-content" rows="6">${ch.content||''}</textarea></label>
+        </div>
+        <div class="row">
+          <label>Tags (séparés par virgule)<br>
+            <input id="charter-tags" type="text" value="${(ch.tags||[]).join(', ')}">
+          </label>
+        </div>
+        <div class="row">
+          <button id="charter-gen" type="button">Analyser</button>
+          <button id="charter-push" type="button">Envoyer les sélectionnés vers Cards</button>
+        </div>
+        <div id="charter-status" class="muted">—</div>
+      </section>
+    </div>
+
+    <!-- Colonne droite : résultats IA -->
+    <div class="col">
+      <section class="block">
+        <h3>Propositions IA</h3>
+        <div id="charter-proposals-box">${renderProposals(ch)}</div>
+      </section>
+    </div>
   </div>`;
 }
 
@@ -62,52 +74,75 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   const ch = getCharter();
   host.innerHTML = html(ch);
 
-  // Bind inputs -> saveCharter (debounce simple)
   const getVals = (root)=>{
     const t = $('#charter-title', root)?.value?.trim() || '';
     const c = $('#charter-content', root)?.value || '';
     const tags = ($('#charter-tags', root)?.value || '').split(',').map(s=>s.trim()).filter(Boolean);
     return { title:t, content:c, tags };
   };
+
+  // Sauvegarde debounce sur input
   let to;
   host.addEventListener('input', (ev)=>{
     if (!ev.target.closest('#charter-title,#charter-content,#charter-tags')) return;
     clearTimeout(to);
-    to = setTimeout(()=>{ saveCharter(getVals(host)); }, 250);
+    to = setTimeout(()=>{ saveCharter(getVals(host)); }, 200);
   });
 
-  // Analyser (IA via GAS)
-  $('#charter-gen', host).onclick = async ()=>{
+  // Analyser (IA)
+  const btnGen = $('#charter-gen', host);
+  const $status = $('#charter-status', host);
+  btnGen.onclick = async ()=>{
     const vals = getVals(host);
-    const r = await askAI({
-      mode:'paria',
-      subject:{kind:'charter'},
-      payload:{ title:vals.title, content:vals.content, tags:vals.tags, components:['P','A','R','I'] },
-      context:{ tab:'charter' }
-    });
-    if (r.status!=='ok') return;
-    applyAIResults({kind:'charter'}, r.results, {mode:'replace'});
-    mountCharterTab(host); // re-render
+    btnGen.disabled = true;
+    $status.textContent = '⏳ Analyse en cours…';
+
+    try{
+      const r = await askAI({
+        mode:'paria',
+        subject:{kind:'charter'},
+        payload:{ title:vals.title, content:vals.content, tags:vals.tags, components:['P','A','R','I'] },
+        context:{ tab:'charter' }
+      });
+      console.log('[Charter][askAI] result =', r);
+
+      if (r.status === 'ok' && r.results?.length){
+        applyAIResults({kind:'charter'}, r.results, {mode:'replace'});
+        $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
+        $status.textContent = `✅ ${r.results.length} proposition(s)`;
+      } else if (r.status === 'empty') {
+        $status.textContent = 'ℹ️ IA: aucune proposition.';
+      } else if (r.status === 'needs_config') {
+        $status.textContent = '⚠️ Proxy non configuré (Réglages).';
+      } else {
+        $status.textContent = `❌ IA: ${r.error||'erreur'}`;
+      }
+    } catch (e){
+      console.error('[Charter][askAI] error', e);
+      $status.textContent = `❌ IA: ${e?.message||e}`;
+    } finally {
+      btnGen.disabled = false;
+    }
   };
 
   // Push sélectionnés -> Cards
   $('#charter-push', host).onclick = ()=>{
     pushSelectedCharterToCards();
+    $('#charter-status', host).textContent = '➡️ Envoyé vers Cards.';
   };
 
-  // Délégation : checkbox select + pictos
+  // Délégation : checkbox + pictos
   host.addEventListener('change', (ev)=>{
     const chk = ev.target.closest('.chk-sel'); if (!chk) return;
     const id = ev.target.closest('[data-id]')?.dataset?.id; if (!id) return;
     setCharterAISelected(id, chk.checked);
   });
+
   host.addEventListener('click', (ev)=>{
-    const btn = ev.target.closest('[data-action]');
-    if (!btn) return;
+    const btn = ev.target.closest('[data-action]'); if (!btn) return;
     const id = btn.closest('[data-id]')?.dataset?.id; if (!id) return;
     if (btn.dataset.action==='prop-delete') { removeCharterAI(id); }
     if (btn.dataset.action==='prop-think')  { toggleCharterAIStatus(id,'think'); }
-    // rafraîchir uniquement la zone propositions
     $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
   });
 }
