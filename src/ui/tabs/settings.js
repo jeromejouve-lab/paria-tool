@@ -64,6 +64,11 @@ function injectMarkup(root){
           <button id="btn-restore" type="button">Restaurer</button>
           <span id="restore-status" class="muted">—</span>
         </div>
+        <div class="row" style="margin-top:8px;gap:12px;align-items:center">
+          <button id="btn-snapshot-now" type="button">Snapshot maintenant</button>
+          <span id="snapshot-status" class="muted">—</span>
+        </div>
+
       </fieldset>
 
       <div class="row" style="margin-top:12px">
@@ -292,15 +297,29 @@ function bindWorkId(root){
       service: $('#service', root)?.value?.trim() || ''
     };
     settingsSave(patch);
+    
+    // feedback visuel court
+    btnLink.disabled = true;
+    const _oldText_link = btnLink.textContent;
+    btnLink.textContent = '✅ Lié';
+    setTimeout(()=>{ btnLink.disabled = false; btnLink.textContent = _oldText_link; }, 900);
+
     refresh();
   };
 
   // Proposer = propose aujourd’hui + heure courante
   const btnSuggest = $('#btn-workid-suggest', root);
+  
   if (btnSuggest) btnSuggest.onclick = ()=>{
     const d = new Date(); const p=v=>String(v).padStart(2,'0');
     if (dateEl) dateEl.value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
     if (timeEl) timeEl.value = `${p(d.getHours())}:${p(d.getMinutes())}`;
+    
+    // feedback visuel court
+    btnSuggest.disabled = true;
+    const _oldText_suggest = btnSuggest.textContent;
+    btnSuggest.textContent = '📌 Proposé';
+    setTimeout(()=>{ btnSuggest.disabled = false; btnSuggest.textContent = _oldText_suggest; }, 900);
   };
 
   // Restaurer = route=load via proxy (GET), avec work_id + when
@@ -373,6 +392,10 @@ function bindWorkId(root){
 
   if (btnProp) btnProp.onclick = async ()=>{
     const statusEl = $('#restore-status', root);
+    const _oldText_prop = btnProp.textContent;
+    btnProp.disabled = true;
+    btnProp.textContent = 'Proposition…';
+
     try{
       const work_id = buildWorkIdLocal();
       const atIso = currentWhenISO() || null;
@@ -386,6 +409,9 @@ function bindWorkId(root){
       console.error('[restore][propose]', e);
       if (statusEl) statusEl.textContent = '❌ proposition impossible';
     }
+    // restore état bouton
+    btnProp.textContent = _oldText_prop;
+    btnProp.disabled = false;
   };
 
   if (btnApplySel) btnApplySel.onclick = async ()=>{
@@ -425,6 +451,10 @@ function bindWorkId(root){
   };
 
   if (btnRestore) btnRestore.onclick = async ()=>{
+    const _oldText_restore = btnRestore.textContent;
+    btnRestore.disabled = true;
+    btnRestore.textContent = 'Restauration…';
+
     const s = settingsLoad() || {};
     const client  = $('#client', root)?.value?.trim() || s.client || '';
     const service = $('#service', root)?.value?.trim() || s.service || '';
@@ -451,6 +481,50 @@ function bindWorkId(root){
     } catch(e){
       console.error('[RESTORE][error]', e);
       if (statusEl) statusEl.textContent = '❌ erreur réseau';
+    }
+    // restore état bouton
+    btnRestore.textContent = _oldText_restore;
+    btnRestore.disabled = false;
+  };
+  
+  // --- Snapshot manuel (sauvegarde côté proxy / route 'save') ---
+  const btnSnap = $('#btn-snapshot-now', root);
+  if (btnSnap) btnSnap.onclick = async ()=>{
+    const statusEl = $('#snapshot-status', root);
+    const s = settingsLoad() || {};
+    const client  = $('#client', root)?.value?.trim() || s.client || '';
+    const service = $('#service', root)?.value?.trim() || s.service || '';
+    const dateStr = $('#work-date', root)?.value?.trim() || new Date().toISOString().slice(0,10);
+
+    if (!client || !service) { if (statusEl) statusEl.textContent='❌ client/service manquants'; return; }
+
+    // bundle de l’état local 'paria.*'
+    const data = {};
+    for (const k of Object.keys(localStorage)){
+      if (k.startsWith('paria.') && k !== 'paria.__backup__'){
+        const v = localStorage.getItem(k);
+        try { data[k] = JSON.parse(v); } catch { data[k] = v; }
+      }
+    }
+
+    // chemin cible Drive/Git (côté GAS, route 'save')
+    const ts = new Date();
+    const pad = v => String(v).padStart(2,'0');
+    const stamp = `${ts.getFullYear()}-${pad(ts.getMonth()+1)}-${pad(ts.getDate())}_${pad(ts.getHours())}-${pad(ts.getMinutes())}-${pad(ts.getSeconds())}`;
+    const path = `clients/${client}/${service}/${dateStr}/snapshot-${stamp}.json`;
+
+    // feedback
+    const _old = btnSnap.textContent; btnSnap.disabled = true; btnSnap.textContent = 'Snapshot…';
+
+    try{
+      const res = await saveToGoogle(path, { local: data }, { kind:'snapshot', client, service, date: dateStr, at: ts.toISOString() });
+      const ok = (res?.ok !== false) && (res?.data?.ok ?? true);
+      if (statusEl) statusEl.textContent = ok ? `✅ ${path}` : '❌ échec snapshot';
+    }catch(e){
+      console.error('[snapshot][now]', e);
+      if (statusEl) statusEl.textContent = '❌ erreur snapshot';
+    }finally{
+      btnSnap.textContent = _old; btnSnap.disabled = false;
     }
   };
 }
@@ -499,5 +573,6 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
