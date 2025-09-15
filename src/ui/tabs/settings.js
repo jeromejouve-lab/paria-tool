@@ -1,7 +1,7 @@
 // src/ui/tabs/settings.js — injection au mount, diag sur CHAMPS, WorkID + Restore
 
 import { settingsLoad, settingsSave, updateLocalUsageBadge, buildWorkId } from '../../core/settings.js';
-import { callGAS, bootstrapWorkspace, saveToGoogle, getGAS } from '../../core/net.js';
+import { bootstrapWorkspace } from '../../core/net.js';
 import '../../core/restore.js';
 
 
@@ -325,7 +325,7 @@ function bindWorkId(root){
   // Restaurer = route=load via proxy (GET), avec work_id + when
   const btnRestore = $('#btn-restore', root);
   // === RESTAURER (one-click) — GIT ONLY (écrase tout handler précédent) ===
-  if (btnRestore) btnRestore.onclick = async ()=>{
+  ic ()=>{
     console.group('[RESTORE][git] one-click');
     const _old = btnRestore.textContent;
     btnRestore.disabled = true;
@@ -873,6 +873,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
