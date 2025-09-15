@@ -325,7 +325,7 @@ function bindWorkId(root){
   // Restaurer = route=load via proxy (GET), avec work_id + when
   const btnRestore = $('#btn-restore', root);
   // === RESTAURER (one-click) — GIT ONLY (écrase tout handler précédent) ===
-  ic ()=>{
+  if (btnRestore) btnRestore.onclick = async ()=>{ 
     console.group('[RESTORE][git] one-click');
     const _old = btnRestore.textContent;
     btnRestore.disabled = true;
@@ -873,6 +873,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
