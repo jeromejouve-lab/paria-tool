@@ -1,76 +1,22 @@
-// src/app.js — câblé sur ton index.html, UI intouchée
-import { mountCardsTab } from './ui/tabs/cards.js';
-import { mountCharterTab } from './ui/tabs/charter.js';
-import { mountScenariosTab } from './ui/tabs/scenarios.js';
-import { mountProjectorTab } from './ui/tabs/projector.js';
-import { mountJournalTab } from './ui/tabs/journal.js';
-import { mountSettingsTab } from './ui/tabs/settings.js';
-import { watchBudget } from './core/budget.js';
+// PARIA-V2-CLEAN v1.0.0 | app.js
+import * as Settings from './ui/tabs/settings.js';
+import * as Charter  from './ui/tabs/charter.js';
+import * as Cards    from './ui/tabs/cards.js';
+import * as Scens    from './ui/tabs/scenarios.js';
+import * as Proj     from './ui/tabs/projector.js';
+import * as Journal  from './ui/tabs/journal.js';
 
-const TAB_MAP = {
-  settings:   { section: 'tab-settings',   mount: mountSettingsTab },
-  charter:    { section: 'tab-charter',    mount: mountCharterTab },
-  cards:      { section: 'tab-cards',      mount: mountCardsTab },
-  scenarios:  { section: 'tab-scenarios',  mount: mountScenariosTab },
-  projector:  { section: 'tab-projector',  mount: mountProjectorTab },
-  journal:    { section: 'tab-journal',    mount: mountJournalTab },
-};
+const mounts={ settings:Settings.mount, charter:Charter.mount, cards:Cards.mount, scenarios:Scens.mount, projector:Proj.mount, journal:Journal.mount };
 
-function getButtons(){ return Array.from(document.querySelectorAll('header nav [data-tab]')); }
-function getSections(){ return Object.values(TAB_MAP).map(t => document.getElementById(t.section)).filter(Boolean); }
-
-export function showTab(id){
-  const cfg = TAB_MAP[id] || TAB_MAP.cards;
-
-  // masquer toutes les sections, afficher la cible
-  getSections().forEach(sec => { sec.style.display = 'none'; });
-  const target = document.getElementById(cfg.section);
-  if (target) target.style.display = '';
-
-  // état actif des boutons (pour ta bordure LED blanche)
-  getButtons().forEach(b=>{
-    b.classList.toggle('is-active', b.getAttribute('data-tab') === id);
-  });
-
-  // monter le contenu dans la section (sans créer de conteneur)
-  if (cfg.mount && target){
-    cfg.mount(target);
-  }
+export function showTab(tab){
+  const all=['settings','charter','cards','scenarios','projector','journal'];
+  all.forEach(id=>{ const sec=document.getElementById(`tab-${id}`); if (sec) sec.style.display=(id===tab?'':'none'); });
+  const fn=mounts[tab]; if(typeof fn==='function'){ try{ fn(); }catch(e){ console.error('mount error',tab,e); } }
 }
 
-function boot(){
-  // câblage des boutons d’onglet
-  getButtons().forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const id = btn.getAttribute('data-tab');
-      showTab(id);
-    });
-  });
-
-  // badge quota (déjà présent dans ton header : #quotaBadge)
-  const badge = document.getElementById('quotaBadge');
-  watchBudget(usage=>{
-    if (!badge) return;
-    const pct = Math.round(usage*100);
-    badge.textContent = `local ${pct}%`;
-    badge.classList.remove('b-green','b-orange','b-red');
-    if (pct >= 90)      badge.classList.add('b-red');
-    else if (pct >= 70) badge.classList.add('b-orange');
-    else                badge.classList.add('b-green');
-  });
-
-  // onglet par défaut
-  showTab('cards');
+export function boot(){
+  document.querySelectorAll('nav [data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
+  showTab('settings');
 }
-
-// ton index.html charge app.js en bas de <body> → DOM déjà prêt
-boot();
-
-/*
-INDEX app.js:
-- TAB_MAP {settings,charter,cards,scenarios,projector,journal}
-- getButtons()
-- getSections()
-- showTab(id)
-- boot()
-*/
+if (document.readyState==='complete'||document.readyState==='interactive') setTimeout(boot,0);
+else document.addEventListener('DOMContentLoaded',boot);
