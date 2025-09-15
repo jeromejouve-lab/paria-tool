@@ -95,20 +95,45 @@ export function mountSettingsTab(host) {
         const gurl = root.querySelector('#git-url')?.value?.trim();
         const gtok = root.querySelector('#git-token')?.value?.trim();
         const gitBadge = root.querySelector('#git-status');
+
         if (gurl) {
           try {
-            const r = await testGit();
-            const ok = !!r.ok;
-            markErr('#git-url', !ok);
-            if (!ok && (r.status===401 || r.status===403)) markErr('#git-token', true);
-            if (gitBadge) gitBadge.textContent = ok ? 'Git ✅' : 'Git ❌';
+            const m = gurl.match(/github\.com\/([^\/]+)\/([^\/\.]+)(?:\.git)?/i);
+            let ok = false, status = 0;
+            if (m) {
+              const owner = m[1], repo = m[2];
+              const api = `https://api.github.com/repos/${owner}/${repo}`;
+              const headers = { 'Accept':'application/vnd.github+json' };
+              if (gtok) headers['Authorization'] = `Bearer ${gtok}`;
+              const r = await fetch(api, { headers });
+              status = r.status;
+              ok = r.ok;
+            }
+            // coloration nuancée
+            if (ok) {
+              markErr('#git-url', false);
+              markErr('#git-token', false);
+              if (gitBadge) gitBadge.textContent = 'Git ✅';
+            } else {
+              if (status === 401 || status === 403 || status === 404) {
+                // privé / non autorisé → token requis
+                markErr('#git-url', false);
+                markErr('#git-token', true);
+                if (gitBadge) gitBadge.textContent = 'Git 🔒 token requis';
+              } else {
+                // vraie erreur d’URL ou autre
+                markErr('#git-url', true);
+                markErr('#git-token', false);
+                if (gitBadge) gitBadge.textContent = 'Git ❌';
+              }
+            }
           } catch {
             markErr('#git-url', true);
             if (gitBadge) gitBadge.textContent = 'Git ❌';
           }
-        } else if (gitBadge) gitBadge.textContent = 'Git —';
-
-        try { updateLocalUsageBadge(); } catch {}
+        } else {
+          if (gitBadge) gitBadge.textContent = 'Git —'; // incomplet
+        }
       }
 
       autoTests();
@@ -138,3 +163,4 @@ export function mountSettingsTab(host) {
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
