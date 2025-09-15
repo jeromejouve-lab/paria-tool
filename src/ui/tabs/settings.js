@@ -324,6 +324,110 @@ function bindWorkId(root){
 
   // Restaurer = route=load via proxy (GET), avec work_id + when
   const btnRestore = $('#btn-restore', root);
+  // === RESTAURER (one-click) — GIT ONLY (écrase tout handler précédent) ===
+  if (btnRestore) btnRestore.onclick = async ()=>{
+    console.group('[RESTORE][git] one-click');
+    const _old = btnRestore.textContent;
+    btnRestore.disabled = true;
+    btnRestore.textContent = 'Restauration…';
+    try{
+      const s = settingsLoad() || {};
+      const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
+      const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
+      const branch = (document.querySelector('#git-branch') ?.value || s.git_branch || 'main').trim();
+      const token  = (document.querySelector('#git-token')  ?.value || s.git_token  || '').trim();
+  
+      const client  = (document.querySelector('#client')?.value  || s.client  || '').trim();
+      const service = (document.querySelector('#service')?.value || s.service || '').trim();
+      const dateStr = (document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10)).trim();
+      const timeStr = (document.querySelector('#work-time')?.value || '').trim();
+  
+      const statusEl = $('#restore-status', root);
+      if (!owner || !repo || !client || !service || !dateStr){
+        if (statusEl) statusEl.textContent = '❌ paramètres manquants (Git/client/service/date)';
+        throw new Error('missing_params');
+      }
+  
+      // 1) Choisir le snapshot/backup candidat
+      let candidatePath = __picked?.path; // si une sélection a été faite dans la liste
+      if (!candidatePath){
+        const base = `clients/${client}/${service}/${dateStr}`;
+        const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
+        console.log('GET', url);
+        const r = await fetch(url, {
+          headers: {
+            'Accept': 'application/vnd.github+json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
+        const arr = (r.status===200 ? await r.json() : []);
+        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
+        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
+  
+        const items = Array.isArray(arr) ? arr
+          .filter(x => x?.type==='file' && (SNAP.test(x.name) || BACK.test(x.name)))
+          .map(x => {
+            const m = x.name.match(SNAP) || x.name.match(BACK);
+            return { path:x.path, at:`${m[1]}_${m[2]}` }; // YYYY-MM-DD_HH-MM-SS
+          }) : [];
+  
+        if (!items.length) throw new Error('no_snapshots_for_day');
+  
+        // tri ASC pour appliquer la règle ≥ HH:MM ; sinon dernier du jour
+        items.sort((a,b)=> a.at.localeCompare(b.at));
+        if (timeStr){
+          const hhmm = timeStr.replace(':','-');
+          const after = items.find(o => o.at >= `${dateStr}_${hhmm}-00`);
+          candidatePath = (after || items[items.length-1]).path;
+        } else {
+          candidatePath = items[items.length-1].path;
+        }
+      }
+  
+      // 2) Charger le JSON depuis Git
+      const url2 = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(candidatePath)}?ref=${encodeURIComponent(branch)}`;
+      console.log('GET', url2);
+      const r2 = await fetch(url2, {
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
+      if (r2.status !== 200) throw new Error('not_found');
+      const meta = await r2.json();
+      const raw  = atob((meta.content||'').replace(/\n/g,''));
+      let snap=null; try { snap = JSON.parse(raw); } catch { throw new Error('bad_json'); }
+  
+      // 3) Appliquer (replace namespace paria.*) + backup
+      const content = snap?.local || snap?.content?.local || snap?.content || snap || {};
+      if (!content || typeof content !== 'object') throw new Error('empty');
+  
+      const keys = Object.keys(localStorage).filter(k=>k.startsWith('paria') && k!=='paria.__backup__');
+      const bak = keys.reduce((a,k)=>(a[k]=localStorage.getItem(k),a),{});
+      localStorage.setItem('paria.__backup__', JSON.stringify({ stamp:new Date().toISOString(), bak }));
+  
+      for (const k of Object.keys(localStorage)){
+        if (k.startsWith('paria') && !k.endsWith('.__backup__')) localStorage.removeItem(k);
+      }
+      for (const [k,v] of Object.entries(content)){
+        const key = k.startsWith('paria') ? k : `paria.${k}`;
+        localStorage.setItem(key, typeof v==='string' ? v : JSON.stringify(v));
+      }
+  
+      if (statusEl) statusEl.textContent = '✅ restauré (Git one-click)';
+      try { await bootstrapWorkspace(); } catch {}
+      setTimeout(()=> location.reload(), 120);
+    }catch(e){
+      console.error('[RESTORE][git] one-click error', e);
+      const statusEl = $('#restore-status', root);
+      if (statusEl) statusEl.textContent = '❌ restauration (Git one-click)';
+    }finally{
+      btnRestore.textContent = _old;
+      btnRestore.disabled = false;
+      console.groupEnd();
+    }
+  };
+
   
   // === Restore (liste/sélection) ===
   const btnProp = $('#btn-restore-propose', root);
@@ -769,6 +873,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
