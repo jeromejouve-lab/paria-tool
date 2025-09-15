@@ -34,6 +34,15 @@ function normalizeAny(r={}){
     flags:{ auto_sync:!!bag?.flags?.auto_sync }
   };
 
+  export function buildWorkId(){
+    const s = settingsLoad();
+    const d = new Date();
+    const pad = v => String(v).padStart(2,'0');
+    const day = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    // format attendu par code.gs : client|service|yyyy-MM-dd
+    return `${s.client}|${s.service}|${day}`;
+  }
+
   const connections={
     client:S(s?.connections?.client)||top.client,
     service:S(s?.connections?.service)||top.service,
@@ -88,3 +97,4 @@ export function getProxyConfig(){ const s=settingsLoad(); return s.proxy || s.en
 /* INDEX
 - settings (binding), settingsLoad/settingsSave, currentWorkId/getWorkContext/setWorkContext, getProxyConfig
 */
+
