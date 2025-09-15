@@ -1,209 +1,237 @@
-// src/ui/tabs/settings.js — bind-only + anti-effacement pour #tab-settings
-// - Ne modifie pas l'UI (aucune injection / aucun innerHTML côté script)
-// - N'appelle pas de save/diag si les champs sont vides
-// - Prend un snapshot du contenu HTML initial de #tab-settings et le restaure si quelqu'un l'efface
+// src/ui/tabs/settings.js — réintégration du formulaire "Réglages" (IDs du zip)
+// Injecte le markup (IDs d'origine) et branche Sauver / Diag / WID / Snapshot.
+// Ne plante pas si des champs sont vides.
 
-import { settingsLoad, settingsSave } from '../../core/settings.js';
-import { diag } from '../../core/net.js';
-
-// --- Préremplissage optionnel (désactivé par défaut)
-const PRESEED = false;
-const PRESEED_DEFAULTS = {
-  client:  'TEST',
-  service: 'RH',
-  llm:     '',
-  git:     'https://github.com/jeromejouve-lab/paria-audits',
-  gdrive:  '',
-  proxy:   { url: 'https://script.google.com/macros/s/XXX/exec', token: 'Prox11_Secret' },
-};
-
-// --- Sélecteurs attendus dans TON index.html (on ne crée rien)
-const SEL = {
-  root:      '#tab-settings, [data-tab="settings"]',
-  client:     '#settings-client',
-  service:    '#settings-service',
-  llm:        '#settings-llm',
-  git:        '#settings-git',
-  gdrive:     '#settings-gdrive',
-  proxyUrl:   '#settings-proxy-url',
-  proxyToken: '#settings-proxy-token',
-  save:       '#settings-save',
-  diag:       '#settings-diag',
-  diagOut:    '#settings-diag-output',
-};
+import { settingsLoad, settingsSave, setWorkContext } from '../../core/settings.js';
+import { diag, saveToGit, saveToGoogle, listGitSnapshots, listDriveSnapshots, loadFromGit, loadFromGoogle } from '../../core/net.js';
 
 const $ = (sel, from=document) => from.querySelector(sel);
 
-// --- Normalisation (zéro undefined)
-function normalize(s = {}) {
-  const str = (v,d='') => typeof v === 'string' ? v : d;
-  const url = (v,d='') => (typeof v === 'string' ? v : (v && typeof v === 'object' ? str(v.url,d) : d));
+function hostNode() {
+  return $('#tab-settings') || document.querySelector('[data-tab="settings"]') || document.body;
+}
+
+function html() {
+  // IDs d’origine vus dans le zip :
+  // GAS_URL, PROXY_SECRET, GH_REPO, AUTO_SYNC
+  // CLIENT, SERVICE, DATE, TIME, widNow
+  // btnSaveCfg, diagState, btnLinkWID, btnPropose, btnRestore, btnLoad, btnSnapshotNow, loadState
+  return `
+  <div class="settings">
+    <section class="block">
+      <h3>Contexte de travail</h3>
+      <div class="row">
+        <label>Client<br><input id="CLIENT" type="text" /></label>
+        <label>Service<br><input id="SERVICE" type="text" /></label>
+      </div>
+      <div class="row">
+        <label>Date<br><input id="DATE" type="date" /></label>
+        <label>Heure<br><input id="TIME" type="time" /></label>
+      </div>
+      <div class="row">
+        <button id="btnLinkWID" type="button">Lier au WID</button>
+        <button id="btnPropose" type="button">Proposer WID</button>
+        <div>WID: <strong id="widNow"></strong></div>
+      </div>
+    </section>
+
+    <section class="block">
+      <h3>Connexion / Proxy</h3>
+      <div class="row">
+        <label>Proxy GAS URL<br><input id="GAS_URL" type="url" placeholder="https://script.google.com/macros/s/…/exec" /></label>
+        <label>Proxy Secret<br><input id="PROXY_SECRET" type="text" placeholder="token" /></label>
+      </div>
+    </section>
+
+    <section class="block">
+      <h3>Sources distantes</h3>
+      <div class="row">
+        <label>GitHub Repo / Endpoint<br><input id="GH_REPO" type="url" placeholder="https://github.com/… ou https://…/git" /></label>
+      </div>
+      <div class="row">
+        <label><input id="AUTO_SYNC" type="checkbox" /> Auto-sync snapshots</label>
+      </div>
+      <div class="row">
+        <button id="btnSnapshotNow" type="button">Snapshot maintenant</button>
+        <button id="btnLoad" type="button">Charger snapshot…</button>
+        <button id="btnRestore" type="button">Restaurer dernier</button>
+      </div>
+      <pre id="loadState" class="mono-pre" style="white-space:pre-wrap;"></pre>
+    </section>
+
+    <section class="block">
+      <div class="row">
+        <button id="btnSaveCfg" type="button">Sauver la conf</button>
+        <button id="btnDiag" type="button">Diag</button>
+      </div>
+      <pre id="diagState" class="mono-pre" style="white-space:pre-wrap;"></pre>
+    </section>
+  </div>
+  `;
+}
+
+function norm(s={}) {
+  const S = v => (typeof v === 'string' ? v : '');
+  const pickUrl = (v) => typeof v === 'string' ? v : (v && typeof v==='object' ? S(v.url) : '');
   const top = {
-    client:  str(s.client),
-    service: str(s.service),
+    client: S(s.client), service: S(s.service),
     endpoints: {
-      llm:    str(s?.endpoints?.llm),
-      git:    str(s?.endpoints?.git),
-      gdrive: str(s?.endpoints?.gdrive),
-      proxy: { url: str(s?.endpoints?.proxy?.url) || str(s?.proxy?.url),
-               token: str(s?.endpoints?.proxy?.token) || str(s?.proxy?.token) }
+      proxy: { url: S(s?.endpoints?.proxy?.url) || S(s?.proxy?.url), token: S(s?.endpoints?.proxy?.token) || S(s?.proxy?.token) },
+      git:   S(s?.endpoints?.git),
     },
-    proxy: { url: str(s?.proxy?.url) || str(s?.endpoints?.proxy?.url),
-             token: str(s?.proxy?.token) || str(s?.endpoints?.proxy?.token) }
+    flags: { auto_sync: !!s?.flags?.auto_sync }
   };
   const connections = {
-    client:  str(s?.connections?.client)  || top.client,
-    service: str(s?.connections?.service) || top.service,
+    client: S(s?.connections?.client) || top.client,
+    service: S(s?.connections?.service) || top.service,
     endpoints: {
-      llm:    { url: url(s?.connections?.endpoints?.llm,    top.endpoints.llm)    },
-      git:    { url: url(s?.connections?.endpoints?.git,    top.endpoints.git)    },
-      gdrive: { url: url(s?.connections?.endpoints?.gdrive, top.endpoints.gdrive) },
-      proxy:  { url: top.proxy.url, token: top.proxy.token }
-    },
-    proxy: { url: top.proxy.url, token: top.proxy.token }
+      proxy: { url: top.endpoints.proxy.url, token: top.endpoints.proxy.token },
+      git:   { url: pickUrl(s?.connections?.endpoints?.git) || top.endpoints.git }
+    }
   };
   return { ...top, connections };
 }
 
-function hasAnyEndpoint(s) {
-  const e = s?.connections?.endpoints;
-  return !!(e?.llm?.url || e?.git?.url || e?.gdrive?.url || e?.proxy?.url);
+function widFrom({client, service, dateStr, timeStr}) {
+  const d = (dateStr || new Date().toISOString().slice(0,10));
+  const t = (timeStr || new Date().toTimeString().slice(0,5));
+  return `${client||''}::${service||''}::${d}T${t}`;
 }
 
-function allInputsExist(root) {
-  const req = [SEL.client, SEL.service, SEL.llm, SEL.git, SEL.gdrive, SEL.proxyUrl, SEL.proxyToken, SEL.save, SEL.diag];
-  return req.every(sel => $(sel, root));
+async function runDiag(outEl) {
+  try {
+    const r = await diag();
+    if (outEl) outEl.textContent = JSON.stringify(r, null, 2);
+  } catch (e) {
+    if (outEl) outEl.textContent = `❌ Diag: ${e?.message || e}`;
+  }
 }
 
-// --- Anti-effacement : si un script vide #tab-settings, on restaure le HTML initial
-function protectContainer(root, onRestored) {
-  if (!root) return () => {};
-  const snapshot = root.innerHTML; // on garde LE HTML D’ORIGINE
-  let restoring = false;
-  const obs = new MutationObserver(() => {
-    if (restoring) return;
-    // si le conteneur est vidé, on restaure le HTML d’origine
-    if (!root.innerHTML || !root.innerHTML.trim()) {
-      restoring = true;
-      root.innerHTML = snapshot;
-      restoring = false;
-      try { onRestored && onRestored(); } catch {}
-    }
-  });
-  obs.observe(root, { childList: true, subtree: false });
-  return () => obs.disconnect();
+async function snapshotNow(outEl) {
+  try {
+    // on tente Git puis Drive, silencieux si non configuré
+    const g1 = await saveToGit({ when: Date.now() }).catch(()=>({ok:false}));
+    const g2 = await saveToGoogle({ when: Date.now() }).catch(()=>({ok:false}));
+    const txt = `Snapshot: git=${g1?.ok?'ok':'ko'} / drive=${g2?.ok?'ok':'ko'}`;
+    if (outEl) outEl.textContent = txt;
+  } catch (e) {
+    if (outEl) outEl.textContent = `❌ Snapshot: ${e?.message || e}`;
+  }
 }
 
-// --- Mount principal (aucune écriture automatique)
-export function mountSettingsTab() {
-  const root = $(SEL.root) || document.getElementById('tab-settings') || document.querySelector('[data-tab="settings"]');
+async function loadLatest(outEl) {
+  try {
+    const git = await listGitSnapshots().catch(()=>[]);
+    const drv = await listDriveSnapshots().catch(()=>[]);
+    const pick = (arr)=>arr && arr.length ? arr[arr.length-1] : null;
+    const last = pick(git) || pick(drv);
+    if (!last) { if (outEl) outEl.textContent = '— Aucun snapshot.'; return; }
+    const blob = last.source==='git' ? await loadFromGit(last.id) : await loadFromGoogle(last.id);
+    if (outEl) outEl.textContent = blob ? '✅ Chargé (voir console).' : '⚠️ Snapshot introuvable';
+    if (blob) console.log('Loaded snapshot:', blob);
+  } catch (e) {
+    if (outEl) outEl.textContent = `❌ Load: ${e?.message || e}`;
+  }
+}
+
+export function mountSettingsTab(host) {
+  const root = host || hostNode();
   if (!root) return;
 
-  // Protéger l’onglet contre tout clear externe
-  const unprotect = protectContainer(root, () => {
-    // si on a dû restaurer, on re-binde les handlers
-    bind(root);
-  });
+  // (1) injecter le formulaire d’origine
+  root.innerHTML = html();
 
-  // Si les inputs n’existent pas dans le HTML, on ne fait rien (pas d’injection)
-  if (!allInputsExist(root)) {
-    // on laisse l’onglet tel quel, visible, sans planter
-    return;
-  }
+  // (2) peupler champs depuis settings
+  const s = norm(settingsLoad());
 
-  // Préremplissage optionnel (une seule fois si localStorage vide)
-  if (PRESEED && !localStorage.getItem('paria::connections')) {
-    const p = PRESEED_DEFAULTS;
+  const $CLIENT = $('#CLIENT', root);
+  const $SERVICE = $('#SERVICE', root);
+  const $DATE = $('#DATE', root);
+  const $TIME = $('#TIME', root);
+  const $widNow = $('#widNow', root);
+
+  const $GAS_URL = $('#GAS_URL', root);
+  const $PROXY_SECRET = $('#PROXY_SECRET', root);
+  const $GH_REPO = $('#GH_REPO', root);
+  const $AUTO_SYNC = $('#AUTO_SYNC', root);
+
+  const $btnSaveCfg = $('#btnSaveCfg', root);
+  const $btnDiag = $('#btnDiag', root);
+  const $diagState = $('#diagState', root);
+
+  const $btnLinkWID = $('#btnLinkWID', root);
+  const $btnPropose = $('#btnPropose', root);
+
+  const $btnRestore = $('#btnRestore', root);
+  const $btnLoad = $('#btnLoad', root);
+  const $btnSnapshotNow = $('#btnSnapshotNow', root);
+  const $loadState = $('#loadState', root);
+
+  // valeurs initiales
+  if ($CLIENT)  $CLIENT.value  = s.connections.client || '';
+  if ($SERVICE) $SERVICE.value = s.connections.service || '';
+  const today = new Date();
+  if ($DATE) $DATE.value = new Date(today.getTime() - today.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  if ($TIME) $TIME.value = today.toTimeString().slice(0,5);
+  if ($widNow) $widNow.textContent = widFrom({ client:$CLIENT?.value, service:$SERVICE?.value, dateStr:$DATE?.value, timeStr:$TIME?.value });
+
+  if ($GAS_URL) $GAS_URL.value = s.connections.endpoints.proxy.url || '';
+  if ($PROXY_SECRET) $PROXY_SECRET.value = s.connections.endpoints.proxy.token || '';
+  if ($GH_REPO) $GH_REPO.value = (s.connections.endpoints.git && s.connections.endpoints.git.url) || s.endpoints.git || '';
+  if ($AUTO_SYNC) $AUTO_SYNC.checked = !!s.flags?.auto_sync;
+
+  // (3) Handlers UI
+  const refreshWid = () => {
+    if ($widNow) $widNow.textContent = widFrom({
+      client: $CLIENT?.value, service: $SERVICE?.value, dateStr: $DATE?.value, timeStr: $TIME?.value
+    });
+  };
+  [$CLIENT,$SERVICE,$DATE,$TIME].forEach(el => el && el.addEventListener('input', refreshWid));
+
+  if ($btnPropose) $btnPropose.onclick = refreshWid;
+
+  if ($btnLinkWID) $btnLinkWID.onclick = async () => {
+    // lie le contexte courant (client/service) — la date/heure sert pour le WID d’affichage
+    try { await setWorkContext({ client:$CLIENT?.value||'', service:$SERVICE?.value||'' }); } catch {}
+    refreshWid();
+  };
+
+  if ($btnSaveCfg) $btnSaveCfg.onclick = async () => {
+    const client = ($CLIENT?.value||'').trim();
+    const service = ($SERVICE?.value||'').trim();
+    const proxyUrl = ($GAS_URL?.value||'').trim();
+    const proxyTok = ($PROXY_SECRET?.value||'').trim();
+    const git = ($GH_REPO?.value||'').trim();
+    const auto_sync = !!$AUTO_SYNC?.checked;
+
     try {
-      settingsSave({
-        client: p.client, service: p.service,
-        endpoints: { llm: p.llm, git: p.git, gdrive: p.gdrive, proxy: { url: p.proxy.url, token: p.proxy.token } },
-        proxy: { url: p.proxy.url, token: p.proxy.token },
+      await settingsSave({
+        client, service,
+        endpoints: { git, proxy:{ url: proxyUrl, token: proxyTok } },
+        proxy: { url: proxyUrl, token: proxyTok },
         connections: {
-          client: p.client, service: p.service,
-          endpoints: { llm:{url:p.llm}, git:{url:p.git}, gdrive:{url:p.gdrive}, proxy:{ url:p.proxy.url, token:p.proxy.token } },
-          proxy: { url:p.proxy.url, token:p.proxy.token }
-        }
-      });
-    } catch {}
-  }
-
-  // Bind & remplissage
-  bind(root);
-
-  // Si tu démontes l’onglet, pense à appeler unprotect() depuis ton routeur (facultatif)
-  // return unprotect;
-}
-
-// --- Binding des champs et handlers (lecture seule tant que tu ne cliques pas)
-function bind(root) {
-  const s = normalize(settingsLoad());
-
-  const $client     = $(SEL.client, root);
-  const $service    = $(SEL.service, root);
-  const $llm        = $(SEL.llm, root);
-  const $git        = $(SEL.git, root);
-  const $gdrive     = $(SEL.gdrive, root);
-  const $proxyUrl   = $(SEL.proxyUrl, root);
-  const $proxyToken = $(SEL.proxyToken, root);
-  const $saveBtn    = $(SEL.save, root);
-  const $diagBtn    = $(SEL.diag, root);
-  const $diagOut    = $(SEL.diagOut, root);
-
-  // Remplissage passif (aucune écriture système)
-  if ($client)     $client.value     = s.connections.client || '';
-  if ($service)    $service.value    = s.connections.service || '';
-  if ($llm)        $llm.value        = s.connections.endpoints.llm.url || '';
-  if ($git)        $git.value        = s.connections.endpoints.git.url || '';
-  if ($gdrive)     $gdrive.value     = s.connections.endpoints.gdrive.url || '';
-  if ($proxyUrl)   $proxyUrl.value   = s.connections.endpoints.proxy.url || '';
-  if ($proxyToken) $proxyToken.value = s.connections.endpoints.proxy.token || '';
-
-  // Sauver (sur clic uniquement)
-  if ($saveBtn) {
-    $saveBtn.onclick = async () => {
-      const client  = ($client?.value || '').trim();
-      const service = ($service?.value || '').trim();
-      const llm     = ($llm?.value || '').trim();
-      const git     = ($git?.value || '').trim();
-      const gdrive  = ($gdrive?.value || '').trim();
-      const pUrl    = ($proxyUrl?.value || '').trim();
-      const pTok    = ($proxyToken?.value || '').trim();
-
-      try {
-        await settingsSave({
           client, service,
-          endpoints: { llm, git, gdrive, proxy: { url: pUrl, token: pTok } },
-          proxy: { url: pUrl, token: pTok },
-          connections: {
-            client, service,
-            endpoints: { llm:{url:llm}, git:{url:git}, gdrive:{url:gdrive}, proxy:{ url:pUrl, token:pTok } },
-            proxy: { url:pUrl, token:pTok }
-          }
-        });
-        if ($diagOut) $diagOut.textContent = '✅ Config sauvegardée.';
-      } catch (e) {
-        if ($diagOut) $diagOut.textContent = `❌ Save: ${e?.message || e}`;
-      }
-    };
-  }
+          endpoints: { git:{ url: git }, proxy:{ url: proxyUrl, token: proxyTok } },
+          proxy:{ url: proxyUrl, token: proxyTok }
+        },
+        flags: { auto_sync }
+      });
+      if ($diagState) $diagState.textContent = '✅ Config sauvegardée.';
+    } catch (e) {
+      if ($diagState) $diagState.textContent = `❌ Save: ${e?.message||e}`;
+    }
+  };
 
-  // Diag (ne lance rien si aucun endpoint saisi)
-  if ($diagBtn) {
-    $diagBtn.onclick = async () => {
-      const cur = normalize(settingsLoad());
-      if (!hasAnyEndpoint(cur)) {
-        if ($diagOut) $diagOut.textContent = '— Renseigne au moins un endpoint (LLM / Git / Drive / Proxy) avant Diag.';
-        return;
-      }
-      try {
-        const r = await diag();
-        if ($diagOut) $diagOut.textContent = JSON.stringify(r, null, 2);
-      } catch (e) {
-        if ($diagOut) $diagOut.textContent = `❌ Diag: ${e?.message || e}`;
-      }
-    };
-  }
+  if ($btnDiag) $btnDiag.onclick = () => runDiag($diagState);
+
+  if ($btnSnapshotNow) $btnSnapshotNow.onclick = () => snapshotNow($loadState);
+
+  if ($btnLoad) $btnLoad.onclick = () => loadLatest($loadState);
+
+  if ($btnRestore) $btnRestore.onclick = async () => {
+    // “Restaurer dernier” = charge le dernier snapshot dispo (git/drive)
+    await loadLatest($loadState);
+  };
 }
 
 export const mount = mountSettingsTab;
