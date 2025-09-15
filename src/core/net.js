@@ -1,69 +1,59 @@
-// PARIA-V2-CLEAN v1.0.0 | core/net.js
+// src/core/net.js — helpers réseau centrals + tests non bloquants
+
 import { settingsLoad } from './settings.js';
 
-export async function postJSON(url, data){
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
-
-export function getGAS(){
+// GAS settings
+export function getGAS() {
   const s = settingsLoad();
   const url = s?.endpoints?.proxy?.url || s?.proxy?.url || '';
-  const secret = s?.endpoints?.proxy?.token || s?.proxy?.token || '';
-  return { url, secret };
+  const secret = s?.endpoints?.proxy?.secret || s?.proxy?.secret || s?.endpoints?.proxy?.token || s?.proxy?.token || '';
+  return { url: (url||'').trim(), secret: (secret||'').trim() };
 }
 
-// POST text/plain (évite preflight CORS)
-export async function postPlain(url, obj){
+// POST text/plain (évite preflight)
+export async function postPlain(url, obj) {
   const body = JSON.stringify(obj || {});
   const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const txt = await res.text();
-  try { return JSON.parse(txt); } catch { return { ok:true, text:txt }; }
+  let data;
+  try { data = JSON.parse(txt); } catch { data = { text: txt }; }
+  return { ok: res.ok, status: res.status, data };
 }
 
-// Diag GET conforme à code.gs ?route=diag&secret=...
-export async function diag(){
+// Diag proxy (GAS ?route=diag)
+export async function diag() {
   const { url, secret } = getGAS();
-  if (!url) return { proxy:{configured:false, ok:false} };
-  const u = new URL(url); u.searchParams.set('route','diag'); u.searchParams.set('secret',secret);
-  const r = await fetch(u.toString(), { method:'GET' });
-  const txt = await r.text();
-  let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
-  return { proxy:{configured:true, ok:r.ok, detail:r.ok?'pong':`HTTP ${r.status}`}, data };
+  if (!url || !secret) return { ok:false, status:0, detail:'incomplete', data:null };
+  try {
+    const u = new URL(url); u.searchParams.set('route', 'diag'); u.searchParams.set('secret', secret);
+    const r = await fetch(u.toString(), { method: 'GET' });
+    const txt = await r.text();
+    let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
+    return { ok: r.ok && (data?.ok !== false), status: r.status, detail: r.ok ? 'pong' : 'http_'+r.status, data };
+  } catch (e) {
+    return { ok:false, status:0, detail:String(e?.message||e), data:null };
+  }
 }
 
-// Snapshots / bootstrap via GAS (safe if not configured)
-async function callGAS(action, payload={}){
-  const {url,token}=getGAS(); if (!url) return { ok:false, detail:'proxy not configured' };
-  try{ const r=await postJSON(url, { action, token, ...payload }); return (r && typeof r==='object')?r:{ok:true}; }catch(e){ return {ok:false, detail:e?.message||'net error'}; }
+// Test GitHub (léger) — accepte URL type https://github.com/owner/repo(.git)
+export async function testGit() {
+  const s = settingsLoad();
+  const url = (s?.endpoints?.git?.url || s?.git?.url || '').trim();
+  const token = (s?.endpoints?.git?.token || s?.git?.token || '').trim();
+  if (!url) return { ok:false, status:0, detail:'incomplete' };
+
+  // parse owner/repo
+  try {
+    const m = url.match(/github\.com\/([^\/]+)\/([^\/\.]+)(?:\.git)?/i);
+    if (!m) return { ok:false, status:0, detail:'bad_url' };
+    const owner = m[1], repo = m[2];
+    const api = `https://api.github.com/repos/${owner}/${repo}`;
+    const headers = { 'Accept': 'application/vnd.github+json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const r = await fetch(api, { headers });
+    const ok = r.ok;
+    return { ok, status: r.status, detail: ok ? 'repo_ok' : 'http_'+r.status };
+  } catch (e) {
+    return { ok:false, status:0, detail:String(e?.message||e) };
+  }
 }
-
-export const saveToGit = (x)=>callGAS('git.saveSnapshot',{ blob:x });
-export const listGitSnapshots = ()=>callGAS('git.list',{}).then(r=>r?.list||[]);
-export const loadFromGit = (id)=>callGAS('git.load',{ id });
-
-export const saveToGoogle = (x)=>callGAS('gdrive.saveSnapshot',{ blob:x });
-export const listDriveSnapshots = ()=>callGAS('gdrive.list',{}).then(r=>r?.list||[]);
-export const loadFromGoogle = (id)=>callGAS('gdrive.load',{ id });
-
-export const gitEnsureClient = (client)=>callGAS('git.ensureClient',{ client });
-export const gitEnsureService = (client,service)=>callGAS('git.ensureService',{ client, service });
-export const gdrvEnsureClient = (client)=>callGAS('gdrive.ensureClient',{ client });
-export const gdrvEnsureService = (client,service)=>callGAS('gdrive.ensureService',{ client, service });
-
-export async function bootstrapWorkspace(client, service){
-  const r1 = await gitEnsureClient(client); const r2 = await gitEnsureService(client,service);
-  const r3 = await gdrvEnsureClient(client); const r4 = await gdrvEnsureService(client,service);
-  return { git:{ client:r1?.ok, service:r2?.ok }, gdrive:{ client:r3?.ok, service:r4?.ok } };
-}
-
-/* INDEX
-- postJSON, diag
-- saveToGit/listGitSnapshots/loadFromGit
-- saveToGoogle/listDriveSnapshots/loadFromGoogle
-- gitEnsure, bootstrapWorkspace()
-*/
-
-
