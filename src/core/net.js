@@ -47,5 +47,6 @@ export async function bootstrapWorkspace(client, service){
 - postJSON, diag
 - saveToGit/listGitSnapshots/loadFromGit
 - saveToGoogle/listDriveSnapshots/loadFromGoogle
-- gitEnsure*/gdrvEnsure*, bootstrapWorkspace()
+- gitEnsure, bootstrapWorkspace()
 */
+
