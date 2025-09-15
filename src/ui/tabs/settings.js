@@ -513,6 +513,50 @@ function bindWorkId(root){
     const stamp = `${ts.getFullYear()}-${pad(ts.getMonth()+1)}-${pad(ts.getDate())}_${pad(ts.getHours())}-${pad(ts.getMinutes())}-${pad(ts.getSeconds())}`;
     const path = `clients/${client}/${service}/${dateStr}/snapshot-${stamp}.json`;
 
+    // === SNAPSHOT → GIT (unique path) ===
+    {
+      const s = settingsLoad() || {};
+      const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
+      const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
+      const branch = (document.querySelector('#git-branch') ?.value || s.git_branch || 'main').trim();
+      const token  = (document.querySelector('#git-token')  ?.value || s.git_token  || '').trim();
+
+      const jsonStr    = JSON.stringify({ local: data }, null, 2);
+      const contentB64 = btoa(unescape(encodeURIComponent(jsonStr))); // base64 UTF-8
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+
+      console.group('[SNAPSHOT][git]');
+      console.log('PUT', url, 'branch:', branch, 'bytes:', jsonStr.length);
+
+      const r = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: `snapshot ${client}|${service}|${dateStr} ${stamp}`,
+          content: contentB64,
+          branch
+        })
+      });
+      const j = await r.json();
+      console.log('status:', r.status, j);
+
+      if (r.status !== 201 && r.status !== 200) {
+        if (statusEl) statusEl.textContent = '❌ Snapshot Git';
+        btnSnap.textContent = _old; btnSnap.disabled = false;
+        console.groupEnd();
+        return; // STOP ici: on ne tente PAS Google
+      }
+
+      if (statusEl) statusEl.textContent = `✅ Git: ${owner}/${repo}/${path}`;
+      console.groupEnd();
+      btnSnap.textContent = _old; btnSnap.disabled = false;
+      return; // STOP ici: on ne tente PAS Google
+    }
+
     // --- TRACE CONSOLE ---
     const gas = getGAS();
     const mask = s => (s ? (s.slice(0,3) + '…' + s.slice(-3)) : '');
@@ -526,6 +570,7 @@ function bindWorkId(root){
     const _old = btnSnap.textContent; btnSnap.disabled = true; btnSnap.textContent = 'Snapshot…';
 
     try{
+      return; // Google désactivé tant que non résolu
       const res = await saveToGoogle(path, { local: data }, { kind:'snapshot', client, service, date: dateStr, at: ts.toISOString() });
       console.log('saveToGoogle → res =', res);
       console.log('res.status =', res?.status, 'res.ok =', res?.ok, 'data.ok =', res?.data?.ok);
@@ -585,6 +630,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
