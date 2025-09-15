@@ -29,9 +29,10 @@ export function showTab(tab){
   if (typeof fn === 'function') { try { fn(); } catch (e) { console.error('mount error:', tab, e); } }
   // marquer l’onglet actif sur la nav si tu as des classes .active
   document.querySelectorAll('header nav [data-tab]').forEach(b=>{
-    b.classList.toggle('active', b.dataset.tab === tab);
+    const on = (b.dataset.tab === tab);
+    b.classList.toggle('active', on);
+    b.classList.toggle('is-active', on); // <- au cas où l’ancien CSS le regarde
   });
-
   // optionnel: hash (pas obligatoire)
   try { history.replaceState(null,'',`#${tab}`); } catch {}
 }
@@ -63,4 +64,5 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
