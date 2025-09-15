@@ -1,19 +1,32 @@
-// src/domain/journal.js — append/list (scope client/service)
+// PARIA-V2-CLEAN v1.0.0 | domain/journal.js
 import { readClientBlob, writeClientBlob } from '../core/store.js';
-import { getSettings } from '../core/settings.js';
 
-export function appendJournal(evt){
-  const s=readClientBlob(); s.journal=Array.isArray(s.journal)?s.journal:[];
-  const base={ ts:Date.now(), type:evt?.type||'update', target:evt?.target||{kind:'unknown',id:'*'}, payload:evt?.payload||{}, scope:{ client:getSettings().client, service:getSettings().service } };
-  s.journal.push(base); writeClientBlob(s); return base;
-}
-export function listJournal({types=[],since=0,until=Date.now()}={}){
-  const s=readClientBlob(); const scope={ client:getSettings().client, service:getSettings().service };
-  const all=Array.isArray(s.journal)?s.journal:[]; 
-  return all.filter(e=> e.scope?.client===scope.client && e.scope?.service===scope.service && e.ts>=since && e.ts<=until && (types.length?types.includes(e.type):true));
+export function logEvent(type, target={}, meta={}){
+  const blob=readClientBlob();
+  const e={ ts:Date.now(), type, target, meta };
+  blob.journal.push(e); writeClientBlob(blob); return e;
 }
 
-/*
-INDEX journal.js:
-- appendJournal(evt), listJournal({types?,since?,until?})
+export function listJournal({type=null, kind=null, fromTs=null, toTs=null}={}){
+  const arr=(readClientBlob().journal||[]).slice();
+  return arr.filter(e=>{
+    if (type && e.type!==type) return false;
+    if (kind && e?.target?.kind!==kind) return false;
+    if (fromTs && e.ts<fromTs) return false;
+    if (toTs && e.ts>toTs) return false;
+    return true;
+  });
+}
+
+/* Soft-restore dispatcher: appelle reducers selon le kind */
+export async function restoreByTarget({kind,id}){
+  const mod = await import('./reducers.js');
+  if (kind==='card'     && typeof mod.restoreCard==='function')     return mod.restoreCard(id);
+  if (kind==='scenario' && typeof mod.restoreScenario==='function') return mod.restoreScenario(id);
+  if (kind==='charter'  && typeof mod.restoreCharter==='function')  return mod.restoreCharter();
+  return false;
+}
+
+/* INDEX
+- logEvent(), listJournal({filters}), restoreByTarget({kind,id})
 */
