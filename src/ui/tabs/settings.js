@@ -1,6 +1,9 @@
 // src/ui/tabs/settings.js — injection au mount, diag sur CHAMPS, WorkID + Restore
 
 import { settingsLoad, settingsSave, updateLocalUsageBadge, buildWorkId } from '../../core/settings.js';
+import { callGAS, bootstrapWorkspace } from '../../core/net.js';
+import '../../core/restore.js';
+
 
 const $ = (s, r=document) => r.querySelector(s);
 
@@ -51,6 +54,12 @@ function injectMarkup(root){
           <button id="btn-workid-suggest" type="button">Proposer</button>
           <div class="muted" id="workid-now" style="min-width:220px">WorkID actuel : –</div>
         </div>
+        <div class="row" style="margin-top:8px;gap:12px;flex-wrap:wrap;align-items:center">
+          <button id="btn-restore-propose" type="button">Proposer snapshots</button>
+          <button id="btn-restore-apply" type="button" disabled>Restaurer la sélection</button>
+        </div>
+        <div id="restore-list" class="list"></div>
+
         <div class="row" style="margin-top:8px;gap:12px;flex-wrap:wrap;align-items:center">
           <button id="btn-restore" type="button">Restaurer</button>
           <span id="restore-status" class="muted">—</span>
@@ -296,6 +305,125 @@ function bindWorkId(root){
 
   // Restaurer = route=load via proxy (GET), avec work_id + when
   const btnRestore = $('#btn-restore', root);
+  
+  // === Restore (liste/sélection) ===
+  const btnProp = $('#btn-restore-propose', root);
+  const btnApplySel = $('#btn-restore-apply', root);
+  const listEl = $('#restore-list', root);
+
+  let __snaps = [];
+  let __picked = null;
+
+  function currentClientService(){
+    const s = settingsLoad() || {};
+    const client  = $('#client', root)?.value?.trim() || s.client || '';
+    const service = $('#service', root)?.value?.trim() || s.service || '';
+    return { client, service };
+  }
+  function currentWhenISO(){
+    const dateEl = $('#work-date', root);
+    const timeEl = $('#work-time', root);
+    const dateStr = (dateEl?.value || '').trim();
+    const timeStr = (timeEl?.value || '').trim();
+    if (!dateStr) return '';
+    return timeStr ? `${dateStr}T${timeStr}:00` : `${dateStr}T00:00:00`;
+  }
+  function buildWorkIdLocal(){
+    const { client, service } = currentClientService();
+    const d = ($('#work-date', root)?.value || '').trim() || new Date().toISOString().slice(0,10);
+    return `${client}|${service}|${d}`;
+  }
+  function renderSnapList(items){
+    if (!listEl) return;
+    if (!items?.length){
+      listEl.innerHTML = `<div class="muted">Aucun snapshot proposé.</div>`;
+      btnApplySel && (btnApplySel.disabled = true);
+      __picked = null; return;
+    }
+    listEl.innerHTML = items.map((x,i)=>`
+      <label class="row" style="gap:8px;align-items:center">
+        <input type="radio" name="snap" value="${i}">
+        <span><b>${new Date(x.at).toLocaleString()}</b> · ${x.source || 'git'}</span>
+        <code class="mono">${x.path}</code>
+      </label>
+    `).join('');
+    // auto-pick selon règle "à l’instant T"
+    const at = currentWhenISO();
+    let idx = 0;
+    if (at){
+      const t = Date.parse(at);
+      const srt = [...items].sort((a,b)=> Date.parse(a.at)-Date.parse(b.at));
+      const after = srt.find(o=> Date.parse(o.at) >= t);
+      const chosen = after || srt[srt.length-1];
+      idx = items.findIndex(o=> o.path===chosen?.path);
+      if (idx < 0) idx = 0;
+    }
+    const radio = listEl.querySelector(`input[value="${idx}"]`);
+    if (radio){ radio.checked = true; __picked = items[idx]; }
+    if (btnApplySel) btnApplySel.disabled = !__picked;
+
+    listEl.addEventListener('change', (e)=>{
+      if (e.target?.name === 'snap'){
+        const i = Number(e.target.value);
+        __picked = items[i] || null;
+        if (btnApplySel) btnApplySel.disabled = !__picked;
+      }
+    }, { once:true });
+  }
+
+  if (btnProp) btnProp.onclick = async ()=>{
+    const statusEl = $('#restore-status', root);
+    try{
+      const work_id = buildWorkIdLocal();
+      const atIso = currentWhenISO() || null;
+      const res = await callGAS('git_find', { work_id, at: atIso });
+      const items = Array.isArray(res?.data?.items) ? res.data.items
+                   : Array.isArray(res?.items) ? res.items : [];
+      __snaps = items.sort((a,b)=> Date.parse(a.at)-Date.parse(b.at));
+      renderSnapList(__snaps);
+      if (statusEl) statusEl.textContent = items.length ? `✅ ${items.length} snapshot(s)` : '—';
+    }catch(e){
+      console.error('[restore][propose]', e);
+      if (statusEl) statusEl.textContent = '❌ proposition impossible';
+    }
+  };
+
+  if (btnApplySel) btnApplySel.onclick = async ()=>{
+    if (!__picked) return;
+    const statusEl = $('#restore-status', root);
+    btnApplySel.disabled = true; btnApplySel.textContent = 'Restauration…';
+    try{
+      const work_id = buildWorkIdLocal();
+      const res = await callGAS('git_load', { work_id, path: __picked.path });
+      const payload = res?.data || res || {};
+      const snap = payload?.content ? payload : { content: payload };
+      // Applique local (remplace par défaut)
+      const content = snap?.content?.local ?? snap?.content?.state ?? snap?.content;
+      if (!content || typeof content!=='object') throw new Error('snapshot vide');
+      // backup
+      const keys = Object.keys(localStorage).filter(k=>k.startsWith('paria'));
+      const bak = keys.reduce((a,k)=>(a[k]=localStorage.getItem(k),a),{});
+      localStorage.setItem('paria.__backup__', JSON.stringify({ stamp:new Date().toISOString(), bak }));
+      // replace namespace
+      for (const k of Object.keys(localStorage)){
+        if (k.startsWith('paria') && !k.endsWith('.__backup__')) localStorage.removeItem(k);
+      }
+      for (const [k,v] of Object.entries(content)){
+        const key = k.startsWith('paria') ? k : `paria.${k}`;
+        localStorage.setItem(key, typeof v==='string' ? v : JSON.stringify(v));
+      }
+      if (statusEl) statusEl.textContent = '✅ restauré';
+      try { await bootstrapWorkspace(); } catch {}
+      setTimeout(()=> location.reload(), 120);
+    }catch(e){
+      console.error('[restore][apply]', e);
+      if (statusEl) statusEl.textContent = '❌ restauration échouée';
+    }finally{
+      btnApplySel.textContent = 'Restaurer la sélection';
+      btnApplySel.disabled = false;
+    }
+  };
+
   if (btnRestore) btnRestore.onclick = async ()=>{
     const s = settingsLoad() || {};
     const client  = $('#client', root)?.value?.trim() || s.client || '';
@@ -371,3 +499,4 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
