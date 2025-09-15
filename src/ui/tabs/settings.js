@@ -490,6 +490,10 @@ function bindWorkId(root){
   // --- Snapshot manuel (sauvegarde côté proxy / route 'save') ---
   const btnSnap = $('#btn-snapshot-now', root);
   if (btnSnap) btnSnap.onclick = async ()=>{
+    const _old = btnSnap.textContent;
+    btnSnap.disabled = true;
+    btnSnap.textContent = 'Snapshot…';
+
     const statusEl = $('#snapshot-status', root);
     const s = settingsLoad() || {};
     const client  = $('#client', root)?.value?.trim() || s.client || '';
@@ -630,6 +634,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
