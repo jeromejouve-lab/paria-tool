@@ -391,10 +391,10 @@ function bindWorkId(root){
   }
 
   if (btnProp) btnProp.onclick = async ()=>{
-    console.group('[RESTORE][git] proposer snapshots');
+    console.group('[RESTORE][git] proposer');
     const _oldText_prop = btnProp.textContent;
-    btnProp.disabled = true;
-    btnProp.textContent = 'Proposition…';
+    btnProp.disabled = true; btnProp.textContent = 'Proposition…';
+  
     try{
       const s = settingsLoad() || {};
       const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
@@ -405,56 +405,63 @@ function bindWorkId(root){
       const client  = (document.querySelector('#client')?.value  || s.client  || '').trim();
       const service = (document.querySelector('#service')?.value || s.service || '').trim();
       const dateStr = (document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10)).trim();
+      const timeStr = (document.querySelector('#work-time')?.value || '').trim();
   
       if (!owner || !repo || !client || !service || !dateStr){
-        if (listEl) listEl.innerHTML = `<div class="muted">Paramètres manquants (owner/repo/client/service/date).</div>`;
+        listEl.innerHTML = `<div class="muted">Paramètres manquants (owner/repo/client/service/date).</div>`;
+        btnApplySel && (btnApplySel.disabled = true);
+        __picked = null;
         return;
       }
   
-      // Liste le dossier de la journée
       const base = `clients/${client}/${service}/${dateStr}`;
       const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
       console.log('GET', url);
+  
       const r = await fetch(url, {
         headers: {
           'Accept': 'application/vnd.github+json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         }
       });
-      const arr = (r.status===200 ? await r.json() : []);
-      // Filtrer les fichiers snapshot-*.json
-      const items = Array.isArray(arr) ? arr
-        .filter(x => x && x.type==='file' && /^snapshot-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.json$/.test(x.name))
-        .map(x => ({
-          at: x.name.slice('snapshot-'.length, 'snapshot-'.length+19).replace('_','T').replace(/-/g, (m, off)=> off===13?':':off===16?':':'-'), // "YYYY-MM-DDTHH:MM:SS"
-          source: 'git',
-          path: x.path
-        }))
-        : [];
   
-      // Tri ascendant
+      let items = [];
+      if (r.status === 200){
+        const arr = await r.json();
+        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
+        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
+  
+        items = Array.isArray(arr) ? arr
+          .filter(x => x?.type === 'file' && (SNAP.test(x.name) || BACK.test(x.name)))
+          .map(x => {
+            const m = x.name.match(SNAP) || x.name.match(BACK);
+            const at = `${m[1]}T${m[2].replace(/-/g,':')}`;
+            return { at, source:'git', path:x.path, name:x.name };
+          }) : [];
+      }
+  
+      // tri ascendant
       items.sort((a,b)=> Date.parse(a.at) - Date.parse(b.at));
   
-      // Rendu liste
       if (!items.length){
-        listEl.innerHTML = `<div class="muted">Aucun snapshot pour ${dateStr}.</div>`;
+        listEl.innerHTML = `<div class="muted">Aucun snapshot/backup pour ${dateStr}.</div>`;
         btnApplySel && (btnApplySel.disabled = true);
         __picked = null;
       } else {
         listEl.innerHTML = items.map((x,i)=>`
           <label class="row" style="gap:8px;align-items:center">
             <input type="radio" name="snap" value="${i}">
-            <span><b>${new Date(x.at).toLocaleString()}</b> · ${x.source}</span>
+            <span><b>${new Date(x.at).toLocaleString()}</b> · ${x.name}</span>
             <code class="mono">${x.path}</code>
           </label>
         `).join('');
   
-        // Auto-pick selon l'heure (≥, sinon dernier <, sinon dernier du jour)
-        const timeEl = document.querySelector('#work-time');
-        const at = timeEl?.value ? `${dateStr}T${timeEl.value}:00` : `${dateStr}T23:59:59`;
+        // auto-pick : premier ≥ HH:MM si heure saisie, sinon dernier du jour
+        const at = timeStr ? `${dateStr}T${timeStr}:00` : `${dateStr}T23:59:59`;
         const after = items.find(o => Date.parse(o.at) >= Date.parse(at));
         const chosen = after || items[items.length-1];
-        const idx = items.findIndex(o => o.path===chosen.path);
+        const idx = items.findIndex(o => o.path === chosen.path);
+  
         const radio = listEl.querySelector(`input[name="snap"][value="${idx}"]`);
         if (radio){ radio.checked = true; __picked = items[idx]; btnApplySel.disabled = false; }
   
@@ -467,10 +474,10 @@ function bindWorkId(root){
         }, { once:true });
       }
   
-      console.table(items.map(x=>({ at:x.at, path:x.path })));
+      console.table(items.map(x=>({at:x.at, path:x.path})));
     }catch(e){
       console.error('[RESTORE][git] proposer error', e);
-      listEl.innerHTML = `<div class="muted">❌ Erreur lors de la proposition Git.</div>`;
+      listEl.innerHTML = `<div class="muted">❌ Erreur lors de la proposition (Git).</div>`;
       btnApplySel && (btnApplySel.disabled = true);
       __picked = null;
     }finally{
@@ -480,11 +487,11 @@ function bindWorkId(root){
     }
   };
 
+
   if (btnApplySel) btnApplySel.onclick = async ()=>{
     console.group('[RESTORE][git] apply selection');
     const _old = btnApplySel.textContent;
-    btnApplySel.disabled = true;
-    btnApplySel.textContent = 'Restauration…';
+    btnApplySel.disabled = true; btnApplySel.textContent = 'Restauration…';
     try{
       if (!__picked?.path) throw new Error('no candidate');
   
@@ -496,6 +503,7 @@ function bindWorkId(root){
   
       const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(__picked.path)}?ref=${encodeURIComponent(branch)}`;
       console.log('GET', url);
+  
       const r = await fetch(url, {
         headers: {
           'Accept': 'application/vnd.github+json',
@@ -507,16 +515,16 @@ function bindWorkId(root){
       const raw  = atob((meta.content||'').replace(/\n/g,''));
       let snap=null; try { snap = JSON.parse(raw); } catch { throw new Error('bad_json'); }
   
-      // Snapshot → applique (replace namespace paria.*)
+      // supporte {local}, {content:{local}}, ou objet plat
       const content = snap?.local || snap?.content?.local || snap?.content || snap || {};
       if (!content || typeof content !== 'object') throw new Error('empty');
   
-      // backup
+      // backup local
       const keys = Object.keys(localStorage).filter(k=>k.startsWith('paria') && k!=='paria.__backup__');
       const bak = keys.reduce((a,k)=>(a[k]=localStorage.getItem(k),a),{});
       localStorage.setItem('paria.__backup__', JSON.stringify({ stamp:new Date().toISOString(), bak }));
   
-      // replace namespace
+      // replace namespace paria.*
       for (const k of Object.keys(localStorage)){
         if (k.startsWith('paria') && !k.endsWith('.__backup__')) localStorage.removeItem(k);
       }
@@ -526,19 +534,20 @@ function bindWorkId(root){
       }
   
       const statusEl = $('#restore-status', root);
-      if (statusEl) statusEl.textContent = '✅ restauré (Git)';
+      if (statusEl) statusEl.textContent = '✅ restauré (Git sélection)';
       try { await bootstrapWorkspace(); } catch {}
       setTimeout(()=> location.reload(), 120);
     }catch(e){
       console.error('[RESTORE][git] apply error', e);
       const statusEl = $('#restore-status', root);
-      if (statusEl) statusEl.textContent = '❌ restauration (Git)';
+      if (statusEl) statusEl.textContent = '❌ restauration (Git sélection)';
     }finally{
       btnApplySel.textContent = _old;
       btnApplySel.disabled = false;
       console.groupEnd();
     }
   };
+
 
 
   if (btnRestore) btnRestore.onclick = async ()=>{
@@ -722,6 +731,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
