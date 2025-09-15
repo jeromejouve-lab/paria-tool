@@ -4,19 +4,23 @@ import { getCharter, saveCharter, addAItoCard } from '../domain/reducers.js';
 
 const uid = () => Math.random().toString(36).slice(2)+Date.now().toString(36);
 
-// remplace intégralement l’ancienne fonction par celle-ci
+import { getGAS, postPlain } from './net.js';
+import { buildWorkId } from './settings.js';
+
 export async function askAI(task){
   const { url, secret } = getGAS();
   if (!url) return { status:'needs_config', results:[] };
 
   const payload = {
-    route: 'ai',                 // côté Apps Script
-    secret,                      // clé d’auth attendue
-    work_id: buildWorkId(),      // client|service|YYYY-MM-DD
+    route: 'ai',
+    secret,
+    work_id: buildWorkId(),
     task: task || {}
   };
 
-  // normalisation robuste : accepte plusieurs noms de clés
+  const uid = () => Math.random().toString(36).slice(2)+Date.now().toString(36);
+
+  // 1) essaie d'extraire une liste
   const pickArray = (r)=>{
     if (Array.isArray(r)) return r;
     const keys = ['results','data','items','proposals','choices','suggestions'];
@@ -24,27 +28,69 @@ export async function askAI(task){
     return [];
   };
 
-  const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+  // 2) sinon, essaie d'extraire un texte “raisonnable”
+  const pickText = (r)=>{
+    if (!r) return '';
+    if (typeof r === 'string') return r;
+
+    // variantes simples
+    const prim = r.text || r.content || r.message || r.output || r.result;
+    if (typeof prim === 'string' && prim.trim()) return prim;
+
+    // OpenAI styles
+    try {
+      const c0 = r.choices?.[0];
+      const t1 = c0?.message?.content || c0?.text;
+      if (typeof t1 === 'string' && t1.trim()) return t1;
+    } catch {}
+
+    // Vertex styles
+    try {
+      const p = r.candidates?.[0]?.content?.parts;
+      if (Array.isArray(p)){
+        const t = p.map(x=>x?.text).filter(Boolean).join('\n').trim();
+        if (t) return t;
+      }
+    } catch {}
+
+    // “text” dans sous-objets usuels
+    try {
+      const t2 = r.data?.text || r.data?.content;
+      if (typeof t2 === 'string' && t2.trim()) return t2;
+    } catch {}
+
+    return '';
+  };
 
   try{
-    const r = await postPlain(url, payload);   // envoi en text/plain
-    const arr = pickArray(r);
+    const raw = await postPlain(url, payload);   // envoi en text/plain
+    console.log('[AI][raw]', raw);
+
+    let arr = pickArray(raw);
+
+    // Si pas de liste, on fabrique une proposition depuis un texte brut
+    if (!arr.length){
+      const t = pickText(raw);
+      if (t && t.trim()){
+        arr = [{ title:'Proposition', content:t }];
+      }
+    }
+
     const norm = arr.map((x,i)=>({
       id: x?.id || uid(),
       title: x?.title || `Proposition ${i+1}`,
       content: x?.content || '',
       tags: Array.isArray(x?.tags) ? x.tags : [],
       meta: x?.meta || {},
-      state: {
-        selected:false, think:false, deleted:false,
-        created_ts: Date.now(), updated_ts: Date.now()
-      }
+      state: { selected:false, think:false, deleted:false, created_ts:Date.now(), updated_ts:Date.now() }
     }));
+
     return { status: norm.length ? 'ok' : 'empty', results: norm };
   }catch(e){
-    return { status:'network_error', error: e?.message || String(e), results: [] };
+    return { status:'network_error', error:e?.message||String(e), results:[] };
   }
 }
+
 
 
 // util: normalisation d’une liste IA
