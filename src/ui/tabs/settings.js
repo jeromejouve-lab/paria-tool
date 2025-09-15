@@ -101,4 +101,75 @@ export function mountSettingsTab() {
           proxy: { url: p.proxy.url, token: p.proxy.token }
         }
       });
-    } catch (_) {/* i*_
+    } catch (_) {/* ignore */}
+  }
+
+  // 3) Remplir les champs (lecture uniquement)
+  const $client     = $(SEL.client);
+  const $service    = $(SEL.service);
+  const $llm        = $(SEL.llm);
+  const $git        = $(SEL.git);
+  const $gdrive     = $(SEL.gdrive);
+  const $proxyUrl   = $(SEL.proxyUrl);
+  const $proxyToken = $(SEL.proxyToken);
+  const $saveBtn    = $(SEL.save);
+  const $diagBtn    = $(SEL.diag);
+  const $diagOut    = $(SEL.diagOut);
+
+  if ($client)     $client.value     = s.connections.client || '';
+  if ($service)    $service.value    = s.connections.service || '';
+  if ($llm)        $llm.value        = s.connections.endpoints.llm.url || '';
+  if ($git)        $git.value        = s.connections.endpoints.git.url || '';
+  if ($gdrive)     $gdrive.value     = s.connections.endpoints.gdrive.url || '';
+  if ($proxyUrl)   $proxyUrl.value   = s.connections.endpoints.proxy.url || '';
+  if ($proxyToken) $proxyToken.value = s.connections.endpoints.proxy.token || '';
+
+  // 4) Sauver — uniquement si tu cliques et même si tout est vide (aucune écriture auto au mount)
+  if ($saveBtn) {
+    $saveBtn.onclick = async () => {
+      const client  = ($client?.value || '').trim();
+      const service = ($service?.value || '').trim();
+      const llm     = ($llm?.value || '').trim();
+      const git     = ($git?.value || '').trim();
+      const gdrive  = ($gdrive?.value || '').trim();
+      const pUrl    = ($proxyUrl?.value || '').trim();
+      const pTok    = ($proxyToken?.value || '').trim();
+
+      try {
+        await settingsSave({
+          client, service,
+          endpoints: { llm, git, gdrive, proxy: { url: pUrl, token: pTok } },
+          proxy: { url: pUrl, token: pTok },
+          connections: {
+            client, service,
+            endpoints: { llm: { url: llm }, git: { url: git }, gdrive: { url: gdrive }, proxy: { url: pUrl, token: pTok } },
+            proxy: { url: pUrl, token: pTok }
+          }
+        });
+        if ($diagOut) $diagOut.textContent = '✅ Config sauvegardée.';
+      } catch (e) {
+        if ($diagOut) $diagOut.textContent = `❌ Save: ${e?.message || e}`;
+      }
+    };
+  }
+
+  // 5) Diag — ne lance rien si rien n'est renseigné (ton choix 1)
+  if ($diagBtn) {
+    $diagBtn.onclick = async () => {
+      const cur = normalizeSettingsShape(settingsLoad());
+      if (!hasAnyEndpoint(cur)) {
+        if ($diagOut) $diagOut.textContent = '— Renseigne au moins un endpoint (LLM / Git / Drive / Proxy) avant Diag.';
+        return;
+      }
+      try {
+        const r = await diag();
+        if ($diagOut) $diagOut.textContent = JSON.stringify(r, null, 2);
+      } catch (e) {
+        if ($diagOut) $diagOut.textContent = `❌ Diag: ${e?.message || e}`;
+      }
+    };
+  }
+}
+
+export const mount = mountSettingsTab;
+export default { mount: mountSettingsTab };
