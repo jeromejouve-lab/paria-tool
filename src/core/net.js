@@ -4,9 +4,11 @@ import { settingsLoad } from './settings.js';
 
 // GAS settings
 export function getGAS() {
-  return { url: '', secret: '' }; // Git-only
+  const s = settingsLoad() || {};
+  const url    = (s.proxy_url || s.endpoints?.proxy?.url || '').trim();
+  const secret = (s.proxy_secret || s.endpoints?.proxy?.secret || '').trim();
+  return { url, secret };
 }
-
 
 // POST text/plain (évite preflight)
 export async function postPlain(url, obj) {
@@ -91,8 +93,20 @@ export async function bootstrapWorkspace() {
  * Retourne { ok, status, data } comme postPlain.
  */
 export async function callGAS(route, payload = {}) {
-  console.warn('[GAS disabled][git-only]', route, payload);
-  return { ok: false, disabled: 'git-only' };
+  const { url, secret } = getGAS();
+  if (!url || !secret) return { ok:false, status:0, detail:'incomplete', data:null };
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain', 'X-Proxy-Secret': secret },
+      body: JSON.stringify({ route, ...payload })
+    });
+    const txt = await res.text();
+    let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
+    return { ok: res.ok && (data?.ok !== false), status: res.status, data };
+  } catch (e) {
+    return { ok:false, status:0, data:{ error:String(e?.message||e) } };
+  }
 }
 
 /**
@@ -107,9 +121,39 @@ export async function loadFromGoogle(path) {
  * Compat: sauvegarde côté Google (alias historique).
  * Selon ton Apps Script, adapte la route si besoin ('save', 'gdrive_save', etc.).
  */
-export async function saveToGoogle(path, content, meta = {}) {
-  console.warn('[GAS disabled][git-only] save', path);
-  return { ok: false, disabled: 'git-only' };
+export async function saveToGoogle(a, b, c) {
+  const payload = (arguments.length===1 && typeof a==='object') ? a : { path:a, content:b, meta:c };
+  return callGAS('save', payload);
+}
+
+export async function saveToGit(payload) {
+  const s = settingsLoad() || {};
+  const owner  = (s.git_owner  || s.endpoints?.git?.owner  || '').trim();
+  const repo   = (s.git_repo   || s.endpoints?.git?.repo   || '').trim();
+  const branch = (s.git_branch || s.endpoints?.git?.branch || 'main').trim();
+  const token  = (s.git_token  || s.endpoints?.git?.token  || '').trim();
+  if (!owner || !repo || !token || !payload?.workId) return { ok:false, status:0, detail:'incomplete' };
+
+  const [client, service, dateStr] = String(payload.workId).split('|');
+  const pad = v => String(v).padStart(2,'0'); const t = new Date();
+  const stamp = `${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}_${pad(t.getHours())}-${pad(t.getMinutes())}-${pad(t.getSeconds())}`;
+  const path  = `clients/${client}/${service}/${dateStr}/backup-${stamp}.json`;
+
+  const jsonStr = JSON.stringify(payload, null, 2);
+  const contentB64 = btoa(unescape(encodeURIComponent(jsonStr)));
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Accept': 'application/vnd.github+json',
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ message: `backup ${payload.workId} ${stamp}`, content: contentB64, branch })
+  });
+  const data = await res.json();
+  return { ok: res.status===201 || res.status===200, status: res.status, data, path };
 }
 
 /**
@@ -122,6 +166,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
