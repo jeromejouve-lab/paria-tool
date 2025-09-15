@@ -687,45 +687,6 @@ function bindWorkId(root){
       console.groupEnd();
     }
   };
-
-
-
-  if (btnRestore) btnRestore.onclick = async ()=>{
-    const _oldText_restore = btnRestore.textContent;
-    btnRestore.disabled = true;
-    btnRestore.textContent = 'Restauration…';
-
-    const s = settingsLoad() || {};
-    const client  = $('#client', root)?.value?.trim() || s.client || '';
-    const service = $('#service', root)?.value?.trim() || s.service || '';
-    const whenISO = toISODate(dateEl?.value || '', timeEl?.value || '');
-    const workId = `${client}|${service}|${(dateEl?.value || '').trim() || (new Date().toISOString().slice(0,10))}`;
-    const url = $('#proxy-url', root)?.value?.trim() || '';
-    const secret = $('#proxy-secret', root)?.value?.trim() || '';
-    const statusEl = $('#restore-status', root);
-    if (!url || !secret || !client || !service || !dateEl?.value) {
-      if (statusEl) statusEl.textContent = '❌ infos incomplètes (proxy/client/service/date)';
-      return;
-    }
-    try {
-      const u = new URL(url);
-      u.searchParams.set('route','load');
-      u.searchParams.set('secret',secret);
-      u.searchParams.set('work_id', workId);
-      if (whenISO) u.searchParams.set('at', whenISO);
-      const r = await fetch(u.toString(), { method:'GET' });
-      const txt = await r.text();
-      let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
-      console.log('[RESTORE]', { workId, whenISO, http:r.status, data });
-      if (statusEl) statusEl.textContent = r.ok && (data?.ok !== false) ? '✅ restauré (voir console)' : '⚠︎ réponse proxy (voir console)';
-    } catch(e){
-      console.error('[RESTORE][error]', e);
-      if (statusEl) statusEl.textContent = '❌ erreur réseau';
-    }
-    // restore état bouton
-    btnRestore.textContent = _oldText_restore;
-    btnRestore.disabled = false;
-  };
   
   // --- Snapshot manuel (sauvegarde côté proxy / route 'save') ---
   const btnSnap = $('#btn-snapshot-now', root);
@@ -871,6 +832,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
