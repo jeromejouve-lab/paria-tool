@@ -4,9 +4,6 @@ import { getCharter, saveCharter, addAItoCard } from '../domain/reducers.js';
 
 const uid = () => Math.random().toString(36).slice(2)+Date.now().toString(36);
 
-import { getGAS, postPlain } from './net.js';
-import { buildWorkId } from './settings.js';
-
 export async function askAI(task){
   const { url, secret } = getGAS();
   if (!url) return { status:'needs_config', results:[] };
