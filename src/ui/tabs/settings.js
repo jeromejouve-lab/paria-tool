@@ -1,7 +1,7 @@
 // src/ui/tabs/settings.js — injection au mount, diag sur CHAMPS, WorkID + Restore
 
 import { settingsLoad, settingsSave, updateLocalUsageBadge, buildWorkId } from '../../core/settings.js';
-import { callGAS, bootstrapWorkspace } from '../../core/net.js';
+import { callGAS, bootstrapWorkspace, saveToGoogle } from '../../core/net.js';
 import '../../core/restore.js';
 
 
@@ -499,4 +499,5 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
