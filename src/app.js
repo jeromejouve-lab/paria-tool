@@ -6,7 +6,7 @@ import * as Scenarios from './ui/tabs/scenarios.js';
 import * as Projector from './ui/tabs/projector.js';
 import * as Journal   from './ui/tabs/journal.js';
 import './core/compat-exports.js';
-import '../../paria-tool-main/src/core/restore.js';
+import './core/restore.js';
 
 
 const mounts = {
@@ -67,6 +67,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
