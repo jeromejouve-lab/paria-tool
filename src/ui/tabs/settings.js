@@ -1,6 +1,6 @@
-// src/ui/tabs/settings.js — injection au mount, diag sur les CHAMPS, Git URL ou Owner/Repo
+// src/ui/tabs/settings.js — injection au mount, diag sur CHAMPS, WorkID + Restore
 
-import { settingsLoad, settingsSave, updateLocalUsageBadge } from '../../core/settings.js';
+import { settingsLoad, settingsSave, updateLocalUsageBadge, buildWorkId } from '../../core/settings.js';
 
 const $ = (s, r=document) => r.querySelector(s);
 
@@ -9,6 +9,18 @@ function markErr(root, sel, on){
   if (!el) return;
   el.style.outline = on ? '2px solid #ff99aa' : '';
   el.style.outlineOffset = on ? '2px' : '';
+}
+
+function toISODate(dateStr, timeStr){
+  // dateStr: "YYYY-MM-DD" (ou vide), timeStr: "HH:mm" (ou vide)
+  if (!dateStr) return '';
+  const [y,m,d] = dateStr.split('-').map(Number);
+  let h=0, mi=0;
+  if (timeStr && /^\d{2}:\d{2}$/.test(timeStr)) { const [hh,mm]=timeStr.split(':').map(Number); h=hh; mi=mm; }
+  const dt = new Date(y, (m||1)-1, d||1, h||0, mi||0, 0);
+  // on renvoie ISO date-only si pas d’heure, sinon ISO datetime sans ms
+  if (!timeStr) return dt.toISOString().slice(0,10);
+  return dt.toISOString().slice(0,19);
 }
 
 // ---- injection du formulaire au mount ----
@@ -26,7 +38,26 @@ function injectMarkup(root){
         </label>
       </div>
 
-      <div class="row">
+      <fieldset style="margin-top:10px">
+        <legend>Work ID & Date</legend>
+        <div class="row" style="align-items:flex-end;gap:12px;flex-wrap:wrap">
+          <label>Date (YYYY-MM-DD)<br>
+            <input id="work-date" type="date" />
+          </label>
+          <label>Heure (HH:mm, optionnel)<br>
+            <input id="work-time" type="time" />
+          </label>
+          <button id="btn-workid-link" type="button">Lier ce WorkID</button>
+          <button id="btn-workid-suggest" type="button">Proposer</button>
+          <div class="muted" id="workid-now" style="min-width:220px">WorkID actuel : –</div>
+        </div>
+        <div class="row" style="margin-top:8px;gap:12px;flex-wrap:wrap;align-items:center">
+          <button id="btn-restore" type="button">Restaurer</button>
+          <span id="restore-status" class="muted">—</span>
+        </div>
+      </fieldset>
+
+      <div class="row" style="margin-top:12px">
         <fieldset style="min-width:320px">
           <legend>Proxy (Apps Script)</legend>
           <label>URL<br>
@@ -63,7 +94,7 @@ function injectMarkup(root){
       <div class="btns" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:8px">
         <button id="btn-diag" type="button">Diag</button>
         <button id="btn-save-conf" type="button">Sauver la conf</button>
-        <span id="local-usage" class="muted" style="margin-left:auto">Local —</span>
+        <!-- pas de badge 'Local —' ici : on garde le badge global en haut -->
       </div>
     </section>
   `;
@@ -80,7 +111,7 @@ function fillForm(root, cfg){
   set('#proxy-url',    s?.endpoints?.proxy?.url || s?.proxy?.url || '');
   set('#proxy-secret', s?.endpoints?.proxy?.secret || s?.proxy?.secret || s?.endpoints?.proxy?.token || s?.proxy?.token || '');
 
-  // Git : on accepte url OU owner/repo
+  // Git : url OU owner/repo
   const gUrl   = s?.endpoints?.git?.url   || s?.git?.url   || '';
   const gOwner = s?.endpoints?.git?.owner || s?.git?.owner || '';
   const gRepo  = s?.endpoints?.git?.repo  || s?.git?.repo  || '';
@@ -90,6 +121,18 @@ function fillForm(root, cfg){
   set('#git-owner', gOwner);
   set('#git-repo',  gRepo);
   set('#git-token', gTok);
+
+  // WorkID preview
+  try {
+    const d = new Date();
+    const pad = v=>String(v).padStart(2,'0');
+    const today = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    const w = (typeof buildWorkId === 'function') ? buildWorkId() : `${(s.client||'').trim()}|${(s.service||'').trim()}|${today}`;
+    const span = $('#workid-now', root);
+    if (span) span.textContent = `WorkID actuel : ${w || '–'}`;
+    const dateInput = $('#work-date', root);
+    if (dateInput && !dateInput.value) dateInput.value = today;
+  } catch {}
 }
 
 // ---- lecture du formulaire (pour sauvegarde explicite) ----
@@ -208,8 +251,80 @@ async function autoTests(root){
     if (gitBadge) gitBadge.textContent = 'Git —';
   }
 
-  // Badge Local %
+  // badge global Local % (no-op si pas de placeholder global)
   try { updateLocalUsageBadge(); } catch {}
+}
+
+// ---- WorkID + Restore ----
+function bindWorkId(root){
+  const wNow = $('#workid-now', root);
+  const dateEl = $('#work-date', root);
+  const timeEl = $('#work-time', root);
+
+  const refresh = ()=>{
+    const s = settingsLoad() || {};
+    const todayISO = (()=>{
+      const d = new Date(); const p=v=>String(v).padStart(2,'0');
+      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+    })();
+    const w = (typeof buildWorkId === 'function') ? buildWorkId() : `${(s.client||'').trim()}|${(s.service||'').trim()}|${todayISO}`;
+    if (wNow) wNow.textContent = `WorkID actuel : ${w || '–'}`;
+    if (dateEl && !dateEl.value) dateEl.value = todayISO;
+  };
+
+  refresh();
+
+  // Lier ce WorkID = mémorise client/service + (optionnellement) date (via settings)
+  const btnLink = $('#btn-workid-link', root);
+  if (btnLink) btnLink.onclick = ()=>{
+    // on sauvegarde juste client/service saisis ; la date reste pour RESTORE
+    const patch = {
+      client:  $('#client', root)?.value?.trim() || '',
+      service: $('#service', root)?.value?.trim() || ''
+    };
+    settingsSave(patch);
+    refresh();
+  };
+
+  // Proposer = propose aujourd’hui + heure courante
+  const btnSuggest = $('#btn-workid-suggest', root);
+  if (btnSuggest) btnSuggest.onclick = ()=>{
+    const d = new Date(); const p=v=>String(v).padStart(2,'0');
+    if (dateEl) dateEl.value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+    if (timeEl) timeEl.value = `${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+
+  // Restaurer = route=load via proxy (GET), avec work_id + when
+  const btnRestore = $('#btn-restore', root);
+  if (btnRestore) btnRestore.onclick = async ()=>{
+    const s = settingsLoad() || {};
+    const client  = $('#client', root)?.value?.trim() || s.client || '';
+    const service = $('#service', root)?.value?.trim() || s.service || '';
+    const whenISO = toISODate(dateEl?.value || '', timeEl?.value || '');
+    const workId = `${client}|${service}|${(dateEl?.value || '').trim() || (new Date().toISOString().slice(0,10))}`;
+    const url = $('#proxy-url', root)?.value?.trim() || '';
+    const secret = $('#proxy-secret', root)?.value?.trim() || '';
+    const statusEl = $('#restore-status', root);
+    if (!url || !secret || !client || !service || !dateEl?.value) {
+      if (statusEl) statusEl.textContent = '❌ infos incomplètes (proxy/client/service/date)';
+      return;
+    }
+    try {
+      const u = new URL(url);
+      u.searchParams.set('route','load');
+      u.searchParams.set('secret',secret);
+      u.searchParams.set('work_id', workId);
+      if (whenISO) u.searchParams.set('at', whenISO);
+      const r = await fetch(u.toString(), { method:'GET' });
+      const txt = await r.text();
+      let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
+      console.log('[RESTORE]', { workId, whenISO, http:r.status, data });
+      if (statusEl) statusEl.textContent = r.ok && (data?.ok !== false) ? '✅ restauré (voir console)' : '⚠︎ réponse proxy (voir console)';
+    } catch(e){
+      console.error('[RESTORE][error]', e);
+      if (statusEl) statusEl.textContent = '❌ erreur réseau';
+    }
+  };
 }
 
 // ---- bind des boutons + relance diag à la saisie ----
@@ -222,10 +337,13 @@ function bindActions(root){
     const patch = readForm(root);
     settingsSave(patch);
     autoTests(root);
+    // refresh workid preview après save
+    const wNow = $('#workid-now', root);
+    if (wNow && typeof buildWorkId === 'function') wNow.textContent = `WorkID actuel : ${buildWorkId()}`;
   };
 
   // relance diag après saisie (debounce)
-  ['#proxy-url','#proxy-secret','#git-url','#git-owner','#git-repo','#git-token']
+  ['#client','#service','#proxy-url','#proxy-secret','#git-url','#git-owner','#git-repo','#git-token']
     .forEach(sel=>{
       const el = root.querySelector(sel);
       if (!el) return;
@@ -247,6 +365,7 @@ export function mountSettingsTab(host){
   const cfg = settingsLoad() || {};
   fillForm(root, cfg);
   bindActions(root);
+  bindWorkId(root);
   autoTests(root); // tests non bloquants au mount
 }
 
