@@ -62,11 +62,7 @@ function injectMarkup(root){
           <button id="btn-restore" type="button">Restaurer</button>
           <span id="restore-status" class="muted">—</span>
         </div>
-        <div class="row" style="margin-top:8px;gap:12px;align-items:center">
-          <button id="btn-snapshot-now" type="button">Snapshot maintenant</button>
-          <span id="snapshot-status" class="muted">—</span>
-        </div>
-
+       
       </fieldset>
 
       <div class="row" style="margin-top:12px">
@@ -305,22 +301,7 @@ function bindWorkId(root){
     refresh();
   };
 
-  // Proposer = propose aujourd’hui + heure courante
-  const btnBackup = $('#btn-workid-suggest', root);
-  
-  if (btnSuggest) btnSuggest.onclick = ()=>{
-    const d = new Date(); const p=v=>String(v).padStart(2,'0');
-    if (dateEl) dateEl.value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
-    if (timeEl) timeEl.value = `${p(d.getHours())}:${p(d.getMinutes())}`;
-    
-    // feedback visuel court
-    btnSuggest.disabled = true;
-    const _oldText_suggest = btnSuggest.textContent;
-    btnSuggest.textContent = '📌 Proposé';
-    setTimeout(()=>{ btnSuggest.disabled = false; btnSuggest.textContent = _oldText_suggest; }, 900);
-  };
-
-  // Restaurer = route=load via proxy (GET), avec work_id + when
+   // Restaurer = route=load via proxy (GET), avec work_id + when
   const btnRestore = $('#btn-restore', root);
   // === RESTAURER (one-click) — GIT ONLY (écrase tout handler précédent) ===
   if (btnRestore) btnRestore.onclick = async ()=>{ 
@@ -827,25 +808,7 @@ function bindWorkId(root){
   
   // --- Snapshot manuel (sauvegarde côté proxy / route 'save') ---
   const btnSnap = $('#btn-snapshot-now', root);
-  // --- Backup maintenant (bouton + statut), créé dynamiquement pour éviter de toucher au markup
-  let btnBackup = $('#btn-backup-now', root);
-  if (!btnBackup && btnSnap) {
-    btnBackup = document.createElement('button');
-    btnBackup.id = 'btn-backup-now';
-    btnBackup.type = 'button';
-    btnBackup.className = btnSnap.className || 'btn'; // même style que Snapshot
-    btnBackup.textContent = 'Backup maintenant';
-    btnSnap.parentNode.insertBefore(btnBackup, btnSnap.nextSibling);
   
-    const sep = document.createTextNode(' ');
-    btnBackup.parentNode.insertBefore(sep, btnBackup.nextSibling);
-  
-    const st = document.createElement('span');
-    st.id = 'backup-status';
-    st.className = 'muted';
-    btnBackup.parentNode.insertBefore(st, btnBackup.nextSibling);
-  }
-
   if (btnSnap) btnSnap.onclick = async ()=>{
     const _old = btnSnap.textContent;
     btnSnap.disabled = true;
@@ -943,14 +906,11 @@ function bindWorkId(root){
     }
   };
   
-
-  // --- BACKUP → Git (manuel)
-  if (btnBackup) btnBackup.onclick = async ()=>{
-    const _old = btnBackup.textContent;
-    btnBackup.disabled = true;
-    btnBackup.textContent = 'Backup…';
+  // --- BACKUP → Git (manuel) — fonction réutilisable (sans bouton autonome)
+  const doBackupNow = async (btn)=>{
+    const _old = btn?.textContent || '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Backup…'; }
     try {
-      // 1) Lire config & contexte (mêmes sources que Snapshot)
       const s = settingsLoad() || {};
       const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
       const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
@@ -963,13 +923,11 @@ function bindWorkId(root){
   
       if (!owner || !repo || !token || !client || !service || !dateStr) {
         if (backupStatusEl) backupStatusEl.textContent = '❌ Config incomplète (owner/repo/token/client/service/date).';
-        // flash sur le bouton
-        btnBackup.textContent = '❌ config';
-        setTimeout(()=> btnBackup.textContent = _old, 1200);
+        if (btn) { btn.textContent = '❌ config'; setTimeout(()=> btn.textContent = _old, 1200); btn.disabled = false; }
         return;
       }
   
-      // 2) Construire le contenu (identique à Snapshot : tout le namespace paria.*)
+      // 2) collecter l’état local paria.*
       const local = {};
       for (const k of Object.keys(localStorage)) {
         if (k.startsWith('paria.') && k !== 'paria.__backup__') {
@@ -978,16 +936,18 @@ function bindWorkId(root){
         }
       }
   
-      // 3) Chemin backup-*.json (même dossier que snapshot-*.json)
+      // 3) chemin target backup-*.json (même dossier que snapshot)
       const pad=v=>String(v).padStart(2,'0'), t=new Date();
       const stamp=`${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}_${pad(t.getHours())}-${pad(t.getMinutes())}-${pad(t.getSeconds())}`;
       const path = `clients/${client}/${service}/${dateStr}/backup-${stamp}.json`;
   
-      // 4) PUT GitHub Contents API
-      const jsonStr = JSON.stringify({ local, meta:{ reason:'manual:button', at:t.toISOString() } }, null, 2);
-      const contentB64 = btoa(unescape(encodeURIComponent(jsonStr)));
+      // 4) PUT GitHub
       const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
-  
+      const body = {
+        message: `backup ${client}|${service}|${dateStr} ${stamp} (manual)`,
+        content: btoa(unescape(encodeURIComponent(JSON.stringify({ local, meta:{ reason:'manual:button', at:t.toISOString() } }, null, 2)))),
+        branch
+      };
       const r = await fetch(url, {
         method: 'PUT',
         headers: {
@@ -995,22 +955,15 @@ function bindWorkId(root){
           'Accept': 'application/vnd.github+json',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          message: `backup ${client}|${service}|${dateStr} ${stamp} (manual)`,
-          content: contentB64,
-          branch
-        })
+        body: JSON.stringify(body)
       });
   
-      // 5) Afficher le CODE HTTP (demande initiale)
       if (r.status !== 201 && r.status !== 200) {
         const txt = await r.text().catch(()=> '');
         if (backupStatusEl) backupStatusEl.textContent = `❌ Git ${r.status}`;
+        if (btn) { btn.textContent = `❌ ${r.status}`; setTimeout(()=> btn.textContent = _old, 1200); btn.disabled = false; }
         console.warn('[Backup][Git] HTTP', r.status, url, txt);
-        // flash code sur le bouton
-        btnBackup.textContent = `❌ ${r.status}`;
-        setTimeout(()=> btnBackup.textContent = _old, 1200);
-        return; // Git-only (pas de Google)
+        return;
       }
   
       if (backupStatusEl) backupStatusEl.textContent = `✅ Git: ${owner}/${repo}/${path}`;
@@ -1018,10 +971,18 @@ function bindWorkId(root){
       console.error('[Backup][Git] error', e);
       if (backupStatusEl) backupStatusEl.textContent = '❌ Backup (voir console)';
     } finally {
-      btnBackup.textContent = _old;
-      btnBackup.disabled = false;
+      if (btn) { btn.textContent = _old; btn.disabled = false; }
     }
   };
+  
+  // Affecte la fonction au bouton de droite "Proposer" (qui devient Backuper maintenant)
+  const btnSuggest2 = $('#btn-workid-suggest', root);
+  if (btnSuggest2) {
+    btnSuggest2.textContent = 'Backuper maintenant';
+    btnSuggest2.title = 'Créer un backup (Git) maintenant';
+    btnSuggest2.onclick = ()=> doBackupNow(btnSuggest2);
+  }
+
 
 // 2) Restaurer la sélection (droite) -> "" (réutilise le handler snapshot)
 if (btnApplySel && btnSnap && typeof btnSnap.onclick === 'function') {
@@ -1035,33 +996,6 @@ if (btnApplySel && btnSnap && typeof btnSnap.onclick === 'function') {
     btnApplySel.insertAdjacentElement('afterend', snapStatusEl);
   }
 }
-
-// 3) On supprime le bouton backup autonome et son statut redondant (plus utilisé)
-if (btnBackup) { btnBackup.remove(); btnBackup = null; }
-// (on garde backupStatusEl car on vient de le replacer après btnSuggest)
-
-// === Re-map final : Proposer -> Backuper maintenant, suppression du bouton backup autonome
-(() => {
-  const $ = (s, ctx=document) => ctx.querySelector(s);
-
-  const btnSuggest  = $('#btn-workid-suggest', root);  // bouton de droite "Proposer"
-  const btnBackup   = $('#btn-backup-now', root);      // bouton "Backup maintenant" autonome
-
-  // on récupère le handler existant du backup autonome
-  const backupHandler = (btnBackup && typeof btnBackup.onclick === 'function') ? btnBackup.onclick : null;
-
-  // remap "Proposer" -> "Backuper maintenant"
-  if (btnSuggest && backupHandler) {
-    btnSuggest.textContent = 'Backuper maintenant';
-    btnSuggest.title = 'Créer un backup (Git) maintenant';
-    btnSuggest.onclick = backupHandler;  // utilise exactement le même code que l’ancien bouton
-  }
-
-  // on supprime le bouton backup autonome (on garde uniquement celui de droite)
-  if (btnBackup) btnBackup.remove();
-})();
-
-  
 }
 
 // ---- bind des boutons + relance diag à la saisie ----
@@ -1113,6 +1047,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
