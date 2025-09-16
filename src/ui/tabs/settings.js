@@ -49,7 +49,7 @@ function injectMarkup(root){
             <input id="work-time" type="time" />
           </label>
           <button id="btn-workid-link" type="button">Lier ce WorkID</button>
-          <button id="btn-workid-suggest" type="button">Proposer</button>
+          <button id="btn-workid-suggest" type="button">Backuper now</button>
           <div class="muted" id="workid-now" style="min-width:220px">WorkID actuel : –</div>
         </div>
         <div class="row" style="margin-top:8px;gap:12px;flex-wrap:wrap;align-items:center">
@@ -306,7 +306,7 @@ function bindWorkId(root){
   };
 
   // Proposer = propose aujourd’hui + heure courante
-  const btnSuggest = $('#btn-workid-suggest', root);
+  const btnBackup = $('#btn-workid-suggest', root);
   
   if (btnSuggest) btnSuggest.onclick = ()=>{
     const d = new Date(); const p=v=>String(v).padStart(2,'0');
@@ -1023,9 +1023,9 @@ function bindWorkId(root){
     }
   };
 
-// 2) Restaurer la sélection (droite) -> "Snapshot maintenant" (réutilise le handler snapshot)
+// 2) Restaurer la sélection (droite) -> "" (réutilise le handler snapshot)
 if (btnApplySel && btnSnap && typeof btnSnap.onclick === 'function') {
-  btnApplySel.textContent = 'Snapshot maintenant';
+  btnApplySel.textContent = '';
   btnApplySel.title = 'Créer un snapshot (Git) maintenant';
   btnApplySel.onclick = btnSnap.onclick;   // réaffectation de l'action
   btnApplySel.disabled = false;
@@ -1113,6 +1113,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
