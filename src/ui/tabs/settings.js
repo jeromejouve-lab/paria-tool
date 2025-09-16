@@ -948,35 +948,35 @@ function bindWorkId(root){
   
   
   
-      const r = await fetch(url, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      });
-  
-      if (r.status !== 201 && r.status !== 200) {
-        const txt = await r.text().catch(()=> '');
-        if (backupStatusEl) backupStatusEl.textContent = `❌ Git ${r.status}`;
-        if (btn) { btn.textContent = `❌ ${r.status}`; setTimeout(()=> btn.textContent = _old, 1200); btn.disabled = false; }
-        console.warn('[Backup][Git] HTTP', r.status, url, txt);
-        return;
-      }
-  
-      if (backupStatusEl) backupStatusEl.textContent = `✅ Git: ${owner}/${repo}/${path}`;
-    } catch (e) {
-      console.error('[Backup][Git] error', e);
-      if (backupStatusEl) backupStatusEl.textContent = '❌ Backup (voir console)';
-    } finally {
-      if (btn) { btn.textContent = _old; btn.disabled = false; }
-    }
-  };
+ 
   
   
-// === Remap final (colonne droite) : Proposer -> Backuper maintenant, Restaurer la sélection -> Snapshot maintenant
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  // === Remap final (colonne droite) : Proposer -> Backuper maintenant, Restaurer la sélection -> Snapshot maintenant
 (() => {
   const $ = (s, ctx = document) => ctx.querySelector(s);
 
@@ -1129,6 +1129,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
