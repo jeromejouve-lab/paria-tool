@@ -11,6 +11,7 @@ import { settingsLoad } from '../../core/settings.js';
 import { readClientProfile, writeClientProfile } from '../../domain/reducers.js';
 
 const $ = (s,r=document)=>r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
 // Construit une version texte lisible du contexte IA (Client + Service)
 function buildPromptPreviewFromScreen(host){
@@ -123,14 +124,14 @@ function renderProposals(ch){
   if (!list.length) return `<div class="muted">— Aucune proposition.</div>`;
   return `
     <ul class="charter-proposals">
-      {list.map(p=>`
-        <li class="proposal" data-id="{p.id}">
+      ${list.map(p=>`
+        <li class="proposal" data-id="${p.id}">
           <label class="sel">
-            <input type="checkbox" class="chk-sel" {p?.state?.selected?'checked':''}/>
+            <input type="checkbox" class="chk-sel" ${p?.state?.selected?'checked':''}/>
             <span>Sélectionner</span>
           </label>
           <div class="proposal-body">
-            <h4 class="proposal-title">{p.title||''}</h4>
+            <h4 class="proposal-title">${esc(p.title||'')}</h4>
             <div class="proposal-content">${(p.content||'').replace(/\n/g,'<br>')}</div>
             ${p.tags?.length?`<div class="tags">${p.tags.map(t=>`<span class="tag">#${t}</span>`).join(' ')}</div>`:''}
           </div>
@@ -323,4 +324,5 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
