@@ -148,6 +148,45 @@ function html(ch){
   <div class="charter cols">
     <!-- Colonne gauche -->
     <div class="col">
+      <!-- [ADD] Profil Client (transverse) -->
+      <section class="block">
+        <h3>Client</h3>
+
+        <div class="row two">
+          <label>Nom<br><input id="client-name" type="text"></label>
+          <label>Effectif<br><input id="client-headcount" type="number" min="0"></label>
+        </div>
+
+        <div class="row">
+          <label>Description<br>
+            <textarea id="client-desc" rows="3" style="resize:vertical"></textarea>
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Objectifs (séparés par virgule)<br>
+            <textarea id="client-goals" rows="2" style="resize:vertical"></textarea>
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Problèmes (séparés par virgule)<br>
+            <textarea id="client-challenges" rows="2" style="resize:vertical"></textarea>
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Contraintes (séparées par virgule)<br>
+            <textarea id="client-constraints" rows="2" style="resize:vertical"></textarea>
+          </label>
+        </div>
+
+        <div class="row two">
+          <label>Ton<br><input id="client-tone" type="text"></label>
+          <label>Langues (csv)<br><input id="client-languages" type="text" placeholder="fr,en"></label>
+        </div>
+      </section>
+
       <section class="block">
         <h3>Charter</h3>
 
@@ -324,5 +363,6 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
