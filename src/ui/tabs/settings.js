@@ -551,6 +551,15 @@ function bindWorkId(root){
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         }
       });
+
+      if (r.status !== 200) {
+        listEl.innerHTML = `<div class="muted">❌ Git ${r.status} — vérifie repo/token/droits</div>`;
+        if (btnProp) { const t = btnProp.textContent; btnProp.textContent = `❌ ${r.status}`; setTimeout(()=>btnProp.textContent=t, 1200); }
+        btnApplySel && (btnApplySel.disabled = true);
+        __picked = null;
+        console.warn('[Proposer][Git] HTTP', r.status, url);
+        return;
+      }
   
       let items = [];
       if (r.status === 200){
@@ -767,7 +776,14 @@ function bindWorkId(root){
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         }
       });
-      if (r.status !== 200) throw new Error('not_found');
+      if (r.status !== 200) {
+        const statusEl = $('#restore-status', root);
+        if (statusEl) statusEl.textContent = `❌ Git ${r.status} — fichier introuvable ? droits ?`;
+        if (btnApplySel) { const t = btnApplySel.textContent; btnApplySel.textContent = `❌ ${r.status}`; setTimeout(()=>btnApplySel.textContent=t, 1200); }
+        console.warn('[RestoreSel][Git] HTTP', r.status, url);
+        return;
+      }
+
       const meta = await r.json();
       const raw  = atob((meta.content||'').replace(/\n/g,''));
       let snap=null; try { snap = JSON.parse(raw); } catch { throw new Error('bad_json'); }
@@ -949,6 +965,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
