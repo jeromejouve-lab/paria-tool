@@ -413,12 +413,12 @@ function bindWorkId(root){
   const btnProp = $('#btn-restore-propose', root);
   const btnApplySel = $('#btn-restore-apply', root);
   // statuts (déclaration sûre pour éviter les not defined)
-  const snapStatusEl   = $('#snapshot-status', root);
-  let backupStatusEl = $('#backup-status', root);
 
+
+  
   const listEl = $('#restore-list', root);
-  const listBkEl = $('#restore-list-backup', root) || listEl;
-  const btnPropBk = $('#btn-propose-backup', root);
+  
+ 
   
   // ——— Compact typographique pour la liste des snapshots (sans toucher au thème global)
   (function ensureRestoreListCSS(){
@@ -624,330 +624,330 @@ function bindWorkId(root){
     }
   };
 
-  if (btnPropBk) btnPropBk.onclick = async ()=>{
-    console.group('[RESTORE][git] proposer BACKUPS');
-    const _oldText = btnPropBk.textContent;
-    btnPropBk.disabled = true; btnPropBk.textContent = 'Proposition…';
-    try{
-      const s = settingsLoad() || {};
-      const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
-      const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
-      const branch = (document.querySelector('#git-branch') ?.value || s.git_branch || 'main').trim();
-      const token  = (document.querySelector('#git-token')  ?.value || s.git_token  || '').trim();
   
-      const client  = (document.querySelector('#client')?.value  || s.client  || '').trim();
-      const service = (document.querySelector('#service')?.value || s.service || '').trim();
-      const dateStr = (document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10)).trim();
-      const timeStr = (document.querySelector('#work-time')?.value || '').trim();
+    
+    
+    
   
-      if (!owner || !repo || !client || !service || !dateStr){
-        listBkEl.innerHTML = `<div class="muted">Paramètres manquants (owner/repo/client/service/date).</div>`;
-        btnApplySel && (btnApplySel.disabled = true);
-        __picked = null;
-        return;
-      }
-  
-      const base = `clients/${client}/${service}/${dateStr}`;
-      const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
-      console.log('GET', url);
-      const r = await fetch(url, {
-        headers: {
-          'Accept': 'application/vnd.github+json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
-      });
-  
-      if (r.status !== 200) {
-        listBkEl.innerHTML = `<div class="muted">❌ Git ${r.status} — vérifie repo/token/droits</div>`;
-        const t = btnPropBk.textContent; btnPropBk.textContent = `❌ ${r.status}`; setTimeout(()=>btnPropBk.textContent=t, 1200);
-        btnApplySel && (btnApplySel.disabled = true);
-        __picked = null;
-        console.warn('[ProposerBackups][Git] HTTP', r.status, url);
-        return;
-      }
-  
-      const arr = await r.json();
-      const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
-  
-      let items = Array.isArray(arr) ? arr
-        .filter(x => x?.type === 'file' && BACK.test(x.name))
-        .map(x => {
-          const m = x.name.match(BACK);
-          const at = `${m[1]}T${m[2].replace(/-/g,':')}`;
-          return { at, source:'git', path:x.path, name:x.name };
-        }) : [];
-  
-      // tri DESC (plus récents en haut)
-      items.sort((a,b)=> Date.parse(b.at) - Date.parse(a.at));
-  
-      if (!items.length){
-        listBkEl.innerHTML = `<div class="muted">Aucun backup pour ${dateStr}.</div>`;
-        btnApplySel && (btnApplySel.disabled = true);
-        __picked = null;
-      } else {
-        listBkEl.innerHTML = items.map((x,i)=>{
-          const d = new Date(x.at);
-          const hh = d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
-          const dateShort = d.toLocaleDateString();
-          return `
-            <label class="snap">
-              <input type="radio" name="snap" value="${i}">
-              <span class="info">
-                <span class="date">${dateShort}</span>
-                <span class="name">${x.name}</span>
-                <code class="mono">${x.path}</code>
-              </span>
-              <span class="time">${hh}</span>
-            </label>
-          `;
-        }).join('');
-  
-        // auto-pick (colonne BACKUPS) : premier ≥ HH:MM si heure, sinon le plus récent
-        if (timeStr){
-          const atIso = `${dateStr}T${timeStr}:00`;
-          const asc = [...items].sort((a,b)=> Date.parse(a.at) - Date.parse(b.at));
-          const after = asc.find(o => Date.parse(o.at) >= Date.parse(atIso));
-          const chosen = after || asc[asc.length-1];
-          const idx = items.findIndex(o => o.path === chosen.path);
-          const radio = listBkEl.querySelector(`input[name="snap"][value="${idx}"]`);
-          if (radio){ radio.checked = true; __picked = items[idx]; btnApplySel.disabled = false; }
-        } else {
-          const radio = listBkEl.querySelector(`input[name="snap"][value="0"]`);
-          if (radio){ radio.checked = true; __picked = items[0]; btnApplySel.disabled = false; }
-        }
-  
-        listBkEl.addEventListener('change', (e)=>{
-          if (e.target?.name === 'snap'){
-            const i = Number(e.target.value);
-            __picked = items[i] || null;
-            btnApplySel.disabled = !__picked;
-          }
-        }, { once:true });
-      }
-  
-      console.table(items.map(x=>({at:x.at, path:x.path})));
-    }catch(e){
-      console.error('[RESTORE][git] proposer BACKUPS error', e);
-      listBkEl.innerHTML = `<div class="muted">❌ Erreur lors de la proposition (Git/Backups).</div>`;
-      btnApplySel && (btnApplySel.disabled = true);
-      __picked = null;
-    }finally{
-      btnPropBk.textContent = _oldText;
-      btnPropBk.disabled = false;
-      console.groupEnd();
-    }
-  };
+      
+      
+     
+     
   
   
-  if (btnApplySel) btnApplySel.onclick = async ()=>{
-    console.group('[RESTORE][git] apply selection');
-    const _old = btnApplySel.textContent;
-    btnApplySel.disabled = true; btnApplySel.textContent = 'Restauration…';
-    try{
-      if (!__picked?.path) throw new Error('no candidate');
   
-      const s = settingsLoad() || {};
-      const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
-      const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
-      const branch = (document.querySelector('#git-branch') ?.value || s.git_branch || 'main').trim();
-      const token  = (document.querySelector('#git-token')  ?.value || s.git_token  || '').trim();
   
-      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(__picked.path)}?ref=${encodeURIComponent(branch)}`;
-      console.log('GET', url);
   
-      const r = await fetch(url, {
-        headers: {
-          'Accept': 'application/vnd.github+json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
-      });
-      if (r.status !== 200) {
-        const statusEl = $('#restore-status', root);
-        if (statusEl) statusEl.textContent = `❌ Git ${r.status} — fichier introuvable ? droits ?`;
-        if (btnApplySel) { const t = btnApplySel.textContent; btnApplySel.textContent = `❌ ${r.status}`; setTimeout(()=>btnApplySel.textContent=t, 1200); }
-        console.warn('[RestoreSel][Git] HTTP', r.status, url);
-        return;
-      }
-
-      const meta = await r.json();
-      const raw  = atob((meta.content||'').replace(/\n/g,''));
-      let snap=null; try { snap = JSON.parse(raw); } catch { throw new Error('bad_json'); }
   
-      // supporte {local}, {content:{local}}, ou objet plat
-      const content = snap?.local || snap?.content?.local || snap?.content || snap || {};
-      if (!content || typeof content !== 'object') throw new Error('empty');
   
-      // backup local
-      const keys = Object.keys(localStorage).filter(k=>k.startsWith('paria') && k!=='paria.__backup__');
-      const bak = keys.reduce((a,k)=>(a[k]=localStorage.getItem(k),a),{});
-      localStorage.setItem('paria.__backup__', JSON.stringify({ stamp:new Date().toISOString(), bak }));
   
-      // replace namespace paria.*
-      for (const k of Object.keys(localStorage)){
-        if (k.startsWith('paria') && !k.endsWith('.__backup__')) localStorage.removeItem(k);
-      }
-      for (const [k,v] of Object.entries(content)){
-        const key = k.startsWith('paria') ? k : `paria.${k}`;
-        localStorage.setItem(key, typeof v==='string' ? v : JSON.stringify(v));
-      }
   
-      const statusEl = $('#restore-status', root);
-      if (statusEl) statusEl.textContent = '✅ restauré (Git sélection)';
-      try { await bootstrapWorkspace(); } catch {}
-      setTimeout(()=> location.reload(), 120);
-    }catch(e){
-      console.error('[RESTORE][git] apply error', e);
-      const statusEl = $('#restore-status', root);
-      if (statusEl) statusEl.textContent = '❌ restauration (Git sélection)';
-    }finally{
-      btnApplySel.textContent = _old;
-      btnApplySel.disabled = false;
-      console.groupEnd();
-    }
-  };
   
-  // --- Snapshot manuel (sauvegarde côté proxy / route 'save') ---
-  const btnSnap = $('#btn-snapshot-now', root);
   
-  if (btnSnap) btnSnap.onclick = async ()=>{
-    const _old = btnSnap.textContent;
-    btnSnap.disabled = true;
-    btnSnap.textContent = 'Snapshot…';
-
-    const statusEl = $('#snapshot-status', root);
-    const s = settingsLoad() || {};
-    const client  = $('#client', root)?.value?.trim() || s.client || '';
-    const service = $('#service', root)?.value?.trim() || s.service || '';
-    const dateStr = $('#work-date', root)?.value?.trim() || new Date().toISOString().slice(0,10);
-
-    if (!client || !service) { if (statusEl) statusEl.textContent='❌ client/service manquants'; return; }
-
-    // bundle de l’état local 'paria.*'
-    const data = {};
-    for (const k of Object.keys(localStorage)){
-      if (k.startsWith('paria.') && k !== 'paria.__backup__'){
-        const v = localStorage.getItem(k);
-        try { data[k] = JSON.parse(v); } catch { data[k] = v; }
-      }
-    }
-
-    // chemin cible Drive/Git (côté GAS, route 'save')
-    const ts = new Date();
-    const pad = v => String(v).padStart(2,'0');
-    const stamp = `${ts.getFullYear()}-${pad(ts.getMonth()+1)}-${pad(ts.getDate())}_${pad(ts.getHours())}-${pad(ts.getMinutes())}-${pad(ts.getSeconds())}`;
-    const path = `clients/${client}/${service}/${dateStr}/snapshot-${stamp}.json`;
-
-    // === SNAPSHOT → GIT (unique path) ===
-    {
-      const s = settingsLoad() || {};
-      const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
-      const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
-      const branch = (document.querySelector('#git-branch') ?.value || s.git_branch || 'main').trim();
-      const token  = (document.querySelector('#git-token')  ?.value || s.git_token  || '').trim();
-
-      const jsonStr    = JSON.stringify({ local: data }, null, 2);
-      const contentB64 = btoa(unescape(encodeURIComponent(jsonStr))); // base64 UTF-8
-      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
-
-      console.group('[SNAPSHOT][git]');
-      console.log('PUT', url, 'branch:', branch, 'bytes:', jsonStr.length);
-
-      const r = await fetch(url, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          message: `snapshot ${client}|${service}|${dateStr} ${stamp}`,
-          content: contentB64,
-          branch
-        })
-      });
-      const j = await r.json();
-      console.log('status:', r.status, j);
-
-      if (r.status !== 201 && r.status !== 200) {
-        if (statusEl) statusEl.textContent = '❌ Snapshot Git';
-        btnSnap.textContent = _old; btnSnap.disabled = false;
-        console.groupEnd();
-        return; // STOP ici: on ne tente PAS Google
-      }
-
-      if (statusEl) statusEl.textContent = `✅ Git: ${owner}/${repo}/${path}`;
-      console.groupEnd();
-      btnSnap.textContent = _old; btnSnap.disabled = false;
-      return; // STOP ici: on ne tente PAS Google
-    }
-
-    // --- TRACE CONSOLE ---
-    const gas = getGAS();
-    const mask = s => (s ? (s.slice(0,3) + '…' + s.slice(-3)) : '');
-    console.group('[SNAPSHOT][now]');
-    console.log('GAS.url =', gas.url || '(vide)');
-    console.log('GAS.secret =', mask(gas.secret || ''));
-    console.log('target path =', path);
-    console.log('local keys =', Object.keys(data).length);
-
-    try{
-      return; // Google désactivé tant que non résolu
-      const res = await saveToGoogle(path, { local: data }, { kind:'snapshot', client, service, date: dateStr, at: ts.toISOString() });
-      console.log('saveToGoogle → res =', res);
-      console.log('res.status =', res?.status, 'res.ok =', res?.ok, 'data.ok =', res?.data?.ok);
-      const ok = (res?.ok !== false) && (res?.data?.ok ?? true);
-      if (statusEl) statusEl.textContent = ok ? `✅ ${path}` : '❌ échec snapshot';
-    }catch(e){
-      console.error('[snapshot][now]', e);
-      if (statusEl) statusEl.textContent = '❌ erreur snapshot';
-    }finally{
-      console.groupEnd();
-      btnSnap.textContent = _old; btnSnap.disabled = false;
-    }
-  };
   
-  // --- BACKUP → Git (manuel) — fonction réutilisable (sans bouton autonome)
-  const doBackupNow = async (btn)=>{
-    const _old = btn?.textContent || '';
-    if (btn) { btn.disabled = true; btn.textContent = 'Backup…'; }
-    try {
-      const s = settingsLoad() || {};
-      const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
-      const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
-      const branch = (document.querySelector('#git-branch') ?.value || s.git_branch || 'main').trim();
-      const token  = (document.querySelector('#git-token')  ?.value || s.git_token  || '').trim();
   
-      const client  = (document.querySelector('#client')?.value  || s.client  || '').trim();
-      const service = (document.querySelector('#service')?.value || s.service || '').trim();
-      const dateStr = (document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10)).trim();
   
-      if (!owner || !repo || !token || !client || !service || !dateStr) {
-        if (backupStatusEl) backupStatusEl.textContent = '❌ Config incomplète (owner/repo/token/client/service/date).';
-        if (btn) { btn.textContent = '❌ config'; setTimeout(()=> btn.textContent = _old, 1200); btn.disabled = false; }
-        return;
-      }
   
-      // 2) collecter l’état local paria.*
-      const local = {};
-      for (const k of Object.keys(localStorage)) {
-        if (k.startsWith('paria.') && k !== 'paria.__backup__') {
-          const v = localStorage.getItem(k);
-          try { local[k] = JSON.parse(v); } catch { local[k] = v; }
-        }
-      }
   
-      // 3) chemin target backup-*.json (même dossier que snapshot)
-      const pad=v=>String(v).padStart(2,'0'), t=new Date();
-      const stamp=`${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}_${pad(t.getHours())}-${pad(t.getMinutes())}-${pad(t.getSeconds())}`;
-      const path = `clients/${client}/${service}/${dateStr}/backup-${stamp}.json`;
   
-      // 4) PUT GitHub
-      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
-      const body = {
-        message: `backup ${client}|${service}|${dateStr} ${stamp} (manual)`,
-        content: btoa(unescape(encodeURIComponent(JSON.stringify({ local, meta:{ reason:'manual:button', at:t.toISOString() } }, null, 2)))),
-        branch
-      };
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+ 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+ 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+ 
+      
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
       const r = await fetch(url, {
         method: 'PUT',
         headers: {
@@ -975,28 +975,7 @@ function bindWorkId(root){
     }
   };
   
-  // Affecte la fonction au bouton de droite "Proposer" (qui devient Backuper maintenant)
-  const btnSuggest2 = $('#btn-workid-suggest', root);
-  if (btnSuggest2) {
-    btnSuggest2.textContent = 'Backuper maintenant';
-    btnSuggest2.title = 'Créer un backup (Git) maintenant';
-    btnSuggest2.onclick = ()=> doBackupNow(btnSuggest2);
-  }
-
-
-// 2) Restaurer la sélection (droite) -> "" (réutilise le handler snapshot)
-if (btnApplySel && btnSnap && typeof btnSnap.onclick === 'function') {
-  btnApplySel.textContent = '';
-  btnApplySel.title = 'Créer un snapshot (Git) maintenant';
-  btnApplySel.onclick = btnSnap.onclick;   // réaffectation de l'action
-  btnApplySel.disabled = false;
-
-  // déplacer le statut snapshot juste après le bouton
-  if (snapStatusEl && btnApplySel.nextSibling !== snapStatusEl) {
-    btnApplySel.insertAdjacentElement('afterend', snapStatusEl);
-  }
-}
-
+  
 // === Remap final (colonne droite) : Proposer -> Backuper maintenant, Restaurer la sélection -> Snapshot maintenant
 (() => {
   const $ = (s, ctx = document) => ctx.querySelector(s);
@@ -1150,6 +1129,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
