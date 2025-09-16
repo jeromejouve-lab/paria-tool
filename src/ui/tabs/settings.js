@@ -358,6 +358,7 @@ function bindWorkId(root){
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           }
         });
+        
         const arr = (r.status===200 ? await r.json() : []);
         const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
         const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
@@ -431,6 +432,8 @@ function bindWorkId(root){
   const btnProp = $('#btn-restore-propose', root);
   const btnApplySel = $('#btn-restore-apply', root);
   const listEl = $('#restore-list', root);
+  const listBkEl = $('#restore-list-backup', root) || listEl;
+  const btnPropBk = $('#btn-propose-backup', root);
   
   // ——— Compact typographique pour la liste des snapshots (sans toucher au thème global)
   (function ensureRestoreListCSS(){
@@ -627,7 +630,121 @@ function bindWorkId(root){
     }
   };
 
-
+  if (btnPropBk) btnPropBk.onclick = async ()=>{
+    console.group('[RESTORE][git] proposer BACKUPS');
+    const _oldText = btnPropBk.textContent;
+    btnPropBk.disabled = true; btnPropBk.textContent = 'Proposition…';
+    try{
+      const s = settingsLoad() || {};
+      const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
+      const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
+      const branch = (document.querySelector('#git-branch') ?.value || s.git_branch || 'main').trim();
+      const token  = (document.querySelector('#git-token')  ?.value || s.git_token  || '').trim();
+  
+      const client  = (document.querySelector('#client')?.value  || s.client  || '').trim();
+      const service = (document.querySelector('#service')?.value || s.service || '').trim();
+      const dateStr = (document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10)).trim();
+      const timeStr = (document.querySelector('#work-time')?.value || '').trim();
+  
+      if (!owner || !repo || !client || !service || !dateStr){
+        listBkEl.innerHTML = `<div class="muted">Paramètres manquants (owner/repo/client/service/date).</div>`;
+        btnApplySel && (btnApplySel.disabled = true);
+        __picked = null;
+        return;
+      }
+  
+      const base = `clients/${client}/${service}/${dateStr}`;
+      const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
+      console.log('GET', url);
+      const r = await fetch(url, {
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
+  
+      if (r.status !== 200) {
+        listBkEl.innerHTML = `<div class="muted">❌ Git ${r.status} — vérifie repo/token/droits</div>`;
+        const t = btnPropBk.textContent; btnPropBk.textContent = `❌ ${r.status}`; setTimeout(()=>btnPropBk.textContent=t, 1200);
+        btnApplySel && (btnApplySel.disabled = true);
+        __picked = null;
+        console.warn('[ProposerBackups][Git] HTTP', r.status, url);
+        return;
+      }
+  
+      const arr = await r.json();
+      const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
+  
+      let items = Array.isArray(arr) ? arr
+        .filter(x => x?.type === 'file' && BACK.test(x.name))
+        .map(x => {
+          const m = x.name.match(BACK);
+          const at = `${m[1]}T${m[2].replace(/-/g,':')}`;
+          return { at, source:'git', path:x.path, name:x.name };
+        }) : [];
+  
+      // tri DESC (plus récents en haut)
+      items.sort((a,b)=> Date.parse(b.at) - Date.parse(a.at));
+  
+      if (!items.length){
+        listBkEl.innerHTML = `<div class="muted">Aucun backup pour ${dateStr}.</div>`;
+        btnApplySel && (btnApplySel.disabled = true);
+        __picked = null;
+      } else {
+        listBkEl.innerHTML = items.map((x,i)=>{
+          const d = new Date(x.at);
+          const hh = d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
+          const dateShort = d.toLocaleDateString();
+          return `
+            <label class="snap">
+              <input type="radio" name="snap" value="${i}">
+              <span class="info">
+                <span class="date">${dateShort}</span>
+                <span class="name">${x.name}</span>
+                <code class="mono">${x.path}</code>
+              </span>
+              <span class="time">${hh}</span>
+            </label>
+          `;
+        }).join('');
+  
+        // auto-pick (colonne BACKUPS) : premier ≥ HH:MM si heure, sinon le plus récent
+        if (timeStr){
+          const atIso = `${dateStr}T${timeStr}:00`;
+          const asc = [...items].sort((a,b)=> Date.parse(a.at) - Date.parse(b.at));
+          const after = asc.find(o => Date.parse(o.at) >= Date.parse(atIso));
+          const chosen = after || asc[asc.length-1];
+          const idx = items.findIndex(o => o.path === chosen.path);
+          const radio = listBkEl.querySelector(`input[name="snap"][value="${idx}"]`);
+          if (radio){ radio.checked = true; __picked = items[idx]; btnApplySel.disabled = false; }
+        } else {
+          const radio = listBkEl.querySelector(`input[name="snap"][value="0"]`);
+          if (radio){ radio.checked = true; __picked = items[0]; btnApplySel.disabled = false; }
+        }
+  
+        listBkEl.addEventListener('change', (e)=>{
+          if (e.target?.name === 'snap'){
+            const i = Number(e.target.value);
+            __picked = items[i] || null;
+            btnApplySel.disabled = !__picked;
+          }
+        }, { once:true });
+      }
+  
+      console.table(items.map(x=>({at:x.at, path:x.path})));
+    }catch(e){
+      console.error('[RESTORE][git] proposer BACKUPS error', e);
+      listBkEl.innerHTML = `<div class="muted">❌ Erreur lors de la proposition (Git/Backups).</div>`;
+      btnApplySel && (btnApplySel.disabled = true);
+      __picked = null;
+    }finally{
+      btnPropBk.textContent = _oldText;
+      btnPropBk.disabled = false;
+      console.groupEnd();
+    }
+  };
+  
+  
   if (btnApplySel) btnApplySel.onclick = async ()=>{
     console.group('[RESTORE][git] apply selection');
     const _old = btnApplySel.textContent;
@@ -832,6 +949,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
