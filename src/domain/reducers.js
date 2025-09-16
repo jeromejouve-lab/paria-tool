@@ -5,6 +5,17 @@ import { bootstrapWorkspace } from '../core/net.js';
 
 const uid = () => Math.random().toString(36).slice(2)+Date.now().toString(36);
 
+// [ADD] Profil Client — persistant par client (transverse à tous les services)
+export function readClientProfile(client){
+  try { return JSON.parse(localStorage.getItem(`paria.client.${client}.profile`) || '{}'); }
+  catch { return {}; }
+}
+export function writeClientProfile(client, data){
+  localStorage.setItem(`paria.client.${client}.profile`, JSON.stringify(data || {}));
+  logEvent('client/profile_save', { kind:'client', id:client });
+  return true;
+}
+
 // --- Cards
 export function listCards(){ return (readClientBlob().items||[]).filter(c=>!c?.state?.deleted); }
 export function createCard({title='',content='',tags=[]}={}){
@@ -83,3 +94,4 @@ export async function bootstrapWorkspaceIfNeeded(client, service){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
