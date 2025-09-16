@@ -1091,6 +1091,26 @@ if (btnApplySel && btnSnap && typeof btnSnap.onclick === 'function') {
 if (btnBackup) { btnBackup.remove(); btnBackup = null; }
 // (on garde backupStatusEl car on vient de le replacer après btnSuggest)
 
+// === Re-map final : Proposer -> Backuper maintenant, suppression du bouton backup autonome
+(() => {
+  const $ = (s, ctx=document) => ctx.querySelector(s);
+
+  const btnSuggest  = $('#btn-workid-suggest', root);  // bouton de droite "Proposer"
+  const btnBackup   = $('#btn-backup-now', root);      // bouton "Backup maintenant" autonome
+
+  // on récupère le handler existant du backup autonome
+  const backupHandler = (btnBackup && typeof btnBackup.onclick === 'function') ? btnBackup.onclick : null;
+
+  // remap "Proposer" -> "Backuper maintenant"
+  if (btnSuggest && backupHandler) {
+    btnSuggest.textContent = 'Backuper maintenant';
+    btnSuggest.title = 'Créer un backup (Git) maintenant';
+    btnSuggest.onclick = backupHandler;  // utilise exactement le même code que l’ancien bouton
+  }
+
+  // on supprime le bouton backup autonome (on garde uniquement celui de droite)
+  if (btnBackup) btnBackup.remove();
+})();
 
   
 }
@@ -1144,5 +1164,6 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
