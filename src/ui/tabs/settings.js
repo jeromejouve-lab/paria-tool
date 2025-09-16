@@ -433,7 +433,7 @@ function bindWorkId(root){
   const btnApplySel = $('#btn-restore-apply', root);
   // statuts (déclaration sûre pour éviter les not defined)
   const snapStatusEl   = $('#snapshot-status', root);
-  let   backupStatusEl = $('#backup-status', root);
+  let backupStatusEl = $('#backup-status', root);
 
   const listEl = $('#restore-list', root);
   const listBkEl = $('#restore-list-backup', root) || listEl;
@@ -845,7 +845,6 @@ function bindWorkId(root){
     st.className = 'muted';
     btnBackup.parentNode.insertBefore(st, btnBackup.nextSibling);
   }
-  const backupStatusEl = $('#backup-status', root);
 
   if (btnSnap) btnSnap.onclick = async ()=>{
     const _old = btnSnap.textContent;
@@ -1114,6 +1113,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
