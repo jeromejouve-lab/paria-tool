@@ -940,6 +940,27 @@ function bindWorkId(root){
     }
   };
 
+
+  // Proposer → "Backup maintenant" (utilise l'action du bouton backup)
+  if (btnProp && btnBackup && typeof btnBackup.onclick === 'function') {
+    btnProp.textContent = 'Backup maintenant';
+    btnProp.onclick = btnBackup.onclick;               // réaffecte l'action
+    btnProp.title = 'Créer un backup (Git) maintenant';
+  }
+  
+  // Restaurer la sélection → "Snapshot maintenant" (utilise l'action du bouton snapshot)
+  if (btnApplySel && btnSnap && typeof btnSnap.onclick === 'function') {
+    btnApplySel.textContent = 'Snapshot maintenant';
+    btnApplySel.onclick = btnSnap.onclick;             // réaffecte l'action
+    btnApplySel.title = 'Créer un snapshot (Git) maintenant';
+    btnApplySel.disabled = false;                      // s'assurer qu'il est cliquable
+  }
+  
+  // On n’a plus besoin du bouton backup autonome ni de son statut
+  if (btnBackup) { btnBackup.remove(); btnBackup = null; }
+  if (backupStatusEl) backupStatusEl.remove();
+  
+
   // --- BACKUP → Git (manuel)
   if (btnBackup) btnBackup.onclick = async ()=>{
     const _old = btnBackup.textContent;
@@ -1018,6 +1039,27 @@ function bindWorkId(root){
       btnBackup.disabled = false;
     }
   };
+
+  // Proposer → "Backup maintenant" (utilise l'action du bouton backup)
+  if (btnProp && btnBackup && typeof btnBackup.onclick === 'function') {
+    btnProp.textContent = 'Backup maintenant';
+    btnProp.onclick = btnBackup.onclick;               // réaffecte l'action
+    btnProp.title = 'Créer un backup (Git) maintenant';
+  }
+  
+  // Restaurer la sélection → "Snapshot maintenant" (utilise l'action du bouton snapshot)
+  if (btnApplySel && btnSnap && typeof btnSnap.onclick === 'function') {
+    btnApplySel.textContent = 'Snapshot maintenant';
+    btnApplySel.onclick = btnSnap.onclick;             // réaffecte l'action
+    btnApplySel.title = 'Créer un snapshot (Git) maintenant';
+    btnApplySel.disabled = false;                      // s'assurer qu'il est cliquable
+  }
+  
+  // On n’a plus besoin du bouton backup autonome ni de son statut
+  if (btnBackup) { btnBackup.remove(); btnBackup = null; }
+  if (backupStatusEl) backupStatusEl.remove();
+
+  
 }
 
 // ---- bind des boutons + relance diag à la saisie ----
@@ -1069,22 +1111,4 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
