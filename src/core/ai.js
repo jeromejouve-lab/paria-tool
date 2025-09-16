@@ -1,18 +1,43 @@
 import { getGAS, postPlain } from './net.js';
-import { buildWorkId } from './settings.js';
+import { buildWorkId, settingsLoad } from './settings.js';
 import { getCharter, saveCharter, addAItoCard } from '../domain/reducers.js';
 
 const uid = () => Math.random().toString(36).slice(2)+Date.now().toString(36);
+
+// [ADD] Contexte IA — client/service + profils locaux
+function _workCtx(){
+  try{
+    const s = settingsLoad() || {};
+    return { client: (s.client||'').trim(), service: (s.service||'').trim() };
+  } catch { return { client:'', service:'' }; }
+}
+function _loadClientProfile(cid){
+  try { return JSON.parse(localStorage.getItem(`paria.client.${cid}.profile`) || '{}'); }
+  catch { return {}; }
+}
+function _serviceCoreFromCharter(){
+  try{
+    const ch = getCharter() || {};
+    return { title: ch.title||'', content: ch.content||'', tags: ch.tags||[] };
+  } catch { return { title:'', content:'', tags:[] }; }
+}
 
 export async function askAI(task){
   const { url, secret } = getGAS();
   if (!url) return { status:'needs_config', results:[] };
 
+  // Contexte commun IA (client + service + charter de service)
+  const { client, service } = _workCtx();
+  const baseCtx = {
+    client:  { id: client,  ..._loadClientProfile(client) },
+    service: { id: service, ..._serviceCoreFromCharter() }
+  };
+  const mergedTask = { ...(task||{}), context: { ...baseCtx, ...(task?.context||{}) } };
   const payload = {
     route: 'ai',
     secret,
     work_id: buildWorkId(),
-    task: task || {}
+    task: mergedTask
   };
 
   const uid = () => Math.random().toString(36).slice(2)+Date.now().toString(36);
