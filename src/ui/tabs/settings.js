@@ -823,6 +823,26 @@ function bindWorkId(root){
   
   // --- Snapshot manuel (sauvegarde côté proxy / route 'save') ---
   const btnSnap = $('#btn-snapshot-now', root);
+  // --- Backup maintenant (bouton + statut), créé dynamiquement pour éviter de toucher au markup
+  let btnBackup = $('#btn-backup-now', root);
+  if (!btnBackup && btnSnap) {
+    btnBackup = document.createElement('button');
+    btnBackup.id = 'btn-backup-now';
+    btnBackup.type = 'button';
+    btnBackup.className = btnSnap.className || 'btn'; // même style que Snapshot
+    btnBackup.textContent = 'Backup maintenant';
+    btnSnap.parentNode.insertBefore(btnBackup, btnSnap.nextSibling);
+  
+    const sep = document.createTextNode(' ');
+    btnBackup.parentNode.insertBefore(sep, btnBackup.nextSibling);
+  
+    const st = document.createElement('span');
+    st.id = 'backup-status';
+    st.className = 'muted';
+    btnBackup.parentNode.insertBefore(st, btnBackup.nextSibling);
+  }
+  const backupStatusEl = $('#backup-status', root);
+
   if (btnSnap) btnSnap.onclick = async ()=>{
     const _old = btnSnap.textContent;
     btnSnap.disabled = true;
@@ -919,6 +939,85 @@ function bindWorkId(root){
       btnSnap.textContent = _old; btnSnap.disabled = false;
     }
   };
+
+  // --- BACKUP → Git (manuel)
+  if (btnBackup) btnBackup.onclick = async ()=>{
+    const _old = btnBackup.textContent;
+    btnBackup.disabled = true;
+    btnBackup.textContent = 'Backup…';
+    try {
+      // 1) Lire config & contexte (mêmes sources que Snapshot)
+      const s = settingsLoad() || {};
+      const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
+      const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
+      const branch = (document.querySelector('#git-branch') ?.value || s.git_branch || 'main').trim();
+      const token  = (document.querySelector('#git-token')  ?.value || s.git_token  || '').trim();
+  
+      const client  = (document.querySelector('#client')?.value  || s.client  || '').trim();
+      const service = (document.querySelector('#service')?.value || s.service || '').trim();
+      const dateStr = (document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10)).trim();
+  
+      if (!owner || !repo || !token || !client || !service || !dateStr) {
+        if (backupStatusEl) backupStatusEl.textContent = '❌ Config incomplète (owner/repo/token/client/service/date).';
+        // flash sur le bouton
+        btnBackup.textContent = '❌ config';
+        setTimeout(()=> btnBackup.textContent = _old, 1200);
+        return;
+      }
+  
+      // 2) Construire le contenu (identique à Snapshot : tout le namespace paria.*)
+      const local = {};
+      for (const k of Object.keys(localStorage)) {
+        if (k.startsWith('paria.') && k !== 'paria.__backup__') {
+          const v = localStorage.getItem(k);
+          try { local[k] = JSON.parse(v); } catch { local[k] = v; }
+        }
+      }
+  
+      // 3) Chemin backup-*.json (même dossier que snapshot-*.json)
+      const pad=v=>String(v).padStart(2,'0'), t=new Date();
+      const stamp=`${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}_${pad(t.getHours())}-${pad(t.getMinutes())}-${pad(t.getSeconds())}`;
+      const path = `clients/${client}/${service}/${dateStr}/backup-${stamp}.json`;
+  
+      // 4) PUT GitHub Contents API
+      const jsonStr = JSON.stringify({ local, meta:{ reason:'manual:button', at:t.toISOString() } }, null, 2);
+      const contentB64 = btoa(unescape(encodeURIComponent(jsonStr)));
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+  
+      const r = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: `backup ${client}|${service}|${dateStr} ${stamp} (manual)`,
+          content: contentB64,
+          branch
+        })
+      });
+  
+      // 5) Afficher le CODE HTTP (demande initiale)
+      if (r.status !== 201 && r.status !== 200) {
+        const txt = await r.text().catch(()=> '');
+        if (backupStatusEl) backupStatusEl.textContent = `❌ Git ${r.status}`;
+        console.warn('[Backup][Git] HTTP', r.status, url, txt);
+        // flash code sur le bouton
+        btnBackup.textContent = `❌ ${r.status}`;
+        setTimeout(()=> btnBackup.textContent = _old, 1200);
+        return; // Git-only (pas de Google)
+      }
+  
+      if (backupStatusEl) backupStatusEl.textContent = `✅ Git: ${owner}/${repo}/${path}`;
+    } catch (e) {
+      console.error('[Backup][Git] error', e);
+      if (backupStatusEl) backupStatusEl.textContent = '❌ Backup (voir console)';
+    } finally {
+      btnBackup.textContent = _old;
+      btnBackup.disabled = false;
+    }
+  };
 }
 
 // ---- bind des boutons + relance diag à la saisie ----
@@ -929,6 +1028,11 @@ function bindActions(root){
   const btnSave = $('#btn-save-conf', root);
   if (btnSave) btnSave.onclick = ()=>{
     const patch = readForm(root);
+    patch.git_owner  = $('#git-owner',  root)?.value?.trim() || '';
+    patch.git_repo   = $('#git-repo',   root)?.value?.trim() || '';
+    patch.git_branch = $('#git-branch', root)?.value?.trim() || 'main';
+    patch.git_token  = $('#git-token',  root)?.value?.trim() || '';
+
     settingsSave(patch);
     autoTests(root);
     // refresh workid preview après save
@@ -965,6 +1069,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
