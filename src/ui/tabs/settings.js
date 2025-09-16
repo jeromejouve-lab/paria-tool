@@ -996,6 +996,109 @@ if (btnApplySel && btnSnap && typeof btnSnap.onclick === 'function') {
     btnApplySel.insertAdjacentElement('afterend', snapStatusEl);
   }
 }
+
+// === Remap final (colonne droite) : Proposer -> Backuper maintenant, Restaurer la sélection -> Snapshot maintenant
+(() => {
+  const $ = (s, ctx = document) => ctx.querySelector(s);
+
+  const btnBackupRight = $('#btn-workid-suggest', root);   // bouton droite, rang WorkID
+  const btnSnapRight   = $('#btn-restore-apply', root);    // bouton droite, rang sous "Proposer snapshots"
+
+  // helpers communs
+  const collectParia = () => {
+    const out = {};
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith('paria.') && k !== 'paria.__backup__') {
+        const v = localStorage.getItem(k);
+        try { out[k] = JSON.parse(v); } catch { out[k] = v; }
+      }
+    }
+    return out;
+  };
+
+  const mkStamp = (d = new Date()) => {
+    const pad = v => String(v).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+  };
+
+  const writeGit = async ({ kind, btn }) => {
+    const s = settingsLoad() || {};
+    const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
+    const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
+    const branch = (document.querySelector('#git-branch') ?.value || s.git_branch || 'main').trim();
+    const token  = (document.querySelector('#git-token')  ?.value || s.git_token  || '').trim();
+
+    const client  = (document.querySelector('#client')?.value  || s.client  || '').trim();
+    const service = (document.querySelector('#service')?.value || s.service || '').trim();
+    const dateStr = (document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10)).trim();
+
+    if (!owner || !repo || !token || !client || !service || !dateStr) {
+      if (btn) { const t = btn.textContent; btn.textContent = '❌ config'; setTimeout(()=>btn.textContent=t, 1200); }
+      console.warn('[', kind, '][Git] config manquante (owner/repo/token/client/service/date)');
+      return { ok:false, status:0, reason:'config' };
+    }
+
+    const stamp = mkStamp();
+    const path  = `clients/${client}/${service}/${dateStr}/${kind}-${stamp}.json`;
+    const url   = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+
+    const payload = (kind === 'snapshot')
+      ? { local: collectParia(), meta:{ reason:'manual:snapshot', at:new Date().toISOString() } }
+      : { local: collectParia(), meta:{ reason:'manual:backup',   at:new Date().toISOString() } };
+
+    const body = {
+      message: `${kind} ${client}|${service}|${dateStr} ${stamp}`,
+      content: btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2)))),
+      branch
+    };
+
+    const r = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (r.status !== 201 && r.status !== 200) {
+      const t = btn?.textContent;
+      if (btn) { btn.textContent = `❌ ${r.status}`; setTimeout(()=>btn.textContent=t, 1200); }
+      console.warn('[', kind, '][Git] HTTP', r.status, url, await r.text().catch(()=>'')); 
+      return { ok:false, status:r.status };
+    }
+
+    console.log(`✅ ${kind.toUpperCase()}: ${owner}/${repo}/${path}`);
+    return { ok:true, status:r.status, path };
+  };
+
+  // Snapshot maintenant (droite)
+  if (btnSnapRight) {
+    btnSnapRight.disabled = false;
+    btnSnapRight.textContent = 'Snapshot maintenant';
+    btnSnapRight.title = 'Créer un snapshot (Git) maintenant';
+    btnSnapRight.onclick = async () => {
+      const t = btnSnapRight.textContent;
+      btnSnapRight.disabled = true; btnSnapRight.textContent = 'Snapshot…';
+      try { await writeGit({ kind:'snapshot', btn:btnSnapRight }); }
+      finally { btnSnapRight.textContent = t; btnSnapRight.disabled = false; }
+    };
+  }
+
+  // Backuper maintenant (droite)
+  if (btnBackupRight) {
+    btnBackupRight.textContent = 'Backuper maintenant';
+    btnBackupRight.title = 'Créer un backup (Git) maintenant';
+    btnBackupRight.onclick = async () => {
+      const t = btnBackupRight.textContent;
+      btnBackupRight.disabled = true; btnBackupRight.textContent = 'Backup…';
+      try { await writeGit({ kind:'backup', btn:btnBackupRight }); }
+      finally { btnBackupRight.textContent = t; btnBackupRight.disabled = false; }
+    };
+  }
+})();
+  
 }
 
 // ---- bind des boutons + relance diag à la saisie ----
@@ -1047,6 +1150,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
