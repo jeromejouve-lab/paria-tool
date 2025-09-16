@@ -431,6 +431,10 @@ function bindWorkId(root){
   // === Restore (liste/sélection) ===
   const btnProp = $('#btn-restore-propose', root);
   const btnApplySel = $('#btn-restore-apply', root);
+  // statuts (déclaration sûre pour éviter les not defined)
+  const snapStatusEl   = $('#snapshot-status', root);
+  let   backupStatusEl = $('#backup-status', root);
+
   const listEl = $('#restore-list', root);
   const listBkEl = $('#restore-list-backup', root) || listEl;
   const btnPropBk = $('#btn-propose-backup', root);
@@ -939,42 +943,6 @@ function bindWorkId(root){
       btnSnap.textContent = _old; btnSnap.disabled = false;
     }
   };
-
-// =================== REMAP DES BOUTONS (colonne droite) ===================
-// 1) Proposer (droite) -> "Backuper maintenant" (réutilise le handler du bouton backup autonome)
-if (btnSuggest && btnBackup && typeof btnBackup.onclick === 'function') {
-  btnSuggest.textContent = 'Backuper maintenant';
-  btnSuggest.title = 'Créer un backup (Git) maintenant';
-  btnSuggest.onclick = btnBackup.onclick;  // réaffectation de l'action
-
-  // déplacer/créer le statut backup juste après le bouton
-  if (!backupStatusEl) {
-    backupStatusEl = document.createElement('span');
-    backupStatusEl.id = 'backup-status';
-    backupStatusEl.className = 'muted';
-  }
-  if (btnSuggest.nextSibling !== backupStatusEl) {
-    btnSuggest.insertAdjacentElement('afterend', backupStatusEl);
-  }
-}
-
-// 2) Restaurer la sélection (droite) -> "Snapshot maintenant" (réutilise le handler snapshot)
-if (btnApplySel && btnSnap && typeof btnSnap.onclick === 'function') {
-  btnApplySel.textContent = 'Snapshot maintenant';
-  btnApplySel.title = 'Créer un snapshot (Git) maintenant';
-  btnApplySel.onclick = btnSnap.onclick;   // réaffectation de l'action
-  btnApplySel.disabled = false;
-
-  // déplacer le statut snapshot juste après le bouton
-  if (snapStatusEl && btnApplySel.nextSibling !== snapStatusEl) {
-    btnApplySel.insertAdjacentElement('afterend', snapStatusEl);
-  }
-}
-
-// 3) On supprime le bouton backup autonome et son statut redondant (plus utilisé)
-if (btnBackup) { btnBackup.remove(); btnBackup = null; }
-// (on garde backupStatusEl car on vient de le replacer après btnSuggest)
-
   
 
   // --- BACKUP → Git (manuel)
@@ -1055,24 +1023,6 @@ if (btnBackup) { btnBackup.remove(); btnBackup = null; }
       btnBackup.disabled = false;
     }
   };
-
-// =================== REMAP DES BOUTONS (colonne droite) ===================
-// 1) Proposer (droite) -> "Backuper maintenant" (réutilise le handler du bouton backup autonome)
-if (btnSuggest && btnBackup && typeof btnBackup.onclick === 'function') {
-  btnSuggest.textContent = 'Backuper maintenant';
-  btnSuggest.title = 'Créer un backup (Git) maintenant';
-  btnSuggest.onclick = btnBackup.onclick;  // réaffectation de l'action
-
-  // déplacer/créer le statut backup juste après le bouton
-  if (!backupStatusEl) {
-    backupStatusEl = document.createElement('span');
-    backupStatusEl.id = 'backup-status';
-    backupStatusEl.className = 'muted';
-  }
-  if (btnSuggest.nextSibling !== backupStatusEl) {
-    btnSuggest.insertAdjacentElement('afterend', backupStatusEl);
-  }
-}
 
 // 2) Restaurer la sélection (droite) -> "Snapshot maintenant" (réutilise le handler snapshot)
 if (btnApplySel && btnSnap && typeof btnSnap.onclick === 'function') {
@@ -1164,6 +1114,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
