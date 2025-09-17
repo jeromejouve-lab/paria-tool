@@ -374,7 +374,14 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
   btnPreview.onclick = () => {
     try{
-      pre.textContent = buildPromptPreviewFromScreen(host);
+      let txt = '';
+      try { txt = buildPromptPreviewFromScreen(host) || ''; } catch {}
+      if (!txt.trim()) {
+        // fallback sûr si la lecture “profil+écran” échoue
+        const v = getVals(host);
+        txt = buildCharterPrompt(v);
+      }
+      pre.textContent = txt;
       dlg.showModal();
     }catch(e){
       console.error('[Charter][Preview] error', e);
@@ -450,38 +457,43 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   }
   // history par workId (pour datalist de contenu)
   function charterHistKey(){
-    try{
-      const s = JSON.parse(localStorage.getItem('paria.settings')||'{}');
-      const workId = [s.client, s.service, s.date].filter(Boolean).join('|') || 'default';
-      return `charter.history.${workId}`;
-    }catch{ return 'charter.history.default'; }
-  }
-  function saveCharterHistory(entry){
-    try{
-      const k = charterHistKey();
-      let arr = JSON.parse(localStorage.getItem(k)||'[]');
-      const sig = e => (e.title||'')+'|'+(e.content||'').slice(0,120)+'|'+(e.tags||[]).join(',');
-      arr = [entry, ...arr];
-      const seen = new Set();
-      arr = arr.filter(e=>{ const s=sig(e); if(seen.has(s)) return false; seen.add(s); return true; }).slice(0,10);
-      localStorage.setItem(k, JSON.stringify(arr));
-    }catch{}
-  }
-  function attachContentHistoryDatalist(host){
-    const ta = host.querySelector('#charter-content');
-    if (!ta) return;
-    let dl = document.getElementById('charter-content-history');
-    if (!dl){
-      dl = document.createElement('datalist');
-      dl.id = 'charter-content-history';
-      document.body.appendChild(dl);
-    }
-    ta.setAttribute('list','charter-content-history');
-    let list=[]; try{ list = JSON.parse(localStorage.getItem(charterHistKey())||'[]'); }catch{}
-    dl.innerHTML = list.map(h=>`<option value="${(h.content||'').replace(/"/g,'&quot;').slice(0,120)}"></option>`).join('');
+    try { return histKey(); } catch { return 'charter.history.default'; }
   }
 
-   // --- history (dernieres saisies) --- //
+  function attachContentHistoryDatalist(host){
+    // 1) on lit l’historique via la bonne clé
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem(histKey())||'[]'); } catch {}
+  
+    // 2) TITRE — datalist
+    const dlTitle = host.querySelector('#dl-charter-title') || (()=>{
+      const dl = document.createElement('datalist');
+      dl.id = 'dl-charter-title';
+      host.appendChild(dl);
+      return dl;
+    })();
+    const titles = [...new Set(list.map(x=>x?.title||'').filter(Boolean))].slice(0,30);
+    dlTitle.innerHTML = titles.map(t=>`<option value="${t.replace(/"/g,'&quot;')}"></option>`).join('');
+    const inpTitle = host.querySelector('#charter-title');
+    if (inpTitle && !inpTitle.getAttribute('list')) inpTitle.setAttribute('list','dl-charter-title');
+  
+    // 3) TAGS — datalist (à partir des tags historisés)
+    const dlTags = host.querySelector('#dl-charter-tags') || (()=>{
+      const dl = document.createElement('datalist');
+      dl.id = 'dl-charter-tags';
+      host.appendChild(dl);
+      return dl;
+    })();
+    const tags = [...new Set(list.flatMap(x=>Array.isArray(x?.tags)?x.tags:[]).filter(Boolean))].slice(0,50);
+    dlTags.innerHTML = tags.map(t=>`<option value="${t.replace(/"/g,'&quot;')}"></option>`).join('');
+    const inpTags = host.querySelector('#charter-tags');
+    if (inpTags && !inpTags.getAttribute('list')) inpTags.setAttribute('list','dl-charter-tags');
+  
+    // 4) CONTENU — pas de datalist sur <textarea> (non supporté) → menu flottant seulement
+    //    on ne touche pas ici, c’est géré par setupContentHistoryMenu()
+  }
+
+  // --- history (dernieres saisies) --- //
   function histKey(){
     const s = (window.paria && window.paria.settings) ? window.paria.settings : (JSON.parse(localStorage.getItem('paria.settings')||'{}'));
     const w = (window.paria && window.paria.work) ? window.paria.work : {};
@@ -493,16 +505,21 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     try{
       const k = histKey();
       let arr = JSON.parse(localStorage.getItem(k)||'[]');
-      const sig = (e)=> (e.title||'') + '|' + (e.content||'').slice(0,80) + '|' + (e.tags||[]).join(',');
-      arr = [entry, ...arr].filter(Boolean);
-      // de-dupe
+      const norm = (x)=>({
+        title: (x?.title||'').trim(),
+        content: (x?.content||'').trim(),
+        tags: Array.isArray(x?.tags) ? x.tags.filter(Boolean) : String(x?.tags||'').split(',').map(s=>s.trim()).filter(Boolean),
+        ts: Date.now()
+      });
+      const rec = norm(entry);
+      const sig = (e)=> (e.title||'')+'|'+(e.content||'').slice(0,120)+'|'+(e.tags||[]).join(',');
+      arr = [rec, ...arr].filter(Boolean);
       const seen = new Set();
-      arr = arr.filter(e => { const s = sig(e); if (seen.has(s)) return false; seen.add(s); return true; });
-      arr = arr.slice(0,10);
+      arr = arr.filter(e=>{ const s=sig(e); if(seen.has(s)) return false; seen.add(s); return true; }).slice(0,20);
       localStorage.setItem(k, JSON.stringify(arr));
     }catch{}
   }
-    
+
   function getCharterHistory(){
     try{ return JSON.parse(localStorage.getItem(histKey())||'[]'); }catch{ return []; }
   }
@@ -594,6 +611,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
