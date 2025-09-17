@@ -5,8 +5,9 @@ import { settingsLoad } from './settings.js';
 // GAS settings
 export function getGAS() {
   const s = settingsLoad() || {};
-  const url    = (s.proxy_url || s.endpoints?.proxy?.url || '').trim();
-  const secret = (s.proxy_secret || s.endpoints?.proxy?.secret || '').trim();
+  const url    = (s?.endpoints?.proxy?.url || '').trim();
+  const secret = (s?.endpoints?.proxy?.secret || '').trim();
+
   return { url, secret };
 }
 
@@ -38,8 +39,9 @@ export async function diag() {
 // Test GitHub (léger) — accepte URL type https://github.com/owner/repo(.git)
 export async function testGit() {
   const s = settingsLoad();
-  const url = (s?.endpoints?.git?.url || s?.git?.url || '').trim();
-  const token = (s?.endpoints?.git?.token || s?.git?.token || '').trim();
+  const url   = (s?.git?.url   || '').trim();
+  const token = (s?.git?.token || '').trim();
+
   if (!url) return { ok:false, status:0, detail:'incomplete' };
 
   // parse owner/repo
@@ -128,10 +130,11 @@ export async function saveToGoogle(a, b, c) {
 
 export async function saveToGit(payload) {
   const s = settingsLoad() || {};
-  const owner  = (s.git_owner  || s.endpoints?.git?.owner  || '').trim();
-  const repo   = (s.git_repo   || s.endpoints?.git?.repo   || '').trim();
-  const branch = (s.git_branch || s.endpoints?.git?.branch || 'main').trim();
-  const token  = (s.git_token  || s.endpoints?.git?.token  || '').trim();
+  const owner  = (s?.git?.owner  || '').trim();
+  const repo   = (s?.git?.repo   || '').trim();
+  const branch = (s?.git?.branch || 'main').trim();
+  const token  = (s?.git?.token  || '').trim();
+
   if (!owner || !repo || !token || !payload?.workId) return { ok:false, status:0, detail:'incomplete' };
 
   const [client, service, dateStr] = String(payload.workId).split('|');
@@ -166,6 +169,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
