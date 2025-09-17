@@ -61,8 +61,9 @@ function composePromptFallback({ client, service }){
 // ----------------- helpers proxy -----------------
 function getProxy(){
   const s = settingsLoad() || {};
-  const url = (s.proxy_url || '').trim();
-  const secret = (s.proxy_secret || '').trim();
+  const url = (s?.endpoints?.proxy?.url || '').trim();
+  const secret = (s?.endpoints?.proxy?.secret || '').trim();
+
   return { url, secret };
 }
 
