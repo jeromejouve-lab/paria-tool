@@ -138,46 +138,72 @@ function segmentByBullets(text) {
   return hadBullets ? chunks : [];
 }
 
+// --- pick the useful text regardless of vendor shape -----------------
+function pickText(d){
+  if (!d) return '';
+  if (typeof d === 'string') return d;
+
+  // common direct fields
+  if (d.text)      return d.text;
+  if (d.result)    return d.result;
+  if (d.response)  return d.response;
+  if (d.output)    return d.output;
+
+  // openai-like
+  if (Array.isArray(d.choices) && d.choices.length){
+    const c0 = d.choices[0];
+    if (c0?.message?.content) return c0.message.content;
+    if (c0?.delta?.content)   return c0.delta.content;      // streaming chunk
+    if (c0?.text)             return c0.text;
+    // concat all choices if needed
+    const pieces = d.choices.map(c => c?.message?.content || c?.text || '').filter(Boolean);
+    if (pieces.length) return pieces.join('\n\n');
+  }
+
+  // nested data
+  if (d.data) {
+    const t = pickText(d.data);
+    if (t) return t;
+  }
+
+  // try first stringish field
+  for (const k of Object.keys(d)){
+    const v = d[k];
+    if (typeof v === 'string' && v.trim()) return v;
+  }
+  return '';
+}
+
 // ----------------- normalisation réponse -----------------
 function normalizeAIResponse(resp){
-  const d = resp?.data ?? resp ?? {};
-  console.log('[AI][normalize.in]', resp);
+  // resp = { http, data, ... }
+  const data = resp?.data ?? resp;
 
-  // backend déjà normalisé
-  if (typeof d.status === 'string' && Array.isArray(d.results)) {
-    const st = d.results.length ? 'ok' : (d.status === 'empty' ? 'empty' : d.status);
-    return { status: st, results: d.results, error: d.error, http: resp.http||0 };
+  // 1) extraire le texte quelle que soit la forme
+  const text = pickText(data);
+
+  // 2) si rien d’exploitable → empty
+  if (!text || !text.trim()){
+    return { status:'empty', results:[], http: resp?.http || 0 };
   }
 
-  // formats texte courants (OpenAI / proxys)
-  const text =
-    (d.output_text || d.result || d.content || d.text ||
-     d?.choices?.[0]?.message?.content || d?.choices?.[0]?.text || '')
-    ?.trim();
-
-  // Si on a du texte : tente une segmentation en puces
-  if (text) {
-    const seg = segmentByBullets(text);
-    if (seg.length > 1) {
-      return { status: 'ok', results: seg, http: resp.http||0 };
-    }
+  // 3) segmentation en puces / listes numérotées si présentes
+  const items = segmentByBullets(text);
+  if (items.length >= 1){   // on accepte aussi 1 item
+    return { status:'ok', results: items, http: resp?.http || 200 };
   }
 
-  if (text) {
-    const sum = text.length > 180 ? text.slice(0,180) + '…' : text;
-    return {
-      status: 'ok',
-      results: [{ id: uid(), title: 'Proposition', summary: sum, content: text, state: { selected: false } }],
-      http: resp.http||0
-    };
-  }
-
-  // codes config / erreurs
-  if (resp?.status === 'needs_config') return { status:'needs_config', results: [], http: resp.http||0 };
-  if (resp?.status === 'error') return { status:'error', results: [], error: resp.error, http: resp.http||0 };
-
-  return { status: 'empty', results: [], http: resp.http||0 };
+  // 4) fallback: une proposition unique
+  const title = (text.split(/\r?\n/)[0] || 'Proposition').slice(0,120);
+  const summary = text.length > 180 ? text.slice(0,180) + '…' : text;
+  const one = {
+    id: 'p-' + Math.random().toString(36).slice(2) + Date.now(),
+    title, summary, content: text,
+    state: { selected: false }
+  };
+  return { status:'ok', results:[one], http: resp?.http || 200 };
 }
+
 
 // Applique des résultats IA dans le store selon le sujet
 export function applyAIResults(subject, items, { mode = 'replace' } = {}) {
