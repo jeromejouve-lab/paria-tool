@@ -115,12 +115,14 @@ function fillForm(root, cfg){
 
   set('#client',  s.client || '');
   set('#service', s.service || '');
-  set('#proxy-url',    s?.endpoints?.proxy?.url || '');
-  set('#proxy-secret', s?.endpoints?.proxy?.secret || '');
-  
-  const gUrl   = s?.git?.url   || '';
-  const gOwner = s?.git?.owner || '';
-  const gRepo  = s?.git?.repo  || '';
+
+  set('#proxy-url',    s?.endpoints?.proxy?.url || s?.proxy?.url || '');
+  set('#proxy-secret', s?.endpoints?.proxy?.secret || s?.proxy?.secret || s?.endpoints?.proxy?.token || s?.proxy?.token || '');
+
+  // Git : url OU owner/repo
+  const gUrl   = s?.endpoints?.git?.url   || s?.git?.url   || '';
+  const gOwner = s?.endpoints?.git?.owner || s?.git?.owner || '';
+  const gRepo  = s?.endpoints?.git?.repo  || s?.git?.repo  || '';
   const gTok   = s?.endpoints?.git?.token || s?.git?.token || '';
 
   set('#git-url',   gUrl);
@@ -309,10 +311,10 @@ function bindWorkId(root){
     btnRestore.textContent = 'Restauration…';
     try{
       const s = settingsLoad() || {};
-      const owner  = (document.querySelector('#git-owner') ?.value || s?.git?.owner  || '').trim();
-      const repo   = (document.querySelector('#git-repo')  ?.value || s?.git?.repo   || '').trim();
-      const branch = (document.querySelector('#git-branch')?.value || s?.git?.branch || 'main').trim();
-      const token  = (document.querySelector('#git-token') ?.value || s?.git?.token  || '').trim();
+      const owner  = (document.querySelector('#git-owner')  ?.value || s.git_owner  || '').trim();
+      const repo   = (document.querySelector('#git-repo')   ?.value || s.git_repo   || '').trim();
+      const branch = (document.querySelector('#git-branch') ?.value || s.git_branch || 'main').trim();
+      const token  = (document.querySelector('#git-token')  ?.value || s.git_token  || '').trim();
   
       const client  = (document.querySelector('#client')?.value  || s.client  || '').trim();
       const service = (document.querySelector('#service')?.value || s.service || '').trim();
@@ -775,6 +777,5 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
-
 
 
