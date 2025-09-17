@@ -15,7 +15,6 @@
     grid-template-columns: minmax(360px, 1fr) minmax(280px, 0.9fr);
     align-items: start;
   }
-
   .client-grid .grid-left,
   .service-grid .grid-left { grid-column: 1; }
 
