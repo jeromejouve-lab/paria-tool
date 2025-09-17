@@ -100,7 +100,7 @@ function bindClientProfile(host){
   set('#client-languages',   (p.languages||[]).join(', '));
 
   let to; // debounce
-  host.addEventListener('input', (ev)=>{
+  ('input', (ev)=>{
     if (!ev.target.closest('#client-name,#client-headcount,#client-desc,#client-goals,#client-challenges,#client-constraints,#client-tone,#client-languages')) return;
     clearTimeout(to);
     to = setTimeout(()=>{
@@ -403,21 +403,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     dl.innerHTML = list.map(h=>`<option value="${(h.content||'').replace(/"/g,'&quot;').slice(0,120)}"></option>`).join('');
   }
 
-  // autosave
-  let to;
-  host.addEventListener('input', (ev)=>{
-    if (!ev.target.closest('#charter-title,#charter-content,#charter-tags')) return;
-    clearTimeout(to);
-    to = setTimeout(()=>{
-      const v = getVals(host);
-      saveCharter(v);
-      saveCharterHistory(v);
-      attachContentHistoryDatalist(host);
-    }, 200);
-
-  });
-
-  // --- history (dernieres saisies) --- //
+   // --- history (dernieres saisies) --- //
   function histKey(){
     const s = (window.paria && window.paria.settings) ? window.paria.settings : (JSON.parse(localStorage.getItem('paria.settings')||'{}'));
     const w = (window.paria && window.paria.work) ? window.paria.work : {};
@@ -532,12 +518,12 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   };
 
   // Sélection + pictos
-  host.addEventListener('change', (ev)=>{
+  ('change', (ev)=>{
     const chk = ev.target.closest('.chk-sel'); if (!chk) return;
     const id = ev.target.closest('[data-id]')?.dataset?.id; if (!id) return;
     setCharterAISelected(id, chk.checked);
   });
-  host.addEventListener('click', (ev)=>{
+  ('click', (ev)=>{
     const btn = ev.target.closest('[data-action]'); if (!btn) return;
     const id = btn.closest('[data-id]')?.dataset?.id; if (!id) return;
     if (btn.dataset.action==='prop-delete') removeCharterAI(id);
@@ -550,6 +536,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
