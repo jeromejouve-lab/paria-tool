@@ -1,0 +1,48 @@
+/* Charter — grilles */
+.client-grid,
+.service-grid {
+  display: grid;
+  gap: 12px;
+}
+
+/* 2 colonnes au-delà de 992px, 1 colonne sinon */
+@media (min-width: 992px) {
+  .client-grid {
+    grid-template-columns: minmax(360px, 1fr) minmax(280px, 0.9fr);
+    align-items: start;
+  }
+  .service-grid {
+    grid-template-columns: minmax(360px, 1fr) minmax(280px, 0.9fr);
+    align-items: start;
+  }
+
+  .client-grid .grid-left,
+  .service-grid .grid-left { grid-column: 1; }
+
+  .client-grid .grid-right,
+  .service-grid .grid-right { grid-column: 2; display: grid; gap: 12px; }
+
+  .client-grid .grid-full,
+  .service-grid .grid-full { grid-column: 1 / -1; }
+}
+
+/* Sous 992px : 1 colonne (tout full-width) */
+@media (max-width: 991.98px) {
+  .client-grid .grid-left,
+  .client-grid .grid-right,
+  .client-grid .grid-full,
+  .service-grid .grid-left,
+  .service-grid .grid-right,
+  .service-grid .grid-full { grid-column: 1 / -1; }
+}
+
+/* Harmonise les labels/inputs (suivant ton style existant) */
+.client-grid label,
+.service-grid label { display: block; width: 100%; }
+.client-grid input[type="text"],
+.client-grid input[type="number"],
+.client-grid textarea,
+.service-grid input[type="text"],
+.service-grid textarea {
+  width: 100%;
+}
