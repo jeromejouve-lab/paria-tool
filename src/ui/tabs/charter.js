@@ -231,15 +231,35 @@ function html(ch){
   </div>`;
 }
 
+function getVals(root){
+  return {
+    title:  (root.querySelector('#charter-title')?.value || '').trim(),
+    content:(root.querySelector('#charter-content')?.value || ''),
+    tags:   (root.querySelector('#charter-tags')?.value || '')
+             .split(',').map(s=>s.trim()).filter(Boolean)
+  };
+}
+
+function fillCharter(root, vals){
+  if (!vals) return;
+  const $t = root.querySelector('#charter-title');
+  const $c = root.querySelector('#charter-content');
+  const $g = root.querySelector('#charter-tags');
+  if ($t) $t.value = vals.title || '';
+  if ($c) $c.value = vals.content || '';
+  if ($g) $g.value = (vals.tags||[]).join(', ');
+}
+
 export function mountCharterTab(host = document.getElementById('tab-charter')) {
   if (!host) return;
   const ch = getCharter();
   host.innerHTML = html(ch);
 
-  try{
-    const saved = (window.getCharter && window.getCharter()) || JSON.parse(localStorage.getItem('paria.charter')||'null');
-    if (saved) fillCharter(host, saved);
-  }catch{}
+  // restore last saved values
+  const _saved = loadCharter();
+  if (_saved) fillCharter(host, _saved);
+  // init history datalist pour le contenu
+  attachContentHistoryDatalist(host);
 
 // Bouton "Aperçu du prompt" placé à côté de "Analyser" si présent
 (() => {
@@ -307,11 +327,53 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     return { title:t, content:c, tags };
   };
 
-  function fillCharter(root, vals){
+  // === Charter persistence & history ===
+  function fillCharter(host, vals){
     if (!vals) return;
-    if (root.querySelector('#charter-title'))   root.querySelector('#charter-title').value   = vals.title   || '';
-    if (root.querySelector('#charter-content')) root.querySelector('#charter-content').value = vals.content || '';
-    if (root.querySelector('#charter-tags'))    root.querySelector('#charter-tags').value    = (vals.tags||[]).join(', ');
+    const t = host.querySelector('#charter-title');
+    const c = host.querySelector('#charter-content');
+    const g = host.querySelector('#charter-tags');
+    if (t) t.value = vals.title || '';
+    if (c) c.value = vals.content || '';
+    if (g) g.value = Array.isArray(vals.tags) ? vals.tags.join(', ') : (vals.tags||'');
+  }
+  function saveCharter(vals){
+    try{ localStorage.setItem('paria.charter', JSON.stringify(vals)); }catch{}
+  }
+  function loadCharter(){
+    try{ return JSON.parse(localStorage.getItem('paria.charter')||'null'); }catch{ return null; }
+  }
+  // history par workId (pour datalist de contenu)
+  function charterHistKey(){
+    try{
+      const s = JSON.parse(localStorage.getItem('paria.settings')||'{}');
+      const workId = [s.client, s.service, s.date].filter(Boolean).join('|') || 'default';
+      return `charter.history.${workId}`;
+    }catch{ return 'charter.history.default'; }
+  }
+  function saveCharterHistory(entry){
+    try{
+      const k = charterHistKey();
+      let arr = JSON.parse(localStorage.getItem(k)||'[]');
+      const sig = e => (e.title||'')+'|'+(e.content||'').slice(0,120)+'|'+(e.tags||[]).join(',');
+      arr = [entry, ...arr];
+      const seen = new Set();
+      arr = arr.filter(e=>{ const s=sig(e); if(seen.has(s)) return false; seen.add(s); return true; }).slice(0,10);
+      localStorage.setItem(k, JSON.stringify(arr));
+    }catch{}
+  }
+  function attachContentHistoryDatalist(host){
+    const ta = host.querySelector('#charter-content');
+    if (!ta) return;
+    let dl = document.getElementById('charter-content-history');
+    if (!dl){
+      dl = document.createElement('datalist');
+      dl.id = 'charter-content-history';
+      document.body.appendChild(dl);
+    }
+    ta.setAttribute('list','charter-content-history');
+    let list=[]; try{ list = JSON.parse(localStorage.getItem(charterHistKey())||'[]'); }catch{}
+    dl.innerHTML = list.map(h=>`<option value="${(h.content||'').replace(/"/g,'&quot;').slice(0,120)}"></option>`).join('');
   }
 
   // autosave
@@ -319,7 +381,13 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   host.addEventListener('input', (ev)=>{
     if (!ev.target.closest('#charter-title,#charter-content,#charter-tags')) return;
     clearTimeout(to);
-    to = setTimeout(()=>{ saveCharter(getVals(host)); }, 200);
+    to = setTimeout(()=>{
+      const v = getVals(host);
+      saveCharter(v);
+      saveCharterHistory(v);
+      attachContentHistoryDatalist(host);
+    }, 200);
+
   });
 
   // --- history (dernieres saisies) --- //
@@ -367,8 +435,12 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   const $status = $('#charter-status', host);
   btnGen.onclick = async ()=>{
     const vals = getVals(host);
+    const ts = new Date();
     saveCharterHistory(vals);
     attachContentDatalist(host);
+    saveCharter(vals);
+    saveCharterHistory(vals);
+    attachContentHistoryDatalist(host);
 
     btnGen.disabled = true;
     $status.textContent = '⏳ Analyse en cours…';
@@ -390,7 +462,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       if (norm.status === 'ok' && norm.results?.length){
         applyAIResults({kind:'charter'}, norm.results, {mode:'append'});
         $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
-        $status.textContent = `✅ ${norm.results.length} proposition(s)`;
+        $status.textContent = `✅ ${r.results.length} proposition(s) · ${ts.toLocaleTimeString()}`;
       } else if (norm.status === 'empty') {
         $status.textContent = 'ℹ️ IA: aucune proposition.';
       } else if (norm.status === 'needs_config') {
@@ -432,6 +504,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
