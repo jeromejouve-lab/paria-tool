@@ -320,12 +320,39 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
   bindClientProfile(host); // remplissage + autosave du Profil Client
 
+  function buildCharterPrompt(vals){
+    const parts = [];
+    if (vals?.title)   parts.push(`Titre: ${vals.title}`);
+    if (vals?.tags?.length) parts.push(`Tags: ${vals.tags.join(', ')}`);
+    if (vals?.content) parts.push(`Contenu:\n${vals.content}`);
+    return [
+      "Analyse PARIA d'un charter.",
+      ...parts,
+      "Renvoie 4 propositions structurées (title, content, tags[])."
+    ].join("\n");
+  }
+
   const getVals = (root)=>{
     const t = $('#charter-title', root)?.value?.trim() || '';
     const c = $('#charter-content', root)?.value || '';
     const tags = ($('#charter-tags', root)?.value || '').split(',').map(s=>s.trim()).filter(Boolean);
     return { title:t, content:c, tags };
   };
+  // autosave
+  let to;
+  host.addEventListener('input', (ev)=>{
+    if (!ev.target.closest('#charter-title,#charter-content,#charter-tags')) return;
+    clearTimeout(to);
+    to = setTimeout(()=>{ 
+      const v = getVals(host);
+      // ❶ Sauvegarde “courante”
+      try { if (typeof saveCharter === 'function') saveCharter(v); else localStorage.setItem('paria.charter', JSON.stringify(v)); } catch{}
+      // ❷ Historique (tu L’AS DÉJÀ)
+      if (typeof saveCharterHistory === 'function') saveCharterHistory(v);
+      // ❸ Rafraîchir la datalist contenu (TU L’AS DÉJÀ)
+      if (typeof attachContentDatalist === 'function') attachContentDatalist(host);
+    }, 200);
+  });
 
   // === Charter persistence & history ===
   function fillCharter(host, vals){
@@ -433,13 +460,31 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   // Analyse IA
   const btnGen = $('#charter-gen', host);
   const $status = $('#charter-status', host);
+  
+
+  // Aperçu du prompt
+  const btnPrev = host.querySelector('#charter-preview');
+  if (btnPrev) {
+    btnPrev.onclick = ()=>{
+      const vals = getVals(host);
+      const prompt = buildCharterPrompt(vals); // doit renvoyer une string
+      // sortie dans une zone dédiée si elle existe, sinon console
+      const out = host.querySelector('#charter-prompt');
+      if (out) {
+        out.value = prompt;
+        // si le conteneur est masqué via .hidden, on l’affiche
+        out.closest('.charter-prompt-box')?.classList?.remove('hidden');
+      } else {
+        console.log('[Charter][Preview]\\n' + prompt);
+        alert(prompt); // fallback simple et visible
+      }
+    };
+  }
   btnGen.onclick = async ()=>{
     const vals = getVals(host);
     const ts = new Date();
     saveCharterHistory(vals);
-    attachContentDatalist(host);
     saveCharter(vals);
-    saveCharterHistory(vals);
     attachContentHistoryDatalist(host);
 
     btnGen.disabled = true;
@@ -452,6 +497,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         context:{ tab:'charter' }
       });
       console.log('[Charter][askAI]', r);
+      const ts = new Date(); // timestamp pour le statut
     
       // r peut déjà être normalisé par core/ai.js ; sinon on le normalise ici
       const norm = (r && typeof r.status === 'string' && Array.isArray(r.results))
@@ -504,6 +550,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
