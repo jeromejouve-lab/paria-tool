@@ -73,6 +73,8 @@ async function callAIProxy({ work_id, task }){
   if (!url) return { status: 'needs_config', results: [], error: 'missing proxy', http: 0 };
 
   const payload = { route: 'ai', work_id, task, secret }; // secret aussi en body si ton GAS le lit côté body
+  console.log('[AI][payload]', payload);
+
   let res, data, text;
   try{
     res = await fetch(url, {
@@ -82,6 +84,8 @@ async function callAIProxy({ work_id, task }){
     });
     text = await res.text();
     try { data = JSON.parse(text); } catch { data = { text }; }
+    console.log('[AI][resp]', { http: res.status, keys: Object.keys(data||{}), text: (text||'').slice(0,200) });
+
   }catch(e){
     return { status: 'error', results: [], error: String(e.message||e), http: 0 };
   }
@@ -137,6 +141,7 @@ function segmentByBullets(text) {
 // ----------------- normalisation réponse -----------------
 function normalizeAIResponse(resp){
   const d = resp?.data ?? resp ?? {};
+  console.log('[AI][normalize.in]', resp);
 
   // backend déjà normalisé
   if (typeof d.status === 'string' && Array.isArray(d.results)) {
