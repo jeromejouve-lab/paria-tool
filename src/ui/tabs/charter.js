@@ -148,63 +148,65 @@ function html(ch){
   <div class="charter cols">
     <!-- Colonne gauche -->
     <div class="col">
-      <!-- [ADD] Profil Client (transverse) -->
-      <section class="block">
+      <!-- Client (grille 2 colonnes) -->
+      <section class="block client-grid">
         <h3>Client</h3>
 
-        <div class="row two">
+        <!-- Colonne gauche -->
+        <div class="grid-left">
           <label>Nom<br><input id="client-name" type="text"></label>
-          <label>Effectif<br><input id="client-headcount" type="number" min="0"></label>
         </div>
 
-        <div class="row">
+        <!-- Colonne droite (champs courts empilés) -->
+        <div class="grid-right">
+          <label>Effectif<br><input id="client-headcount" type="number" min="0"></label>
+          <label>Langues (csv)<br><input id="client-languages" type="text" placeholder="fr,en"></label>
+          <label>Ton<br><input id="client-tone" type="text" placeholder="pragmatique, orienté ROI"></label>
+        </div>
+
+        <!-- Description = gauche (grand champ) -->
+        <div class="grid-left">
           <label>Description<br>
             <textarea id="client-desc" rows="3" style="resize:vertical"></textarea>
           </label>
         </div>
 
-        <div class="row">
+        <!-- Pleine largeur : zones lourdes -->
+        <div class="grid-full">
           <label>Objectifs (séparés par virgule)<br>
             <textarea id="client-goals" rows="2" style="resize:vertical"></textarea>
           </label>
         </div>
 
-        <div class="row">
+        <div class="grid-full">
           <label>Problèmes (séparés par virgule)<br>
             <textarea id="client-challenges" rows="2" style="resize:vertical"></textarea>
           </label>
         </div>
 
-        <div class="row">
+        <div class="grid-full">
           <label>Contraintes (séparées par virgule)<br>
             <textarea id="client-constraints" rows="2" style="resize:vertical"></textarea>
           </label>
-        </div>
-
-        <div class="row two">
-          <label>Ton<br><input id="client-tone" type="text"></label>
-          <label>Langues (csv)<br><input id="client-languages" type="text" placeholder="fr,en"></label>
         </div>
       </section>
 
       <section class="block">
         <h3>Charter</h3>
 
-        <div class="row">
-          <label>Titre<br>
-            <textarea id="charter-title" rows="2" style="resize:vertical">${ch.title||''}</textarea>
-          </label>
+        <div class="grid-left">
+          <label>Titre<br><input id="charter-title" type="text"></label>
         </div>
-
-        <div class="row">
-          <label>Contenu<br>
-            <textarea id="charter-content" rows="8" style="resize:vertical">${ch.content||''}</textarea>
-          </label>
-        </div>
-
-        <div class="row">
+      
+        <div class="grid-right">
           <label>Tags (séparés par virgule)<br>
-            <textarea id="charter-tags" rows="2" style="resize:vertical">${(ch.tags||[]).join(', ')}</textarea>
+            <input id="charter-tags" type="text" placeholder="activation, onboarding, RH">
+          </label>
+        </div>
+      
+        <div class="grid-full">
+          <label>Contenu<br>
+            <textarea id="charter-content" rows="8" style="resize:vertical"></textarea>
           </label>
         </div>
 
@@ -363,6 +365,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
