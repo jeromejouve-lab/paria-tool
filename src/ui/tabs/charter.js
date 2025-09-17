@@ -356,20 +356,25 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         context:{ tab:'charter' }
       });
       console.log('[Charter][askAI]', r);
-      const norm = normalizeAIResponse(raw);
+    
+      // r peut déjà être normalisé par core/ai.js ; sinon on le normalise ici
+      const norm = (r && typeof r.status === 'string' && Array.isArray(r.results))
+        ? r
+        : normalizeAIResponse(r);
       console.log('[Charter][norm]', norm);
-
-      if (r.status === 'ok' && r.results?.length){
-        applyAIResults({kind:'charter'}, r.results, {mode:'replace'});
+      
+      if (norm.status === 'ok' && norm.results?.length){
+        applyAIResults({kind:'charter'}, norm.results, {mode:'replace'});
         $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
-        $status.textContent = `✅ ${r.results.length} proposition(s)`;
-      } else if (r.status === 'empty') {
+        $status.textContent = `✅ ${norm.results.length} proposition(s)`;
+      } else if (norm.status === 'empty') {
         $status.textContent = 'ℹ️ IA: aucune proposition.';
-      } else if (r.status === 'needs_config') {
+      } else if (norm.status === 'needs_config') {
         $status.textContent = '⚠️ Proxy non configuré (Réglages).';
       } else {
-        $status.textContent = `❌ IA: ${r.error||'erreur'}`;
+        $status.textContent = `❌ IA: ${norm.error||'erreur'}`;
       }
+
     } catch(e){
       console.error('[Charter][askAI] error', e);
       $status.textContent = `❌ IA: ${e?.message||e}`;
@@ -401,6 +406,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
