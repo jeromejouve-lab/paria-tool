@@ -69,14 +69,15 @@ function getProxy(){
 
 async function callAIProxy({ work_id, task }){
   const { url, secret } = getProxy();
-  if (!url || !secret) return { status: 'needs_config', results: [], error: 'missing proxy', http: 0 };
+  console.log('[AI][proxy]', { url, secret_len: (secret||'').length });
+  if (!url) return { status: 'needs_config', results: [], error: 'missing proxy', http: 0 };
 
   const payload = { route: 'ai', work_id, task, secret }; // secret aussi en body si ton GAS le lit côté body
   let res, data, text;
   try{
     res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain', 'X-Proxy-Secret': secret },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload)
     });
     text = await res.text();
