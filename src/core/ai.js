@@ -176,32 +176,63 @@ function pickText(d){
 
 // ----------------- normalisation réponse -----------------
 function normalizeAIResponse(resp){
-  // resp = { http, data, ... }
-  const data = resp?.data ?? resp;
+  // resp ressemble à { http, data } où data peut être { ok, results, ... } ou d'autres formats
+  const d = resp && (resp.data ?? resp);
 
-  // 1) extraire le texte quelle que soit la forme
-  const text = pickText(data);
-
-  // 2) si rien d’exploitable → empty
-  if (!text || !text.trim()){
-    return { status:'empty', results:[], http: resp?.http || 0 };
+  // 1) Erreur explicite du backend
+  if (d && d.ok === false && d.error) {
+    return { status:'error', results:[], error:String(d.error), http: resp.http||200 };
   }
 
-  // 3) segmentation en puces / listes numérotées si présentes
-  const items = segmentByBullets(text);
-  if (items.length >= 1){   // on accepte aussi 1 item
-    return { status:'ok', results: items, http: resp?.http || 200 };
+  // 2) Forme backend GAS : { ok:true, results:[...] }
+  if (d && d.ok === true && Array.isArray(d.results) && d.results.length) {
+    return { status:'ok', results: d.results, http: resp.http||200 };
   }
 
-  // 4) fallback: une proposition unique
-  const title = (text.split(/\r?\n/)[0] || 'Proposition').slice(0,120);
-  const summary = text.length > 180 ? text.slice(0,180) + '…' : text;
-  const one = {
-    id: 'p-' + Math.random().toString(36).slice(2) + Date.now(),
-    title, summary, content: text,
-    state: { selected: false }
+  // 3) Formes OpenAI-like ou texte brut (fallbacks)
+  const pickText = (x)=>{
+    if (!x) return '';
+    if (typeof x === 'string') return x;
+    if (x.text) return x.text;
+    if (x.result) return x.result;
+    if (x.response) return x.response;
+    if (Array.isArray(x.choices) && x.choices.length){
+      const c0 = x.choices[0];
+      return (c0?.message?.content) || c0?.text || '';
+    }
+    if (x.data) return pickText(x.data);
+    for (const k of Object.keys(x)){ const v=x[k]; if (typeof v==='string' && v.trim()) return v; }
+    return '';
   };
-  return { status:'ok', results:[one], http: resp?.http || 200 };
+
+  const text = pickText(d);
+  if (text && text.trim()){
+    // Segmentation simple en puces si présentes
+    const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    const bullets = lines.filter(s => /^[•\-*]\s+/.test(s) || /^\d+\.\s+/.test(s));
+    if (bullets.length){
+      const results = bullets.map((b,i)=>({
+        id: 'p-'+Math.random().toString(36).slice(2)+Date.now(),
+        title: 'Proposition '+(i+1),
+        content: b.replace(/^[•\-*]\s+/, '').trim(),
+        tags: [], meta:{}, state:{ selected:false }
+      }));
+      return { status:'ok', results, http: resp.http||200 };
+    }
+    // Sinon, un seul bloc
+    return {
+      status:'ok',
+      results:[{
+        id:'p-'+Math.random().toString(36).slice(2)+Date.now(),
+        title: (text.split(/\r?\n/)[0] || 'Proposition').slice(0,120),
+        content: text, tags:[], meta:{}, state:{ selected:false }
+      }],
+      http: resp.http||200
+    };
+  }
+
+  // 4) Rien d’exploitable
+  return { status:'empty', results:[], http: resp.http||0 };
 }
 
 
