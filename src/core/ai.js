@@ -1,6 +1,6 @@
 // src/core/ai.js — IA centrale normalisée
 import { settingsLoad, buildWorkId } from './settings.js';
-import { getCharter } from '../domain/reducers.js';
+import { getCharter, saveCharter } from '../domain/reducers.js';
 
 // ----------------- helpers contexte -----------------
 const uid = () => 'p-' + Math.random().toString(36).slice(2) + Date.now();
@@ -86,6 +86,52 @@ async function callAIProxy({ work_id, task }){
   return { http: res.status, data };
 }
 
+// Découpe un texte en items à partir de listes (puces et listes numérotées)
+function segmentByBullets(text) {
+  if (!text) return [];
+  const lines = text.split(/\r?\n/);
+
+  // Puces : -, *, •, —, – ; Numérotées : 1. 2) etc.
+  const bulletRe = /^\s*(?:[-*•—–]|(?:\d+[\.\)]))\s+/;
+
+  const chunks = [];
+  let cur = [];
+
+  const pushCur = () => {
+    const block = cur.join('\n').trim();
+    if (!block) return;
+    // titre = première ligne (sans puce), summary = 180c
+    const firstLine = block.split(/\r?\n/)[0];
+    const title = firstLine.replace(bulletRe, '').trim().slice(0, 120) || 'Proposition';
+    const summary = block.length > 180 ? block.slice(0, 180) + '…' : block;
+    chunks.push({
+      id: 'p-' + Math.random().toString(36).slice(2) + Date.now(),
+      title,
+      summary,
+      content: block,
+      state: { selected: false }
+    });
+    cur = [];
+  };
+
+  for (const ln of lines) {
+    if (bulletRe.test(ln)) {
+      // nouvelle puce → flush le bloc précédent
+      if (cur.length) pushCur();
+      cur.push(ln.replace(bulletRe, '').trim());
+    } else {
+      // continuation du bloc courant
+      if (!cur.length && ln.trim()==='') continue;
+      cur.push(ln);
+    }
+  }
+  if (cur.length) pushCur();
+
+  // si 1 seul item ET pas de vraie puce détectée, renvoie vide (laisse fallback mono-texte)
+  const hadBullets = lines.some(l => bulletRe.test(l));
+  return hadBullets ? chunks : [];
+}
+
 // ----------------- normalisation réponse -----------------
 function normalizeAIResponse(resp){
   const d = resp?.data ?? resp ?? {};
@@ -102,6 +148,14 @@ function normalizeAIResponse(resp){
      d?.choices?.[0]?.message?.content || d?.choices?.[0]?.text || '')
     ?.trim();
 
+  // Si on a du texte : tente une segmentation en puces
+  if (text) {
+    const seg = segmentByBullets(text);
+    if (seg.length > 1) {
+      return { status: 'ok', results: seg, http: resp.http||0 };
+    }
+  }
+
   if (text) {
     const sum = text.length > 180 ? text.slice(0,180) + '…' : text;
     return {
@@ -116,6 +170,32 @@ function normalizeAIResponse(resp){
   if (resp?.status === 'error') return { status:'error', results: [], error: resp.error, http: resp.http||0 };
 
   return { status: 'empty', results: [], http: resp.http||0 };
+}
+
+// Applique des résultats IA dans le store selon le sujet
+export function applyAIResults(subject, items, { mode = 'replace' } = {}) {
+  const kind = subject?.kind;
+  if (kind === 'charter') {
+    const ch = getCharter() || {};
+    const existing = Array.isArray(ch.ai) ? ch.ai : [];
+    const now = Date.now();
+
+    const normItems = (items || []).map(p => ({
+      id: p.id || ('p-' + Math.random().toString(36).slice(2) + now),
+      title: p.title || 'Proposition',
+      summary: p.summary || (p.content ? (p.content.length > 180 ? p.content.slice(0,180)+'…' : p.content) : ''),
+      content: p.content || '',
+      state: { selected: !!(p.state?.selected), think: !!(p.state?.think), deleted: !!(p.state?.deleted) },
+      created_ts: p.created_ts || now,
+      updated_ts: now
+    }));
+
+    const merged = mode === 'append' ? (existing.concat(normItems)) : normItems;
+    saveCharter({ ai: merged });
+    return { ok: true, count: merged.length };
+  }
+
+  return { ok: false, error: 'unsupported_subject' };
 }
 
 // ----------------- export central -----------------
