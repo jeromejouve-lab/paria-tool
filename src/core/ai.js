@@ -9,7 +9,7 @@ function loadClientProfile(clientId){
   try { return JSON.parse(localStorage.getItem(`paria.client.${clientId}.profile`) || '{}'); }
   catch { return {}; }
 }
-
+ 
 function workCtx(){
   try{
     const s = settingsLoad() || {};
