@@ -12,39 +12,6 @@ import { readClientProfile, writeClientProfile } from '../../domain/reducers.js'
 
 const $ = (s,r=document)=>r.querySelector(s);
 
-// Normalise la réponse IA en { status, results[] } même si on reçoit juste du texte
-function normalizeAIResponse(raw) {
-  const d = raw?.data || raw || {};
-  // 1) essaie les formats connus (OpenAI / proxy variés)
-  const fromChoices = d?.choices?.[0]?.message?.content || d?.choices?.[0]?.text;
-  const fromOutput  = d?.output_text || d?.result || d?.content || d?.text;
-  const text = (fromChoices || fromOutput || '').trim();
-
-  // 2) si le backend a déjà un tableau results[]
-  if (Array.isArray(d.results)) {
-    return { status: d.results.length ? 'ok' : 'empty', results: d.results };
-  }
-
-  // 3) si on a du texte simple, on fabrique une proposition unique
-  if (text) {
-    const id = `p-${Date.now()}`;
-    const summary = text.length > 180 ? text.slice(0, 180) + '…' : text;
-    return {
-      status: 'ok',
-      results: [{
-        id,
-        title: 'Proposition',
-        summary,
-        content: text,
-        state: { selected: false }
-      }]
-    };
-  }
-
-  // 4) rien d’exploitable
-  return { status: 'empty', results: [] };
-}
-
 const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
 // Construit une version texte lisible du contexte IA (Client + Service)
@@ -406,6 +373,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
