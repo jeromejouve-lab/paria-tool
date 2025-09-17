@@ -260,6 +260,81 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   if (_saved) fillCharter(host, _saved);
   // init history datalist pour le contenu
   attachContentHistoryDatalist(host);
+  
+  // --- Menu flottant Historique (textarea "Contenu") ---
+  (function setupContentHistoryMenu(){
+    const ta = host.querySelector('#charter-content');
+    if (!ta) return;
+
+    let menu = host.querySelector('#content-history-menu');
+    if (!menu){
+      menu = document.createElement('div');
+      menu.id = 'content-history-menu';
+      menu.style.position = 'absolute';
+      menu.style.zIndex = '9999';
+      menu.style.display = 'none';
+      menu.style.maxHeight = '220px';
+      menu.style.overflow = 'auto';
+      menu.style.border = '1px solid #ccc';
+      menu.style.background = '#fff';
+      menu.style.padding = '6px';
+      menu.style.boxShadow = '0 2px 10px rgba(0,0,0,.15)';
+      host.appendChild(menu);
+    }
+
+    function histKey(){
+      try{
+        const s = (window.paria && window.paria.settings) ? window.paria.settings : (JSON.parse(localStorage.getItem('paria.settings')||'{}'));
+        const w = (window.paria && window.paria.work) ? window.paria.work : {};
+        const workId = (w && w.current && w.current.workId) || [s?.client,s?.service,s?.date].filter(Boolean).join('|') || 'default';
+        return `charter.history.${workId}`;
+      }catch{ return 'charter.history.default'; }
+    }
+    function loadHist(){
+      try{ return JSON.parse(localStorage.getItem(histKey())||'[]'); }catch{ return []; }
+    }
+    function showMenu(){
+      const list = loadHist();
+      if (!list.length) return hideMenu();
+      menu.innerHTML = list.map((h,i)=>`
+        <div class="hist-item" data-i="${i}" style="padding:6px 8px; cursor:pointer; border-bottom:1px dashed #eee">
+          <div style="font-weight:600">${(h.title||'Sans titre').replace(/</g,'&lt;')}</div>
+          <div style="font-size:12px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${(h.content||'').replace(/</g,'&lt;')}</div>
+          ${Array.isArray(h.tags)&&h.tags.length?`<div style="font-size:11px;opacity:.6">${h.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
+        </div>`).join('');
+      const r = ta.getBoundingClientRect();
+      const hr = host.getBoundingClientRect();
+      menu.style.left = (r.left - hr.left) + 'px';
+      menu.style.top  = (r.bottom - hr.top + 4) + 'px';
+      menu.style.width = r.width + 'px';
+      menu.style.display = 'block';
+    }
+    function hideMenu(){ menu.style.display = 'none'; }
+
+    ta.addEventListener('focus', showMenu);
+    ta.addEventListener('click', showMenu);
+    host.addEventListener('click', (ev)=>{
+      const it = ev.target.closest('.hist-item');
+      if (it){
+        const list = loadHist();
+        const h = list[parseInt(it.dataset.i,10)];
+        if (h){
+          const t = host.querySelector('#charter-title');
+          const c = host.querySelector('#charter-content');
+          const g = host.querySelector('#charter-tags');
+          if (t) t.value = h.title||'';
+          if (c) c.value = h.content||'';
+          if (g) g.value = Array.isArray(h.tags)? h.tags.join(', ') : (h.tags||'');
+          // déclenche autosave
+          c.dispatchEvent(new Event('input',{bubbles:true}));
+        }
+        hideMenu();
+      } else if (!ev.target.closest('#content-history-menu') && ev.target!==ta) {
+        hideMenu();
+      }
+    });
+  })();
+
 
 // Bouton "Aperçu du prompt" placé à côté de "Analyser" si présent
 (() => {
@@ -343,14 +418,17 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   host.addEventListener('input', (ev)=>{
     if (!ev.target.closest('#charter-title,#charter-content,#charter-tags')) return;
     clearTimeout(to);
-    to = setTimeout(()=>{ 
+    to = setTimeout(()=>{
       const v = getVals(host);
       // ❶ Sauvegarde “courante”
-      try { if (typeof saveCharter === 'function') saveCharter(v); else localStorage.setItem('paria.charter', JSON.stringify(v)); } catch{}
-      // ❷ Historique (tu L’AS DÉJÀ)
+      try { 
+        if (typeof saveCharter === 'function') saveCharter(v);
+        else localStorage.setItem('paria.charter', JSON.stringify(v));
+      } catch{}
+      // ❷ Historique (par WorkID)
       if (typeof saveCharterHistory === 'function') saveCharterHistory(v);
-      // ❸ Rafraîchir la datalist contenu (TU L’AS DÉJÀ)
-      if (typeof attachContentDatalist === 'function') attachContentDatalist(host);
+      // ❸ Rafraîchir la datalist (version *History*)
+      if (typeof attachContentHistoryDatalist === 'function') attachContentHistoryDatalist(host);
     }, 200);
   });
 
@@ -445,27 +523,8 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
   // Analyse IA
   const btnGen = $('#charter-gen', host);
-  const $status = $('#charter-status', host);
-  
+  const $status = $('#charter-status', host); 
 
-  // Aperçu du prompt
-  const btnPrev = host.querySelector('#charter-preview');
-  if (btnPrev) {
-    btnPrev.onclick = ()=>{
-      const vals = getVals(host);
-      const prompt = buildCharterPrompt(vals); // doit renvoyer une string
-      // sortie dans une zone dédiée si elle existe, sinon console
-      const out = host.querySelector('#charter-prompt');
-      if (out) {
-        out.value = prompt;
-        // si le conteneur est masqué via .hidden, on l’affiche
-        out.closest('.charter-prompt-box')?.classList?.remove('hidden');
-      } else {
-        console.log('[Charter][Preview]\\n' + prompt);
-        alert(prompt); // fallback simple et visible
-      }
-    };
-  }
   btnGen.onclick = async ()=>{
     const vals = getVals(host);
     const ts = new Date();
@@ -518,24 +577,24 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   };
 
   // Sélection + pictos
-  ('change', (ev)=>{
+  host.addEventListener('change', (ev)=>{
     const chk = ev.target.closest('.chk-sel'); if (!chk) return;
     const id = ev.target.closest('[data-id]')?.dataset?.id; if (!id) return;
     setCharterAISelected(id, chk.checked);
   });
-  ('click', (ev)=>{
+  host.addEventListener('click', (ev)=>{
     const btn = ev.target.closest('[data-action]'); if (!btn) return;
     const id = btn.closest('[data-id]')?.dataset?.id; if (!id) return;
     if (btn.dataset.action==='prop-delete') removeCharterAI(id);
     if (btn.dataset.action==='prop-think')  toggleCharterAIStatus(id,'think');
     $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
   });
-  attachContentDatalist(host);
-
+  attachContentHistoryDatalist(host);
 }
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
