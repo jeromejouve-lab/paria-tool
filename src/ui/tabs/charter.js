@@ -590,11 +590,11 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
   function loadCharter(){
     try{
-      // Aligne la lecture sur l’écriture de saveCharter() (blob workId)
-      return (typeof getCharter==='function')
-        ? getCharter()
-        : JSON.parse(localStorage.getItem('paria.charter')||'null');
-    }catch{ return null; }
+      if (typeof getCharter === 'function') return getCharter();
+      return JSON.parse(localStorage.getItem('paria.charter')||'null');
+    }catch{
+      return null;
+    }
   }
 
   
@@ -632,48 +632,116 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     //    on ne touche pas ici, c’est géré par setupContentHistoryMenu()
   }
 
-function histKey(){
+  function histKey(){
     try{
       const s = (window.paria && window.paria.settings)
         ? window.paria.settings
         : JSON.parse(localStorage.getItem('paria.settings')||'{}');
-      const w = (window.paria && window.paria.work) ? window.paria.work : {};
-      const workId = (w && w.current && w.current.workId)
+      const w = (window.paria && window.paria.work && window.paria.work.current && window.paria.work.current.workId)
         || [s?.client, s?.service, s?.date].filter(Boolean).join('|')
         || 'default';
-      return `charter.history.${workId}`;
-    }catch{ return 'charter.history.default'; }
+      return `charter.history.${w}`;
+    }catch{
+      return 'charter.history.default';
+    }
   }
-    
+      
   function saveCharterHistory(entry){
     try{
       const k = histKey();
-      let arr = JSON.parse(localStorage.getItem(k)||'[]');
-      const norm = (x)=>({
-        title: (x?.title||'').trim(),
-        content: (x?.content||'').trim(),
-        tags: Array.isArray(x?.tags) ? x.tags.filter(Boolean)
-              : String(x?.tags||'').split(',').map(s=>s.trim()).filter(Boolean),
-        ts: Date.now()
-      });
-      const rec = norm(entry);
-      const sig = (e)=> (e.title||'')+'|'+(e.content||'').slice(0,120)+'|'+(e.tags||[]).join(',');
-      arr = [rec, ...arr].filter(Boolean);
+      const norm = {
+        title: String(entry?.title||'').trim(),
+        content: String(entry?.content||''),
+        tags: Array.isArray(entry?.tags)
+          ? entry.tags.filter(Boolean)
+          : String(entry?.tags||'').split(',').map(s=>s.trim()).filter(Boolean),
+        ts: Date.now(),
+      };
+      let arr = JSON.parse(localStorage.getItem(k)||'[]')||[];
+      const sig = (x)=>`${x.title}|${x.content.slice(0,120)}|${(x.tags||[]).join(',')}`;
       const seen = new Set();
-      arr = arr.filter(e=>{ const s=sig(e); if(seen.has(s)) return false; seen.add(s); return true; }).slice(0,20);
+      arr = [norm, ...arr].filter(x=>{
+        if (!x) return false;
+        const keep = (x.title || x.content || (Array.isArray(x.tags)&&x.tags.length));
+        if (!keep) return false;
+        const s = sig(x);
+        if (seen.has(s)) return false;
+        seen.add(s);
+        return true;
+      }).slice(0,30);
       localStorage.setItem(k, JSON.stringify(arr));
     }catch{}
   }
-
-
-
-
-  
-  
-  
-  
     
+    
+  // --- Menu d'historique pour <textarea id="charter-content"> ---
+  (function ensureContentMenu(){
+    const hostEl = host;
+    const ta = hostEl.querySelector('#charter-content');
+    if (!ta) return;
   
+    let menu = hostEl.querySelector('#dl-like-content');
+    if (!menu){
+      menu = document.createElement('div');
+      menu.id = 'dl-like-content';
+      menu.style.cssText = 'position:absolute;display:none;z-index:9999;max-height:240px;overflow:auto;border:1px solid var(--border,#2a2a2a);background:var(--bg,#111);box-shadow:0 2px 10px rgba(0,0,0,.25)';
+      hostEl.appendChild(menu);
+    }
+  
+    function loadHist(){
+      try{
+        const arr = JSON.parse(localStorage.getItem(histKey())||'[]')||[];
+        return arr.filter(x=>x && (x.title || x.content || (Array.isArray(x.tags)&&x.tags.length)));
+      }catch{ return []; }
+    }
+    function hide(){ menu.style.display='none'; menu.innerHTML=''; }
+    function show(){
+      const list = loadHist();
+      if (!list.length) return hide();
+      menu.innerHTML = list.map((h,i)=>{
+        const dt = h.ts ? new Date(h.ts).toLocaleString() : '';
+        const title = (h.title||'Sans titre').replace(/</g,'&lt;');
+        const prev  = (h.content||'').replace(/</g,'&lt;');
+        const tagz  = Array.isArray(h.tags)&&h.tags.length ? h.tags.map(t=>`#${t}`).join(' ') : '';
+        return `
+        <div class="opt" data-i="${i}" style="padding:8px 10px;cursor:pointer;border-bottom:1px dashed #2a2a2a">
+          <div style="display:flex;justify-content:space-between;gap:8px">
+            <div style="font-weight:600">${title}</div>
+            ${dt?`<div style="font-size:11px;opacity:.6">${dt}</div>`:''}
+          </div>
+          ${prev?`<div style="font-size:12px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${prev}</div>`:''}
+          ${tagz?`<div style="font-size:11px;opacity:.6">${tagz}</div>`:''}
+        </div>`;
+      }).join('');
+  
+      const r = ta.getBoundingClientRect();
+      const hr = hostEl.getBoundingClientRect();
+      menu.style.left = (r.left - hr.left) + 'px';
+      menu.style.top  = (r.bottom - hr.top + 4) + 'px';
+      menu.style.width= r.width + 'px';
+      menu.style.display = 'block';
+    }
+  
+    ta.addEventListener('focus', show);
+    ta.addEventListener('click', show);
+    hostEl.addEventListener('click', (ev)=>{
+      const opt = ev.target.closest('.opt');
+      if (opt){
+        const list = loadHist();
+        const h = list[parseInt(opt.dataset.i,10)];
+        if (h){
+          hostEl.querySelector('#charter-title')?.value   = h.title||'';
+          hostEl.querySelector('#charter-content')?.value = h.content||'';
+          hostEl.querySelector('#charter-tags')?.value    = Array.isArray(h.tags)? h.tags.join(', ') : (h.tags||'');
+          hostEl.querySelector('#charter-content')?.dispatchEvent(new Event('input',{bubbles:true}));
+        }
+        hide();
+      }else if (!ev.target.closest('#dl-like-content') && ev.target!==ta){
+        hide();
+      }
+    });
+  })();
+
   
   
   
@@ -779,6 +847,17 @@ function histKey(){
       if (dlg?.showModal) dlg.showModal();
       return;
     }
+    if (btn.dataset.action === 'prop-preview'){
+      const id = btn.dataset.propId;
+      const ch = (typeof getCharter==='function') ? getCharter() : (JSON.parse(localStorage.getItem('paria.charter')||'{}'));
+      const pr = (ch?.ai||[]).find(x=>String(x.id)===String(id));
+      const txt = pr?.prompt || '(prompt indisponible)';
+      const dlg = host.querySelector('#charter-preview-modal,#charter-preview-dialog');
+      const pre = host.querySelector('#charter-preview-pre');
+      if (pre) pre.textContent = txt;
+      if (dlg?.showModal) dlg.showModal();
+      return;
+    }
 
     if (btn.dataset.action==='prop-delete') removeCharterAI(id);
     if (btn.dataset.action==='prop-think')  toggleCharterAIStatus(id,'think');
@@ -807,6 +886,7 @@ function histKey(){
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
