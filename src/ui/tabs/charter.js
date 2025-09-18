@@ -251,7 +251,89 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   if (_saved) fillCharter(host, _saved);
   // init history datalist pour le contenu
   attachContentHistoryDatalist(host);
+
+  // TITRE & TAGS → datalists
+  (function ensureDatalists(){
+    const hist = _loadHistory();
+    const titles = [...new Set(hist.map(h=>h.title).filter(Boolean))].slice(0,30);
+    const tags   = [...new Set(hist.flatMap(h=>Array.isArray(h.tags)?h.tags:[]) )].slice(0,50);
   
+    let dlTitle = host.querySelector('#dl-charter-title');
+    if (!dlTitle){ dlTitle = document.createElement('datalist'); dlTitle.id = 'dl-charter-title'; host.appendChild(dlTitle); }
+    dlTitle.innerHTML = titles.map(t=>`<option value="${t.replace(/"/g,'&quot;')}"></option>`).join('');
+    const iTitle = host.querySelector('#charter-title');
+    if (iTitle && !iTitle.getAttribute('list')) iTitle.setAttribute('list','dl-charter-title');
+  
+    let dlTags = host.querySelector('#dl-charter-tags');
+    if (!dlTags){ dlTags = document.createElement('datalist'); dlTags.id = 'dl-charter-tags'; host.appendChild(dlTags); }
+    dlTags.innerHTML = tags.map(t=>`<option value="${t.replace(/"/g,'&quot;')}"></option>`).join('');
+    const iTags = host.querySelector('#charter-tags');
+    if (iTags && !iTags.getAttribute('list')) iTags.setAttribute('list','dl-charter-tags');
+  })();
+  
+  // CONTENU → menu options (style datalist), s'affiche seulement s'il y a des entrées
+  (function ensureContentMenu(){
+    const ta = host.querySelector('#charter-content');
+    if (!ta) return;
+  
+    let menu = host.querySelector('#dl-like-content');
+    if (!menu){
+      menu = document.createElement('div');
+      menu.id = 'dl-like-content';
+      menu.style.cssText = 'position:absolute;display:none;z-index:9999;max-height:240px;overflow:auto;border:1px solid var(--border,#2a2a2a);background:var(--bg,#111);box-shadow:0 2px 10px rgba(0,0,0,.25)';
+      host.appendChild(menu);
+    }
+  
+    function hide(){ menu.style.display='none'; menu.innerHTML=''; }
+    function show(){
+      const hist = _loadHistory();
+      if (!hist.length) return hide();
+  
+      menu.innerHTML = hist.map((h,i)=>{
+        const dt = h.ts ? new Date(h.ts).toLocaleString() : '';
+        const title = (h.title||'Sans titre').replace(/</g,'&lt;');
+        const prev  = (h.content||'').replace(/</g,'&lt;');
+        const tagz  = Array.isArray(h.tags)&&h.tags.length ? h.tags.map(t=>`#${t}`).join(' ') : '';
+        return `
+        <div class="opt" data-i="${i}" style="padding:8px 10px;cursor:pointer;border-bottom:1px dashed #2a2a2a">
+          <div style="display:flex;justify-content:space-between;gap:8px">
+            <div style="font-weight:600">${title}</div>
+            ${dt?`<div style="font-size:11px;opacity:.6">${dt}</div>`:''}
+          </div>
+          ${prev?`<div style="font-size:12px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${prev}</div>`:''}
+          ${tagz?`<div style="font-size:11px;opacity:.6">${tagz}</div>`:''}
+        </div>`;
+      }).join('');
+  
+      const r = ta.getBoundingClientRect();
+      const hr = host.getBoundingClientRect();
+      menu.style.left = (r.left - hr.left) + 'px';
+      menu.style.top  = (r.bottom - hr.top + 4) + 'px';
+      menu.style.width= r.width + 'px';
+      menu.style.display = 'block';
+    }
+  
+    ta.addEventListener('focus', show);
+    ta.addEventListener('click', show);
+    host.addEventListener('click', (ev)=>{
+      const opt = ev.target.closest('.opt');
+      if (opt){
+        const hist = _loadHistory();
+        const h = hist[parseInt(opt.dataset.i,10)];
+        if (h){
+          host.querySelector('#charter-title')?.value   = h.title||'';
+          host.querySelector('#charter-content')?.value = h.content||'';
+          host.querySelector('#charter-tags')?.value    = Array.isArray(h.tags)? h.tags.join(', ') : (h.tags||'');
+          // autosave
+          host.querySelector('#charter-content')?.dispatchEvent(new Event('input',{bubbles:true}));
+        }
+        hide();
+      }else if (!ev.target.closest('#dl-like-content') && ev.target!==ta){
+        hide();
+      }
+    });
+  })();
+
   // --- Menu flottant Historique (textarea "Contenu") ---
   (function setupContentHistoryMenu(){
     const ta = host.querySelector('#charter-content');
@@ -281,7 +363,48 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         return `charter.history.${workId}`;
       }catch{ return 'charter.history.default'; }
     }
+
+    function _histKey(){
+      try{
+        const s = (window.paria && window.paria.settings) ? window.paria.settings : JSON.parse(localStorage.getItem('paria.settings')||'{}');
+        const w = (window.paria && window.paria.work && window.paria.work.current && window.paria.work.current.workId)
+          || [s?.client,s?.service,s?.date].filter(Boolean).join('|')
+          || 'default';
+        return `charter.history.${w}`;
+      }catch{ return 'charter.history.default'; }
+    }
     
+    function saveCharterHistory(v){
+      try{
+        const k = _histKey();
+        const norm = {
+          title: String(v?.title||'').trim(),
+          content: String(v?.content||''),
+          tags: Array.isArray(v?.tags) ? v.tags.filter(Boolean)
+               : String(v?.tags||'').split(',').map(s=>s.trim()).filter(Boolean),
+          ts: Date.now()
+        };
+        let arr = JSON.parse(localStorage.getItem(k)||'[]');
+        const sig = (x)=>`${x.title}|${x.content.slice(0,120)}|${x.tags.join(',')}`;
+        const seen = new Set();
+        arr = [norm, ...arr].filter(x=>{
+          if (!x) return false;
+          const s = sig(x);
+          if (seen.has(s)) return false;
+          seen.add(s);
+          return (x.title || x.content || (Array.isArray(x.tags)&&x.tags.length));
+        }).slice(0,30);
+        localStorage.setItem(k, JSON.stringify(arr));
+      }catch{}
+    }
+    
+    function _loadHistory(){
+      try{
+        const arr = JSON.parse(localStorage.getItem(_histKey())||'[]')||[];
+        return arr.filter(x=>x && (x.title || x.content || (Array.isArray(x.tags)&&x.tags.length)));
+      }catch{ return []; }
+    }
+
     function loadHist(){
       try{
         const raw = JSON.parse(localStorage.getItem(histKey())||'[]');
@@ -643,6 +766,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
