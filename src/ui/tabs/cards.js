@@ -96,6 +96,88 @@ function renderCardsGrid(cards){
   grid.innerHTML = (cards||[]).map(renderCard).join('');
 }
 
+function download(filename, text, type='text/plain'){
+  const blob = new Blob([text], {type});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+}
+
+function cardToMarkdown(c){
+  const tags = (c.tags||[]).map(t=>`#${t}`).join(' ');
+  return `# ${c.title||'Sans titre'}\n\n${c.content||''}\n\n${tags?`\n${tags}\n`:''}`;
+}
+function cardToHTML(c){
+  const tags = (c.tags||[]).map(t=>`#${t}`).join(' ');
+  const esc = s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  return `<!doctype html><meta charset="utf-8">
+  <title>${esc(c.title||'Sans titre')}</title>
+  <style>
+    body{font:14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Arial; padding:24px; color:#111}
+    .meta{opacity:.7;font-size:12px;margin-bottom:8px}
+    h1{font-size:20px;margin:0 0 12px 0}
+    pre{white-space:pre-wrap}
+    @media print{ @page { margin: 12mm; } }
+  </style>
+  <div class="meta">#${c.id} — ${fmtTs(c.created_ts)}</div>
+  <h1>${esc(c.title||'Sans titre')}</h1>
+  <pre>${esc(c.content||'')}</pre>
+  ${tags?`<div class="meta">${esc(tags)}</div>`:''}`;
+}
+function cardPrint(c){
+  const w = window.open('', '_blank');
+  w.document.write(cardToHTML(c));
+  w.document.close();
+  w.focus();
+  w.print(); // l’utilisateur choisit “Enregistrer en PDF” si besoin
+}
+
+host.addEventListener('click', (ev)=>{
+  const btn = ev.target.closest('[data-action]');
+  if (!btn) return;
+  const cardEl = btn.closest('.card');
+  const id = cardEl?.getAttribute('data-card-id');
+  const b = readClientBlob();
+  const c = (b.cards||[]).find(x=>String(x.id)===String(id));
+  if (!c) return;
+
+  if (btn.dataset.action==='card-soft-delete'){
+    const del = !(c?.state?.deleted);
+    softDeleteCard(id, del);
+    cardEl.classList.toggle('is-deleted', del);
+    btn.textContent = del ? 'Restaurer' : 'Supprimer';
+    return;
+  }
+  if (btn.dataset.action==='card-export-md'){
+    download(`card-${id}.md`, cardToMarkdown(c), 'text/markdown');
+    return;
+  }
+  if (btn.dataset.action==='card-export-html'){
+    download(`card-${id}.html`, cardToHTML(c), 'text/html');
+    return;
+  }
+  if (btn.dataset.action==='card-export-pdf'){
+    cardPrint(c);
+    return;
+  }
+  if (btn.dataset.action==='card-import-md'){
+    const md = prompt('Colle ici le Markdown du client :');
+    if (md!=null){
+      c.content = md;
+      writeClientBlob(b);
+      // si tu as un détail “preview”, rafraîchis-le ici
+    }
+    return;
+  }
+  if (btn.dataset.action==='card-import-html'){
+    const html = prompt('Colle ici le HTML du client (source de confiance) :');
+    if (html!=null){
+      c.content_html = html; // stocke séparément si tu affiches différemment
+      writeClientBlob(b);
+    }
+    return;
+  }
+});
+
 export function mountCardsTab(host = document.getElementById('tab-cards')){
   if (!host) return;
   host.innerHTML = html();
@@ -163,5 +245,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
