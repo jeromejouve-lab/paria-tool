@@ -587,20 +587,15 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   
   
   
-  
-  
-  
-  
-  
-  
 
-
-  
   function loadCharter(){
-    try{ return JSON.parse(localStorage.getItem('paria.charter')||'null'); }catch{ return null; }
+    try{
+      // Aligne la lecture sur l’écriture de saveCharter() (blob workId)
+      return (typeof getCharter==='function')
+        ? getCharter()
+        : JSON.parse(localStorage.getItem('paria.charter')||'null');
+    }catch{ return null; }
   }
-  // history par workId (pour datalist de contenu)
-
 
   
 
@@ -637,12 +632,17 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     //    on ne touche pas ici, c’est géré par setupContentHistoryMenu()
   }
 
-  // --- history (dernieres saisies) --- //
-  function histKey(){
-    const s = (window.paria && window.paria.settings) ? window.paria.settings : (JSON.parse(localStorage.getItem('paria.settings')||'{}'));
-    const w = (window.paria && window.paria.work) ? window.paria.work : {};
-    const workId = (w && w.current && w.current.workId) || [s?.client,s?.service,s?.date].filter(Boolean).join('|') || 'default';
-    return `charter.history.${workId}`;
+function histKey(){
+    try{
+      const s = (window.paria && window.paria.settings)
+        ? window.paria.settings
+        : JSON.parse(localStorage.getItem('paria.settings')||'{}');
+      const w = (window.paria && window.paria.work) ? window.paria.work : {};
+      const workId = (w && w.current && w.current.workId)
+        || [s?.client, s?.service, s?.date].filter(Boolean).join('|')
+        || 'default';
+      return `charter.history.${workId}`;
+    }catch{ return 'charter.history.default'; }
   }
     
   function saveCharterHistory(entry){
@@ -652,7 +652,8 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       const norm = (x)=>({
         title: (x?.title||'').trim(),
         content: (x?.content||'').trim(),
-        tags: Array.isArray(x?.tags) ? x.tags.filter(Boolean) : String(x?.tags||'').split(',').map(s=>s.trim()).filter(Boolean),
+        tags: Array.isArray(x?.tags) ? x.tags.filter(Boolean)
+              : String(x?.tags||'').split(',').map(s=>s.trim()).filter(Boolean),
         ts: Date.now()
       });
       const rec = norm(entry);
@@ -671,8 +672,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   
   
   
-  
-  
+    
   
   
   
@@ -722,7 +722,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       console.log('[Charter][norm]', norm);
       
       if (norm.status === 'ok' && norm.results?.length){
-        applyAIResults({kind:'charter'}, norm.results, {mode:'append'});
+       
         // 1) prompt réellement utilisé
         const promptUsed = buildCharterPrompt(vals);
 
@@ -807,6 +807,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
