@@ -259,74 +259,74 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   attachContentHistoryDatalist(host);
 
   // Bouton "Aperçu du prompt" placé à côté de "Analyser" si présent
-(() => {
-  const actionsRow = host.querySelector('.actions, .row.actions, .charter-actions') || host; // cherche ta barre d'actions
-  const btnPreview = document.createElement('button');
-  btnPreview.id = 'btn-charter-preview';
-  btnPreview.type = 'button';
-  btnPreview.textContent = 'Aperçu du prompt';
-  btnPreview.className = 'btn';
-  actionsRow.appendChild(btnPreview);
-
-  // Modal léger (HTML <dialog>)
-  let dlg = host.querySelector('#charter-preview-modal');
-  if (!dlg) {
-    dlg = document.createElement('dialog');
-    dlg.id = 'charter-preview-modal';
-    dlg.style.width = 'min(900px, 90vw)';
-    dlg.innerHTML = `
-      <form method="dialog" style="margin:0;padding:0">
-        <header style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0">
-          <h3 style="margin:0;font-size:1.05rem">Aperçu du prompt</h3>
-          <div>
-            <button id="btn-copy-preview" type="button" class="btn">Copier</button>
-            <button value="close" class="btn">Fermer</button>
-          </div>
-        </header>
-        <pre id="charter-preview-pre" style="white-space:pre-wrap;background:#0f0f13;border:1px solid #2a2a31;border-radius:8px;padding:12px;max-height:60vh;overflow:auto;margin:0"></pre>
-      </form>
-    `;
-    host.appendChild(dlg);
-  }
-
-  const pre = dlg.querySelector('#charter-preview-pre');
-  const btnCopy = dlg.querySelector('#btn-copy-preview');
-  const pv = document.querySelector('#charter-prompt-preview') || document.querySelector('.charter-prompt-preview');
-  if (pv) pv.style.display = 'none';
-
-  btnPreview.onclick = () => {
-    try{
-      let txt = '';
-      try {
-        const ch = (typeof getCharter==='function') ? getCharter() : null;
-        if (ch && ch.last_prompt) txt = ch.last_prompt;
-      } catch {}
-      if (!txt || !txt.trim()){
-        try { txt = buildPromptPreviewFromScreen(host) || ''; } catch {}
-      }
-      if (!txt || !txt.trim()){
-        const v = getVals(host);
-        txt = buildCharterPrompt(v);
-      }
-      pre.textContent = txt || '(vide)';
-      dlg.showModal();
+  (() => {
+    const actionsRow = host.querySelector('.actions, .row.actions, .charter-actions') || host; // cherche ta barre d'actions
+    const btnPreview = document.createElement('button');
+    btnPreview.id = 'btn-charter-preview';
+    btnPreview.type = 'button';
+    btnPreview.textContent = 'Aperçu du prompt';
+    btnPreview.className = 'btn';
+    actionsRow.appendChild(btnPreview);
   
-    }catch(e){
-      console.error('[Charter][Preview] error', e);
-      pre.textContent = 'Erreur lors de la génération du prompt (voir console).';
-      dlg.showModal();
+    // Modal léger (HTML <dialog>)
+    let dlg = host.querySelector('#charter-preview-modal');
+    if (!dlg) {
+      dlg = document.createElement('dialog');
+      dlg.id = 'charter-preview-modal';
+      dlg.style.width = 'min(900px, 90vw)';
+      dlg.innerHTML = `
+        <form method="dialog" style="margin:0;padding:0">
+          <header style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0">
+            <h3 style="margin:0;font-size:1.05rem">Aperçu du prompt</h3>
+            <div>
+              <button id="btn-copy-preview" type="button" class="btn">Copier</button>
+              <button value="close" class="btn">Fermer</button>
+            </div>
+          </header>
+          <pre id="charter-preview-pre" style="white-space:pre-wrap;background:#0f0f13;border:1px solid #2a2a31;border-radius:8px;padding:12px;max-height:60vh;overflow:auto;margin:0"></pre>
+        </form>
+      `;
+      host.appendChild(dlg);
     }
-  };
-
-  btnCopy.onclick = async () => {
-    try{
-      await navigator.clipboard.writeText(pre.textContent || '');
-      const t=btnCopy.textContent; btnCopy.textContent='Copié ✓'; setTimeout(()=>btnCopy.textContent=t, 1000);
-    }catch(e){
-      console.warn('Clipboard error', e);
-    }
-  };
-})();
+  
+    const pre = dlg.querySelector('#charter-preview-pre');
+    const btnCopy = dlg.querySelector('#btn-copy-preview');
+    const pv = document.querySelector('#charter-prompt-preview') || document.querySelector('.charter-prompt-preview');
+    if (pv) pv.style.display = 'none';
+  
+    btnPreview.onclick = () => {
+      try{
+        let txt = '';
+        try {
+          const ch = (typeof getCharter==='function') ? getCharter() : null;
+          if (ch && ch.last_prompt) txt = ch.last_prompt;
+        } catch {}
+        if (!txt || !txt.trim()){
+          try { txt = buildPromptPreviewFromScreen(host) || ''; } catch {}
+        }
+        if (!txt || !txt.trim()){
+          const v = getVals(host);
+          txt = buildCharterPrompt(v);
+        }
+        pre.textContent = txt || '(vide)';
+        dlg.showModal();
+    
+      }catch(e){
+        console.error('[Charter][Preview] error', e);
+        pre.textContent = 'Erreur lors de la génération du prompt (voir console).';
+        dlg.showModal();
+      }
+    };
+  
+    btnCopy.onclick = async () => {
+      try{
+        await navigator.clipboard.writeText(pre.textContent || '');
+        const t=btnCopy.textContent; btnCopy.textContent='Copié ✓'; setTimeout(()=>btnCopy.textContent=t, 1000);
+      }catch(e){
+        console.warn('Clipboard error', e);
+      }
+    };
+  })();
 
   bindClientProfile(host); // remplissage + autosave du Profil Client
 
@@ -449,7 +449,6 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       localStorage.setItem(k, JSON.stringify(arr));
     }catch{}
   }
-    
     
   // --- Menu d'historique pour <textarea id="charter-content"> ---
   (function ensureContentMenu(){
@@ -655,3 +654,4 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
