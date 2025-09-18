@@ -135,7 +135,7 @@ function renderProposals(ch){
             <h4 class="proposal-title" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
               <span>${esc(p.title||'')}</span>
               <span style="display:flex;gap:8px;align-items:center">
-                ${p.ts?`<span class="muted" style="font-size:11px;opacity:.65">${new Date(p.ts).toLocaleString()}</span>`:''}
+                ${p.ts?`<span class="prop-ts" style="font-size:11px;opacity:.65">${new Date(p.ts).toLocaleString()}</span>`:''}
                 <button class="btn btn-xs" data-action="prop-preview" data-prop-id="${p.id}">Aperçu du prompt</button>
               </span>
             </h4>
@@ -258,16 +258,16 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
   // MIGRATION: garantir id/ts/prompt sur les propositions déjà stockées
   try{
-    const ch0 = getCharter() || {};
+    const ch0 = (typeof getCharter==='function') ? getCharter() : {};
     if (Array.isArray(ch0.ai) && ch0.ai.length){
-      let changed = false;
+      let changed=false;
       const lp = ch0.last_prompt || '';
-      ch0.ai.forEach((p, idx)=>{
-        if (!p.id){ p.id = String(Date.now())+'-'+idx; changed = true; }
-        if (!p.ts){ p.ts = Date.now(); changed = true; }
-        if (!p.prompt && lp){ p.prompt = lp; changed = true; }
+      ch0.ai.forEach((p,i)=>{
+        if (!p.id){ p.id = String(Date.now())+'-'+i; changed=true; }
+        if (!p.ts){ p.ts = Date.now(); changed=true; }
+        if (!p.prompt && lp){ p.prompt = lp; changed=true; }
       });
-      if (changed) saveCharter({ ai: ch0.ai });
+      if (changed && typeof saveCharter==='function') saveCharter({ ai: ch0.ai });
     }
   }catch(e){ console.warn('[Charter][MIGRATE ai]', e); }
 
@@ -590,7 +590,24 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         }));
 
         // 3) appliquer + rendre
-        applyAIResults({kind:'charter'}, stamped, {mode:'append'});
+        // prompt réellement utilisé
+        const _vals = (typeof getVals==='function') ? getVals(host) : {
+          title:  host.querySelector('#charter-title')?.value||'',
+          content:host.querySelector('#charter-content')?.value||'',
+          tags:   (host.querySelector('#charter-tags')?.value||'').split(',').map(s=>s.trim()).filter(Boolean)
+        };
+        const _promptUsed = buildCharterPrompt(_vals);
+        
+        // estampiller puis injecter
+        const _src = (norm && Array.isArray(norm.results)) ? norm.results : (results||[]);
+        const _stamped = _src.map((p,i)=>({
+          ...p,
+          id: p.id ?? (Date.now()+'-'+i),
+          ts: Date.now(),
+          prompt: p.prompt || _promptUsed
+        }));
+        applyAIResults({kind:'charter'}, _stamped, {mode:'append'});
+
         $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
         $status.textContent = `✅ ${stamped.length} proposition(s) · ${ts.toLocaleTimeString()}`;
 
@@ -622,16 +639,123 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     const id = ev.target.closest('[data-id]')?.dataset?.id; if (!id) return;
     setCharterAISelected(id, chk.checked);
   });
+  // --- Prompt Overlay (singleton) ---
+  const PromptOverlay = (() => {
+    const LSKEY = 'paria.promptOverlay.v1';
+    const clamp = (v,min,max)=>Math.max(min, Math.min(max, v));
+    const load = ()=>{ try{return JSON.parse(localStorage.getItem(LSKEY)||'{}');}catch{ return {}; } };
+    const save = (st)=>{ try{ localStorage.setItem(LSKEY, JSON.stringify(st)); }catch{} };
+  
+    function ensure(){
+      // reset si structure incomplète
+      let root = document.getElementById('prompt-overlay');
+      if (root && !root.querySelector('#prompt-overlay-panel')) { try{ root.remove(); }catch{} root=null; }
+  
+      if (!root){
+        root = document.createElement('div');
+        root.id = 'prompt-overlay';
+        Object.assign(root.style, {position:'fixed', inset:'0', zIndex:'999999', background:'rgba(0,0,0,.6)', display:'none'});
+  
+        const panel = document.createElement('div');
+        panel.id = 'prompt-overlay-panel';
+        Object.assign(panel.style, {
+          position:'fixed', left:'50%', top:'50%', transform:'translate(-50%,-50%)',
+          width:'min(960px,92vw)', height:'min(80vh,calc(100vh - 40px))',
+          background:'#1a1a1a', color:'#eaeaea', border:'1px solid #333',
+          boxShadow:'0 10px 40px rgba(0,0,0,.5)', display:'flex', flexDirection:'column', userSelect:'none'
+        });
+  
+        const head = document.createElement('div');
+        head.id = 'prompt-overlay-head';
+        Object.assign(head.style, {display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px',padding:'10px 12px',borderBottom:'1px solid #2a2a2a',cursor:'move',flex:'0 0 auto'});
+        const h3 = Object.assign(document.createElement('h3'), {textContent:'Aperçu du prompt'}); h3.style.margin='0';
+        const btn = Object.assign(document.createElement('button'), {textContent:'Fermer'}); btn.style.cssText='padding:6px 10px'; btn.onclick = ()=> hide();
+        head.append(h3, btn);
+  
+        const pre = document.createElement('pre');
+        pre.id = 'prompt-overlay-pre';
+        Object.assign(pre.style, {whiteSpace:'pre-wrap',margin:'0',padding:'12px',overflow:'auto',flex:'1 1 auto',font:'13px/1.45 ui-monospace,Menlo,Consolas,monospace',background:'transparent',color:'#eaeaea'});
+  
+        const grip = document.createElement('div');
+        grip.id = 'prompt-overlay-resize';
+        Object.assign(grip.style, {position:'absolute',right:'0',bottom:'0',width:'18px',height:'18px',cursor:'nwse-resize',background:'linear-gradient(135deg, transparent 50%, #666 50%)'});
+  
+        panel.append(head, pre, grip);
+        root.append(panel);
+        root.addEventListener('click', (e)=>{ if(e.target===root) hide(); });
+        document.body.append(root);
+      }
+  
+      // taille/position persistées (recentrage si off-screen)
+      const st = Object.assign({left:null, top:null, width:null, height:null}, load());
+      const panel = document.getElementById('prompt-overlay-panel');
+      const vw = innerWidth, vh = innerHeight;
+      const defW = Math.min(960, vw*0.92), defH = Math.min(vh*0.8, vh-40);
+      const W = clamp(st.width ?? defW, 420, vw-20);
+      const H = clamp(st.height ?? defH, 260, vh-20);
+      panel.style.width = W+'px'; panel.style.height = H+'px';
+      if (st.left!=null && st.top!=null){
+        panel.style.transform = 'none';
+        panel.style.left = clamp(st.left, 10, Math.max(10, vw - W - 10))+'px';
+        panel.style.top  = clamp(st.top , 10, Math.max(10, vh - H - 10))+'px';
+      } else {
+        panel.style.left = '50%'; panel.style.top = '50%'; panel.style.transform = 'translate(-50%,-50%)';
+      }
+  
+      // drag + resize
+      let drag=null, rez=null;
+      const head = document.getElementById('prompt-overlay-head');
+      const pre  = document.getElementById('prompt-overlay-pre');
+      const grip = document.getElementById('prompt-overlay-resize');
+  
+      function onMove(e){
+        if (drag){
+          const nx = clamp(drag.x + (e.clientX - drag.sx), 10, Math.max(10, innerWidth  - drag.w - 10));
+          const ny = clamp(drag.y + (e.clientY - drag.sy), 10, Math.max(10, innerHeight - drag.h - 10));
+          panel.style.left = nx+'px'; panel.style.top = ny+'px';
+        } else if (rez){
+          panel.style.width  = clamp(rez.w + (e.clientX - rez.sx), 420, innerWidth  - 20)+'px';
+          panel.style.height = clamp(rez.h + (e.clientY - rez.sy), 260, innerHeight - 20)+'px';
+        }
+      }
+      function onUp(){
+        if (drag || rez){
+          const r = panel.getBoundingClientRect();
+          save({left:Math.round(r.left), top:Math.round(r.top), width:Math.round(r.width), height:Math.round(r.height)});
+        }
+        drag=rez=null; removeEventListener('mousemove', onMove); removeEventListener('mouseup', onUp);
+      }
+      head.onmousedown = (e)=>{ e.preventDefault();
+        const r = panel.getBoundingClientRect();
+        panel.style.transform = 'none'; panel.style.left = r.left+'px'; panel.style.top = r.top+'px';
+        drag = {sx:e.clientX, sy:e.clientY, x:r.left, y:r.top, w:r.width, h:r.height};
+        addEventListener('mousemove', onMove); addEventListener('mouseup', onUp);
+      };
+      grip.onmousedown = (e)=>{ e.preventDefault(); e.stopPropagation();
+        const r = panel.getBoundingClientRect();
+        panel.style.transform = 'none'; panel.style.left = r.left+'px'; panel.style.top = r.top+'px';
+        rez = {sx:e.clientX, sy:e.clientY, w:r.width, h:r.height};
+        addEventListener('mousemove', onMove); addEventListener('mouseup', onUp);
+      };
+  
+      root.addEventListener('wheel', (e)=>e.stopPropagation(), {passive:false});
+      pre.addEventListener('wheel', (e)=>e.stopPropagation(), {passive:true});
+      return root;
+    }
+    function show(text){ const root = ensure(); const pre = document.getElementById('prompt-overlay-pre'); pre.textContent = text || '(vide)'; root.style.display='block'; document.documentElement.style.overflow='hidden'; }
+    function hide(){ const root = document.getElementById('prompt-overlay'); if (root) root.style.display='none'; document.documentElement.style.overflow=''; }
+    return { show, hide };
+  })();
+
   host.addEventListener('click', (ev)=>{
     const btn = ev.target.closest('[data-action]'); if (!btn) return;
     const id = btn.closest('[data-id]')?.dataset?.id; if (!id) return;
     if (btn.dataset.action === 'prop-preview'){
-      const ch = getCharter()||{};
+      const id = btn.dataset.propId || btn.closest('.proposal')?.getAttribute('data-id') || btn.closest('[data-id]')?.getAttribute('data-id');
+      const ch = (typeof getCharter==='function') ? getCharter() : {};
       const pr = (ch.ai||[]).find(x=>String(x.id)===String(id));
-      const dlg = host.querySelector('#charter-preview-modal');
-      const pre = host.querySelector('#charter-preview-pre');
-      if (pre) pre.textContent = pr?.prompt || '(prompt indisponible)';
-      if (dlg?.showModal) dlg.showModal();
+      const txt = pr?.prompt || ch?.last_prompt || '(prompt indisponible)';
+      PromptOverlay.show(txt);
       return;
     }
   
@@ -662,6 +786,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
