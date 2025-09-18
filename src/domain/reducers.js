@@ -45,30 +45,33 @@ export function toggleCharterAIStatus(aiId,key){ const b=readClientBlob(); b.cha
 export function removeCharterAI(aiId){ const b=readClientBlob(); b.charter.ai=(b.charter.ai||[]).map(p=>p.id===aiId?({...p,state:{...(p.state||{}),deleted:true,updated_ts:Date.now()}}):p); writeClientBlob(b); logEvent('charter/ai-remove',{kind:'charter',id:'_'},{aiId}); return true; }
 export function pushSelectedCharterToCards(){
   const b = readClientBlob();
-  const sel = (b.charter.ai||[]).filter(p => p?.state?.selected && !p?.state?.deleted);
-  let count = 0;
+  const sel = (b.charter?.ai||[]).filter(p => p?.state?.selected && !p?.state?.deleted);
 
+  if (!sel.length) return 0;
+
+  let count = 0;
   for (const p of sel){
-    // 1) créer une NOUVELLE card
+    // 1) nouvelle card à chaque envoi
     const id = createCard({
       title:   p.title   || '',
       content: p.content || '',
       tags:    Array.isArray(p.tags) ? p.tags : []
     });
 
-    // 2) propager ts + statut "penser" + origine
+    // 2) propagation des méta
     updateCard(id, {
-      created_ts: p.ts || Date.now(),
-      origin: { kind:'charter', ai_id:String(p.id||''), pushed_ts: Date.now() },
-      state: { think: !!(p?.state?.think) }
+      created_ts: p.ts || Date.now(),            // ← timestamp de la proposition
+      state: { think: !!(p?.state?.think) },     // ← “penser”
+      origin: { kind:'charter', ai_id:String(p.id||''), pushed_ts: Date.now() }
     });
 
     count++;
   }
 
-  logEvent('charter/push-to-cards', {kind:'charter', id:'_'}, {count});
+  logEvent?.('charter/push-to-cards', {count});
   return count;
 }
+
 
 export function restoreCharter(){ const b=readClientBlob(); b.charter.state={...(b.charter?.state||{}),deleted:false,updated_ts:Date.now()}; writeClientBlob(b); logEvent('charter/restore',{kind:'charter',id:'_'}); return true; }
 
@@ -115,5 +118,6 @@ export async function bootstrapWorkspaceIfNeeded(client, service){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
