@@ -231,15 +231,6 @@ function html(ch){
   </div>`;
 }
 
-function getVals(root){
-  return {
-    title:  (root.querySelector('#charter-title')?.value || '').trim(),
-    content:(root.querySelector('#charter-content')?.value || ''),
-    tags:   (root.querySelector('#charter-tags')?.value || '')
-             .split(',').map(s=>s.trim()).filter(Boolean)
-  };
-}
-
 function fillCharter(root, vals){
   if (!vals) return;
   const $t = root.querySelector('#charter-title');
@@ -290,9 +281,21 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         return `charter.history.${workId}`;
       }catch{ return 'charter.history.default'; }
     }
+    
     function loadHist(){
-      try{ return JSON.parse(localStorage.getItem(histKey())||'[]'); }catch{ return []; }
+      try{
+        const raw = JSON.parse(localStorage.getItem(histKey())||'[]');
+        // Ne garder que les entrées “utiles”
+        return raw.filter(x=>{
+          if (!x) return false;
+          const hasTitle = !!(x.title && String(x.title).trim());
+          const hasContent = !!(x.content && String(x.content).trim());
+          const hasTags = Array.isArray(x.tags) ? x.tags.filter(Boolean).length>0 : false;
+          return hasTitle || hasContent || hasTags;
+        });
+      }catch{ return []; }
     }
+    
     function showMenu(){
       const list = loadHist();
       if (!list.length) return hideMenu();
@@ -611,6 +614,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
