@@ -507,11 +507,12 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       }).join('');
   
       const r = ta.getBoundingClientRect();
-      const hr = hostEl.getBoundingClientRect();
-      menu.style.left = (r.left - hr.left) + 'px';
-      menu.style.top  = (r.bottom - hr.top + 4) + 'px';
+      menu.style.position = 'fixed';
+      menu.style.left = r.left + 'px';
+      menu.style.top  = (r.bottom + 6) + 'px';
       menu.style.width= r.width + 'px';
       menu.style.display = 'block';
+
     }
   
     ta.addEventListener('focus', show);
@@ -751,7 +752,12 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     const btn = ev.target.closest('[data-action]'); if (!btn) return;
     const id = btn.closest('[data-id]')?.dataset?.id; if (!id) return;
     if (btn.dataset.action === 'prop-preview'){
-      const id = btn.dataset.propId || btn.closest('.proposal')?.getAttribute('data-id') || btn.closest('[data-id]')?.getAttribute('data-id');
+      // ⛔️ ignorer l’ancien bouton bas (dans .actions)
+      if (btn.closest('.actions')) return;
+    
+      const id = btn.dataset.propId
+          || btn.closest('.proposal')?.getAttribute('data-id')
+          || btn.closest('[data-id]')?.getAttribute('data-id');
       const ch = (typeof getCharter==='function') ? getCharter() : {};
       const pr = (ch.ai||[]).find(x=>String(x.id)===String(id));
       const txt = pr?.prompt || ch?.last_prompt || '(prompt indisponible)';
@@ -786,6 +792,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
