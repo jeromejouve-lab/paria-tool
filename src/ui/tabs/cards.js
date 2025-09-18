@@ -4,65 +4,15 @@ import {
   addNote, addComment, addAItoCard
 } from '../../domain/reducers.js';
 import { askAI } from '../../core/ai.js';
+import { updateCard, softDeleteCard } from "../domain/reducers.js";
+
 
 const $ = (s,r=document)=>r.querySelector(s);
-
-function renderCard(c){
-  const notes = (c.notes||[]).map(n=>`<li><b>${n.author||'—'}</b> — ${n.text||''}</li>`).join('') || '<li class="muted">—</li>';
-  const comments = (c.comments||[]).map(n=>`<li><b>${n.author||'—'}</b> — ${n.text||''}</li>`).join('') || '<li class="muted">—</li>';
-  const ai = (c.ai||[]).filter(a=>!a?.state?.deleted).map(a=>`
-      <li data-ai-id="${a.id}">
-        <div><b>${a.title||''}</b> ${a.tags?.length? a.tags.map(t=>`<span class="tag">#${t}</span>`).join(' '):''}</div>
-        <div>${(a.content||'').replace(/\n/g,'<br>')}</div>
-      </li>
-    `).join('') || '<li class="muted">—</li>';
-
-  return `
-  <article class="card" data-card-id="${c.id}">
-    <header class="row">
-      <h3 class="title">${c.title||'(sans titre)'}</h3>
-      <div class="actions">
-        <button class="icon-think" data-action="card-think" title="À réfléchir">${c?.state?.think?'🤔':'💡'}</button>
-        <button class="icon-trash" data-action="card-delete" title="Supprimer">🗑️</button>
-      </div>
-    </header>
-    <div class="content">${(c.content||'').replace(/\n/g,'<br>')}</div>
-    ${c.tags?.length?`<div class="tags">${c.tags.map(t=>`<span class="tag">#${t}</span>`).join(' ')}</div>`:''}
-
-    <section class="block">
-      <div class="row">
-        <button class="btn" data-action="card-analyze">Analyser (idées)</button>
-      </div>
-      <h4>Propositions IA</h4>
-      <ul class="ai-list">${ai}</ul>
-    </section>
-
-    <section class="block">
-      <h4>Notes</h4>
-      <ul class="notes">${notes}</ul>
-      <form data-form="note" class="inline">
-        <input name="text" type="text" placeholder="Ajouter une note…" required />
-        <select name="author"><option value="moi">moi</option><option value="gpt">gpt</option><option value="client">client</option></select>
-        <button type="submit">Ajouter</button>
-      </form>
-    </section>
-
-    <section class="block">
-      <h4>Commentaires</h4>
-      <ul class="comments">${comments}</ul>
-      <form data-form="comment" class="inline">
-        <input name="text" type="text" placeholder="Ajouter un commentaire…" required />
-        <select name="author"><option value="moi">moi</option><option value="gpt">gpt</option><option value="client">client</option></select>
-        <button type="submit">Commenter</button>
-      </form>
-    </section>
-  </article>`;
-}
 
 function html(){
   const cards = listCards();
   return `
-  <div class="cards">
+  <div id="cards-grid">
     ${cards.length? cards.map(renderCard).join('') : `<div class="muted">— Aucune card.</div>`}
   </div>`;
 }
@@ -89,11 +39,6 @@ function renderCard(c){
       <button class="btn btn-xs" data-action="card-soft-delete">${del?'Restaurer':'Supprimer'}</button>
     </div>
   </article>`;
-}
-
-function renderCardsGrid(cards){
-  const grid = host.querySelector('#cards-grid');
-  grid.innerHTML = (cards||[]).map(renderCard).join('');
 }
 
 function download(filename, text, type='text/plain'){
@@ -130,53 +75,6 @@ function cardPrint(c){
   w.focus();
   w.print(); // l’utilisateur choisit “Enregistrer en PDF” si besoin
 }
-
-host.addEventListener('click', (ev)=>{
-  const btn = ev.target.closest('[data-action]');
-  if (!btn) return;
-  const cardEl = btn.closest('.card');
-  const id = cardEl?.getAttribute('data-card-id');
-  const b = readClientBlob();
-  const c = (b.cards||[]).find(x=>String(x.id)===String(id));
-  if (!c) return;
-
-  if (btn.dataset.action==='card-soft-delete'){
-    const del = !(c?.state?.deleted);
-    softDeleteCard(id, del);
-    cardEl.classList.toggle('is-deleted', del);
-    btn.textContent = del ? 'Restaurer' : 'Supprimer';
-    return;
-  }
-  if (btn.dataset.action==='card-export-md'){
-    download(`card-${id}.md`, cardToMarkdown(c), 'text/markdown');
-    return;
-  }
-  if (btn.dataset.action==='card-export-html'){
-    download(`card-${id}.html`, cardToHTML(c), 'text/html');
-    return;
-  }
-  if (btn.dataset.action==='card-export-pdf'){
-    cardPrint(c);
-    return;
-  }
-  if (btn.dataset.action==='card-import-md'){
-    const md = prompt('Colle ici le Markdown du client :');
-    if (md!=null){
-      c.content = md;
-      writeClientBlob(b);
-      // si tu as un détail “preview”, rafraîchis-le ici
-    }
-    return;
-  }
-  if (btn.dataset.action==='card-import-html'){
-    const html = prompt('Colle ici le HTML du client (source de confiance) :');
-    if (html!=null){
-      c.content_html = html; // stocke séparément si tu affiches différemment
-      writeClientBlob(b);
-    }
-    return;
-  }
-});
 
 export function mountCardsTab(host = document.getElementById('tab-cards')){
   if (!host) return;
@@ -216,7 +114,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     const wrap = ev.target.closest('[data-card-id]'); if (!wrap) return;
     const id = wrap.dataset.cardId;
 
-    if (act.dataset.action==='card-delete'){ softDeleteCard(id); return mountCardsTab(host); }
+    if (act.dataset.action==='card-soft-delete'){ softDeleteCard(id); return mountCardsTab(host); }
     if (act.dataset.action==='card-think'){ toggleThink(id); return mountCardsTab(host); }
     if (act.dataset.action==='card-analyze'){
       const r = await askAI({ mode:'ideas', subject:{kind:'card', id}, payload:{}, context:{ tab:'cards' } });
@@ -241,10 +139,86 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
     f.reset(); mountCardsTab(host);
   });
+  
+  // -- actions sur les petites cards (compact) --
+  const grid = host.querySelector('#cards-grid') || host;
+  grid.addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('[data-action]');
+    if (!btn) return;
+    const cardEl = btn.closest('.card,[data-card-id]');
+    if (!cardEl) return;
+    const id = cardEl.getAttribute('data-card-id');
+  
+    // soft delete / restore
+    if (btn.dataset.action === 'card-soft-delete'){
+      const isDeleted = cardEl.classList.contains('is-deleted');
+      softDeleteCard(id, !isDeleted);
+      cardEl.classList.toggle('is-deleted', !isDeleted);
+      btn.textContent = !isDeleted ? 'Restaurer' : 'Supprimer';
+      return;
+    }
+  
+    // export MD
+    if (btn.dataset.action === 'card-export-md'){
+      const b = readClientBlob();
+      const c = (b.cards||[]).find(x=>String(x.id)===String(id));
+      const tags = (c?.tags||[]).map(t=>`#${t}`).join(' ');
+      const md = `# ${c?.title||'Sans titre'}\n\n${c?.content||''}\n\n${tags?`\n${tags}\n`:''}`;
+      const blob = new Blob([md], {type:'text/markdown'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `card-${id}.md`; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+      return;
+    }
+  
+    // export HTML (+ print/PDF)
+    if (btn.dataset.action === 'card-export-html' || btn.dataset.action === 'card-export-pdf'){
+      const b = readClientBlob();
+      const c = (b.cards||[]).find(x=>String(x.id)===String(id));
+      const esc = s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      const tags = (c?.tags||[]).map(t=>`#${t}`).join(' ');
+      const html = `<!doctype html><meta charset="utf-8">
+  <title>${esc(c?.title||'Sans titre')}</title>
+  <style>
+    body{font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial;padding:24px;color:#111}
+    .meta{opacity:.7;font-size:12px;margin-bottom:8px}
+    h1{font-size:20px;margin:0 0 12px 0}
+    pre{white-space:pre-wrap}
+    @media print{ @page { margin:12mm; } }
+  </style>
+  <div class="meta">#${id} — ${c?.created_ts?new Date(c.created_ts).toLocaleString():''}</div>
+  <h1>${esc(c?.title||'Sans titre')}</h1>
+  <pre>${esc(c?.content||'')}</pre>
+  ${tags?`<div class="meta">${esc(tags)}</div>`:''}`;
+      if (btn.dataset.action === 'card-export-html'){
+        const blob = new Blob([html], {type:'text/html'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `card-${id}.html`; a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+      } else {
+        const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.focus(); w.print();
+      }
+      return;
+    }
+  
+    // import MD
+    if (btn.dataset.action === 'card-import-md'){
+      const md = prompt('Colle ici le Markdown du client :');
+      if (md!=null) updateCard(id, { content: md });
+      return;
+    }
+  
+    // import HTML
+    if (btn.dataset.action === 'card-import-html'){
+      const html = prompt('Colle ici le HTML du client (source de confiance) :');
+      if (html!=null) updateCard(id, { content_html: html });
+      return;
+    }
+  });
+
 }
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
