@@ -113,11 +113,38 @@ export async function bootstrapWorkspaceIfNeeded(client, service){
   return r;
 }
 
+function readClientBlob(){ /* existant */ }
+function writeClientBlob(b){ /* existant */ }
+
+function nextCardId(){
+  const b = readClientBlob();
+  b.seq = b.seq || {};
+  const n = (b.seq.cards_id || 0) + 1;
+  b.seq.cards_id = n;
+  writeClientBlob(b);
+  return n;
+}
+
+export function createCard({title='', content='', tags=[]}){
+  const b = readClientBlob();
+  const c = {
+    id: nextCardId(),
+    title, content, tags,
+    created_ts: Date.now(),
+    state: {}
+  };
+  b.cards = b.cards||[];
+  b.cards.push(c);
+  writeClientBlob(b);
+  return c.id;
+}
+
 /* INDEX
 - Cards CRUD & AI flags, Charter ops, Scenario ops incl. promote
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
