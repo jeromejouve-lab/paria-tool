@@ -522,10 +522,13 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         const list = loadHist();
         const h = list[parseInt(opt.dataset.i,10)];
         if (h){
-          hostEl.querySelector('#charter-title')?.value   = h.title||'';
-          hostEl.querySelector('#charter-content')?.value = h.content||'';
-          hostEl.querySelector('#charter-tags')?.value    = Array.isArray(h.tags)? h.tags.join(', ') : (h.tags||'');
-          hostEl.querySelector('#charter-content')?.dispatchEvent(new Event('input',{bubbles:true}));
+          const _t = hostEl.querySelector('#charter-title');
+          if (_t) _t.value = h.title || '';
+          const _c = hostEl.querySelector('#charter-content');
+          if (_c) _c.value = h.content || '';
+          const _g = hostEl.querySelector('#charter-tags');
+          if (_g) _g.value = Array.isArray(h.tags) ? h.tags.join(', ') : (h.tags || '');
+          if (_c) _c.dispatchEvent(new Event('input', {bubbles:true}));
         }
         hide();
       }else if (!ev.target.closest('#dl-like-content') && ev.target!==ta){
@@ -659,5 +662,6 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
