@@ -100,7 +100,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     grid.id = 'cards-grid';
     root.appendChild(grid);
   }
-  const grid = root.querySelector('#cards-grid');
+  const grid = host.querySelector('#cards-grid') || host;
   grid.style.flex = '1 1 auto';
   grid.style.overflow = 'auto';
 
@@ -139,7 +139,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   });
   
   // -- actions sur les petites cards (compact) --
-  const grid = host.querySelector('#cards-grid') || host;
+
   grid.addEventListener('click', (ev)=>{
     const btn = ev.target.closest('[data-action]');
     if (!btn) return;
@@ -216,6 +216,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
