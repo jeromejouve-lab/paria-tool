@@ -299,12 +299,18 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     function showMenu(){
       const list = loadHist();
       if (!list.length) return hideMenu();
-      menu.innerHTML = list.map((h,i)=>`
-        <div class="hist-item" data-i="${i}" style="padding:6px 8px; cursor:pointer; border-bottom:1px dashed #eee">
-          <div style="font-weight:600">${(h.title||'Sans titre').replace(/</g,'&lt;')}</div>
-          <div style="font-size:12px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${(h.content||'').replace(/</g,'&lt;')}</div>
-          ${Array.isArray(h.tags)&&h.tags.length?`<div style="font-size:11px;opacity:.6">${h.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
-        </div>`).join('');
+      menu.innerHTML = list.map((h,i)=>{
+        const dt = h.ts ? new Date(h.ts).toLocaleString() : '';
+        return `
+          <div class="hist-item" data-i="${i}" style="padding:6px 8px; cursor:pointer; border-bottom:1px dashed #eee">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+              <div style="font-weight:600">${(h.title||'Sans titre').replace(/</g,'&lt;')}</div>
+              ${dt?`<div style="font-size:11px;opacity:.6">${dt}</div>`:''}
+            </div>
+            ${h.content ? `<div style="font-size:12px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h.content.replace(/</g,'&lt;')}</div>` : ''}
+            ${Array.isArray(h.tags)&&h.tags.length?`<div style="font-size:11px;opacity:.6">${h.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
+          </div>`;
+      }).join('');
       const r = ta.getBoundingClientRect();
       const hr = host.getBoundingClientRect();
       menu.style.left = (r.left - hr.left) + 'px';
@@ -378,14 +384,20 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   btnPreview.onclick = () => {
     try{
       let txt = '';
-      try { txt = buildPromptPreviewFromScreen(host) || ''; } catch {}
-      if (!txt.trim()) {
-        // fallback sûr si la lecture “profil+écran” échoue
+      try {
+        const ch = (typeof getCharter==='function') ? getCharter() : null;
+        if (ch && ch.last_prompt) txt = ch.last_prompt;
+      } catch {}
+      if (!txt || !txt.trim()){
+        try { txt = buildPromptPreviewFromScreen(host) || ''; } catch {}
+      }
+      if (!txt || !txt.trim()){
         const v = getVals(host);
         txt = buildCharterPrompt(v);
       }
-      pre.textContent = txt;
+      pre.textContent = txt || '(vide)';
       dlg.showModal();
+  
     }catch(e){
       console.error('[Charter][Preview] error', e);
       pre.textContent = 'Erreur lors de la génération du prompt (voir console).';
@@ -550,6 +562,16 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     const ts = new Date();
     saveCharterHistory(vals);
     saveCharter(vals);
+    // Persister le prompt réellement utilisé pour l’IA
+    try{
+      const lastPrompt = (typeof buildPromptPreviewFromScreen==='function')
+        ? (buildPromptPreviewFromScreen(host) || '')
+        : '';
+      if (lastPrompt && lastPrompt.trim()){
+        saveCharter({ last_prompt: lastPrompt, last_prompt_ts: Date.now() });
+      }
+    }catch{}
+
     attachContentHistoryDatalist(host);
 
     btnGen.disabled = true;
@@ -608,12 +630,20 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     if (btn.dataset.action==='prop-delete') removeCharterAI(id);
     if (btn.dataset.action==='prop-think')  toggleCharterAIStatus(id,'think');
     $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
+    
+    // Si plus aucune proposition active → on efface le dernier prompt
+    try{
+      const ch = getCharter() || {};
+      const left = (ch.ai||[]).filter(p=>!p?.state?.deleted).length;
+      if (!left) saveCharter({ last_prompt: null, last_prompt_ts: null });
+    }catch{}
   });
   attachContentHistoryDatalist(host);
 }
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
