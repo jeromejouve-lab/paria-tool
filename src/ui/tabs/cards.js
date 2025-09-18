@@ -67,6 +67,35 @@ function html(){
   </div>`;
 }
 
+function fmtTs(ts){ try{ return ts ? new Date(ts).toLocaleString() : ''; }catch{ return ''; } }
+
+function renderCard(c){
+  const think = c?.state?.think ? '🤔 ' : '';
+  const del   = c?.state?.deleted;
+  return `
+  <article class="card ${del?'is-deleted':''}" data-card-id="${c.id}">
+    <div class="meta">
+      <span class="id">#${c.id}</span>
+      ${c.tags?.length ? `<span>${c.tags.map(t=>`#${t}`).join(' ')}</span>` : ''}
+      <span class="ts">${fmtTs(c.created_ts || c.ts)}</span>
+    </div>
+    <h4>${think}${(c.title||'Sans titre').replace(/</g,'&lt;')}</h4>
+    <div class="ops">
+      <button class="btn btn-xs" data-action="card-export-md">MD</button>
+      <button class="btn btn-xs" data-action="card-export-html">HTML</button>
+      <button class="btn btn-xs" data-action="card-export-pdf">PDF/Print</button>
+      <button class="btn btn-xs" data-action="card-import-md">Intégrer MD client</button>
+      <button class="btn btn-xs" data-action="card-import-html">Intégrer HTML client</button>
+      <button class="btn btn-xs" data-action="card-soft-delete">${del?'Restaurer':'Supprimer'}</button>
+    </div>
+  </article>`;
+}
+
+function renderCardsGrid(cards){
+  const grid = host.querySelector('#cards-grid');
+  grid.innerHTML = (cards||[]).map(renderCard).join('');
+}
+
 export function mountCardsTab(host = document.getElementById('tab-cards')){
   if (!host) return;
   host.innerHTML = html();
@@ -134,4 +163,5 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
