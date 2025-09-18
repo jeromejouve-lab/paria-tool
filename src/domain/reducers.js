@@ -139,11 +139,58 @@ export function createCard({title='', content='', tags=[]}){
   return c.id;
 }
 
+export function softDeleteCard(id, deleted=true){
+  const b = readClientBlob();
+  const c = (b.cards||[]).find(x=>String(x.id)===String(id));
+  if (!c) return false;
+  c.state = {...(c.state||{}), deleted};
+  b.journal = b.journal||[];
+  b.journal.push({type: deleted?'card.deleted':'card.restored', card_id:id, ts:Date.now()});
+  writeClientBlob(b);
+  return true;
+}
+
+function download(filename, text, type='text/plain'){
+  const blob = new Blob([text], {type});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+}
+
+function cardToMarkdown(c){
+  const tags = (c.tags||[]).map(t=>`#${t}`).join(' ');
+  return `# ${c.title||'Sans titre'}\n\n${c.content||''}\n\n${tags?`\n${tags}\n`:''}`;
+}
+function cardToHTML(c){
+  const tags = (c.tags||[]).map(t=>`#${t}`).join(' ');
+  const esc = s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  return `<!doctype html><meta charset="utf-8">
+  <title>${esc(c.title||'Sans titre')}</title>
+  <style>
+    body{font:14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Arial; padding:24px; color:#111}
+    .meta{opacity:.7;font-size:12px;margin-bottom:8px}
+    h1{font-size:20px;margin:0 0 12px 0}
+    pre{white-space:pre-wrap}
+    @media print{ @page { margin: 12mm; } }
+  </style>
+  <div class="meta">#${c.id} — ${fmtTs(c.created_ts)}</div>
+  <h1>${esc(c.title||'Sans titre')}</h1>
+  <pre>${esc(c.content||'')}</pre>
+  ${tags?`<div class="meta">${esc(tags)}</div>`:''}`;
+}
+function cardPrint(c){
+  const w = window.open('', '_blank');
+  w.document.write(cardToHTML(c));
+  w.document.close();
+  w.focus();
+  w.print(); // l’utilisateur choisit “Enregistrer en PDF” si besoin
+}
+
 /* INDEX
 - Cards CRUD & AI flags, Charter ops, Scenario ops incl. promote
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
