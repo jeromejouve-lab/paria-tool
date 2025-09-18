@@ -113,40 +113,6 @@ export async function bootstrapWorkspaceIfNeeded(client, service){
   return r;
 }
 
-function nextCardId(){
-  const b = readClientBlob();
-  b.seq = b.seq || {};
-  const n = (b.seq.cards_id || 0) + 1;
-  b.seq.cards_id = n;
-  writeClientBlob(b);
-  return n;
-}
-
-export function createCard({title='', content='', tags=[]}){
-  const b = readClientBlob();
-  const c = {
-    id: nextCardId(),
-    title, content, tags,
-    created_ts: Date.now(),
-    state: {}
-  };
-  b.cards = b.cards||[];
-  b.cards.push(c);
-  writeClientBlob(b);
-  return c.id;
-}
-
-export function softDeleteCard(id, deleted=true){
-  const b = readClientBlob();
-  const c = (b.cards||[]).find(x=>String(x.id)===String(id));
-  if (!c) return false;
-  c.state = {...(c.state||{}), deleted};
-  b.journal = b.journal||[];
-  b.journal.push({type: deleted?'card.deleted':'card.restored', card_id:id, ts:Date.now()});
-  writeClientBlob(b);
-  return true;
-}
-
 function download(filename, text, type='text/plain'){
   const blob = new Blob([text], {type});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
@@ -187,6 +153,7 @@ function cardPrint(c){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
