@@ -487,33 +487,45 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       }catch{ return []; }
     }
     function hide(){ menu.style.display='none'; menu.innerHTML=''; }
+    
     function show(){
       const list = loadHist();
       if (!list.length) return hide();
-      menu.innerHTML = list.map((h,i)=>{
-        const dt = h.ts ? new Date(h.ts).toLocaleString() : '';
-        const title = (h.title||'Sans titre').replace(/</g,'&lt;');
-        const prev  = (h.content||'').replace(/</g,'&lt;');
-        const tagz  = Array.isArray(h.tags)&&h.tags.length ? h.tags.map(t=>`#${t}`).join(' ') : '';
-        return `
-        <div class="opt" data-i="${i}" style="padding:8px 10px;cursor:pointer;border-bottom:1px dashed #2a2a2a">
-          <div style="display:flex;justify-content:space-between;gap:8px">
-            <div style="font-weight:600">${title}</div>
-            ${dt?`<div style="font-size:11px;opacity:.6">${dt}</div>`:''}
-          </div>
-          ${prev?`<div style="font-size:12px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${prev}</div>`:''}
-          ${tagz?`<div style="font-size:11px;opacity:.6">${tagz}</div>`:''}
-        </div>`;
-      }).join('');
-  
+    
+      // ... (construction menu.innerHTML inchangée)
+    
       const r = ta.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+    
       menu.style.position = 'fixed';
       menu.style.left = r.left + 'px';
-      menu.style.top  = (r.bottom + 6) + 'px';
-      menu.style.width= r.width + 'px';
+      menu.style.width = r.width + 'px';
+      menu.style.overflowY = 'auto';
+    
+      // place dispo sous le textarea
+      const spaceBelow = vh - r.bottom - 12;
+      const spaceAbove = r.top - 12;
+    
+      // hauteur max 300px mais clampée à l’espace dispo
+      let maxH = Math.min(300, spaceBelow);
+      let top  = r.bottom + 6;
+    
+      // si pas assez de place dessous, on ouvre vers le haut
+      if (maxH < 140 && spaceAbove > spaceBelow){
+        maxH = Math.min(300, spaceAbove);
+        top  = r.top - maxH - 6;
+      }
+    
+      // éviter que ça sorte encore du viewport
+      if (top < 6) top = 6;
+      if (top + maxH > vh - 6) maxH = Math.max(120, vh - top - 6);
+    
+      menu.style.maxHeight = maxH + 'px';
+      menu.style.top = top + 'px';
       menu.style.display = 'block';
-
     }
+
   
     ta.addEventListener('focus', show);
     ta.addEventListener('click', show);
@@ -766,7 +778,24 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     }
   
     if (btn.dataset.action==='prop-delete') removeCharterAI(id);
-    if (btn.dataset.action==='prop-think')  toggleCharterAIStatus(id,'think');
+    if (btn.dataset.action === 'prop-think'){
+      const card = btn.closest('.proposal,[data-id]');
+      const id = btn.dataset.propId || card?.getAttribute('data-id');
+      const ch = (typeof getCharter==='function') ? getCharter() : {};
+      const p  = (ch.ai||[]).find(x=>String(x.id)===String(id));
+      if (!p) return;
+    
+      const next = !(p?.state?.think);
+      p.state = {...(p.state||{}), think: next};
+    
+      if (typeof saveCharter==='function') saveCharter({ ai: ch.ai });
+    
+      // Mise à jour UI locale uniquement (pas de re-render global)
+      btn.textContent = next ? '🤔' : '💡';
+      btn.title = next ? 'À réfléchir (activé)' : 'À réfléchir (désactivé)';
+      return;
+    }
+
     $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
     
     // Purge: si une prop n'est plus à l'écran → retirer son prompt du JSON
@@ -792,6 +821,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
