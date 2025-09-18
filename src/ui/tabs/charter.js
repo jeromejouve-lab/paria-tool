@@ -255,6 +255,22 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   // restore last saved values
   const _saved = loadCharter();
   if (_saved) fillCharter(host, _saved);
+
+  // MIGRATION: garantir id/ts/prompt sur les propositions déjà stockées
+  try{
+    const ch0 = getCharter() || {};
+    if (Array.isArray(ch0.ai) && ch0.ai.length){
+      let changed = false;
+      const lp = ch0.last_prompt || '';
+      ch0.ai.forEach((p, idx)=>{
+        if (!p.id){ p.id = String(Date.now())+'-'+idx; changed = true; }
+        if (!p.ts){ p.ts = Date.now(); changed = true; }
+        if (!p.prompt && lp){ p.prompt = lp; changed = true; }
+      });
+      if (changed) saveCharter({ ai: ch0.ai });
+    }
+  }catch(e){ console.warn('[Charter][MIGRATE ai]', e); }
+
   // init history datalist pour le contenu
   attachContentHistoryDatalist(host);
 
@@ -615,18 +631,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       if (dlg?.showModal) dlg.showModal();
       return;
     }
-    if (btn.dataset.action === 'prop-preview'){
-      const id = btn.dataset.propId;
-      const ch = (typeof getCharter==='function') ? getCharter() : (JSON.parse(localStorage.getItem('paria.charter')||'{}'));
-      const pr = (ch?.ai||[]).find(x=>String(x.id)===String(id));
-      const txt = pr?.prompt || '(prompt indisponible)';
-      const dlg = host.querySelector('#charter-preview-modal,#charter-preview-dialog');
-      const pre = host.querySelector('#charter-preview-pre');
-      if (pre) pre.textContent = txt;
-      if (dlg?.showModal) dlg.showModal();
-      return;
-    }
-
+  
     if (btn.dataset.action==='prop-delete') removeCharterAI(id);
     if (btn.dataset.action==='prop-think')  toggleCharterAIStatus(id,'think');
     $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
@@ -654,4 +659,5 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
