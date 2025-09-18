@@ -276,7 +276,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
   // Bouton "Aperçu du prompt" placé à côté de "Analyser" si présent
   (() => {
-    const actionsRow = host.querySelector('.actions, .row.actions, .charter-actions') || host; // cherche ta barre d'actions
+    const actionsRow = host.querySelector('.btns') || host;
     const btnPreview = document.createElement('button');
     btnPreview.id = 'btn-charter-preview';
     btnPreview.type = 'button';
@@ -491,7 +491,24 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     function show(){
       const list = loadHist();
       if (!list.length) return hide();
-    
+      
+      // (re)construction du menu
+      menu.innerHTML = list.map((h,i)=>{
+        const dt   = h.ts ? new Date(h.ts).toLocaleString() : '';
+        const title= (h.title||'Sans titre').replace(/</g,'&lt;');
+        const prev = (h.content||'').replace(/</g,'&lt;');
+        const tagz = Array.isArray(h.tags)&&h.tags.length ? h.tags.map(t=>`#${t}`).join(' ') : '';
+        return `
+        <div class="opt" data-i="${i}" style="padding:8px 10px;cursor:pointer;border-bottom:1px dashed #2a2a2a">
+          <div style="display:flex;justify-content:space-between;gap:8px">
+            <div style="font-weight:600">${title}</div>
+            ${dt?`<div style="font-size:11px;opacity:.7">${dt}</div>`:''}
+          </div>
+          ${prev?`<div style="font-size:12px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${prev}</div>`:''}
+          ${tagz?`<div style="font-size:11px;opacity:.7">${tagz}</div>`:''}
+        </div>`;
+      }).join('');
+
       // ... (construction menu.innerHTML inchangée)
     
       const r = ta.getBoundingClientRect();
@@ -622,6 +639,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         applyAIResults({kind:'charter'}, _stamped, {mode:'append'});
 
         $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
+        $('#charter-proposals-box', host).querySelectorAll('.actions [data-action="prop-preview"]').forEach(el=>el.remove());
         $status.textContent = `✅ ${stamped.length} proposition(s) · ${ts.toLocaleTimeString()}`;
 
       } else if (norm.status === 'empty') {
@@ -828,6 +846,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
