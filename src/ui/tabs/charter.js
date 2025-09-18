@@ -642,8 +642,15 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
   // Push sélectionnés -> Cards
   $('#charter-push', host).onclick = ()=>{
-    pushSelectedCharterToCards();
-    $('#charter-status', host).textContent = '➡️ Envoyé vers Cards.';
+    const ch = (typeof getCharter==='function') ? getCharter() : {};
+    const sel = (ch.ai||[]).filter(p => p?.state?.selected && !p?.state?.deleted);
+    const $status = $('#charter-status', host);
+    if (!sel.length){
+      if ($status) $status.textContent = '— aucune proposition sélectionnée';
+      return;
+    }
+    const created = (typeof pushSelectedCharterToCards==='function') ? pushSelectedCharterToCards() : 0;
+    if ($status) $status.textContent = `✅ ${created} envoyée(s) vers Cards`;
   };
 
   // Sélection + pictos
@@ -821,6 +828,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
