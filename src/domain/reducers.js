@@ -113,9 +113,6 @@ export async function bootstrapWorkspaceIfNeeded(client, service){
   return r;
 }
 
-function readClientBlob(){ /* existant */ }
-function writeClientBlob(b){ /* existant */ }
-
 function nextCardId(){
   const b = readClientBlob();
   b.seq = b.seq || {};
@@ -190,6 +187,7 @@ function cardPrint(c){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
