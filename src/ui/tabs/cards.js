@@ -71,6 +71,33 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   if (!host) return;
   host.innerHTML = html();
 
+  // ---- Layout scrollable sous la barre d'actions ----
+  const root   = host;                              // conteneur de l'onglet Cards
+  const bar    = root.querySelector('.btns');       // barre d'actions du haut (Analyser / Export / etc.)
+  const list   = root.querySelector('#cards-grid'); // conteneur des cards (on crée juste après si absent)
+  
+  root.style.display = 'flex';
+  root.style.flexDirection = 'column';
+  root.style.minHeight = 'calc(100vh - 80px)'; // ajuste si besoin
+  
+  if (bar){
+    bar.style.position = 'sticky';
+    bar.style.top = '0';
+    bar.style.zIndex = '2';
+    bar.style.background = 'var(--bg,#0f0f10)'; // pour masquer le contenu derrière
+    bar.style.paddingBottom = '8px';
+  }
+  
+  if (!list){
+    const grid = document.createElement('div');
+    grid.id = 'cards-grid';
+    root.appendChild(grid);
+  }
+  const grid = root.querySelector('#cards-grid');
+  grid.style.flex = '1 1 auto';
+  grid.style.overflow = 'auto';
+
+  
   // Actions (think / delete / analyze)
   host.addEventListener('click', async (ev)=>{
     const act = ev.target.closest('[data-action]');
@@ -107,3 +134,4 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
