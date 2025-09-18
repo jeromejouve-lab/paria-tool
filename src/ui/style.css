@@ -45,3 +45,23 @@
 .service-grid textarea {
   width: 100%;
 }
+#cards-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  padding: 8px 4px 16px;
+}
+.card{
+  border: 1px solid #2a2a2a; border-radius: 12px; padding: 10px;
+  background: #141415;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.card.is-deleted{ border-color: #cc3344; background: #161214; }
+.card .meta{ display:flex; gap:8px; align-items:center; font-size:12px; opacity:.8 }
+.card .meta .id{ font-weight:600; opacity:.9 }
+.card .meta .ts{ margin-left:auto; }
+.card h4{ font-size:14px; margin:0; line-height:1.25; }
+.card .ops{ display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
+.card .ops .btn-xs{ font-size:12px; padding:4px 8px; }
+
+
