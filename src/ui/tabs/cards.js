@@ -105,7 +105,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   }
   
   let timeline = host.querySelector('#cards-timeline');
-  let detail   = host.querySelector('#card-detail');
+  let detail = host.querySelector('#card-detail');
   
   if (!timeline){
     timeline = document.createElement('div');
@@ -232,8 +232,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   host.style.display='flex'; host.style.flexDirection='column';
 
   if (bar){ bar.style.position='sticky'; bar.style.top='0'; bar.style.zIndex='2'; bar.style.background='var(--bg,#0f0f10)'; }
-  
-  let detail = host.querySelector('#card-detail');
   if (!timeline){ timeline=document.createElement('div'); timeline.id='cards-timeline'; timeline.style.cssText='display:flex;gap:8px;overflow:auto;padding:8px 4px;'; bar?.insertAdjacentElement('afterend', timeline); }
   if (!detail){   detail  =document.createElement('div'); detail.id='card-detail'; detail.style.cssText='flex:1 1 auto; overflow:auto; padding:8px 4px 16px;'; bar?.parentNode?.appendChild(detail); }
 
@@ -662,6 +660,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
