@@ -301,35 +301,70 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     // exports
     if (btn.dataset.action==='exp-md' || btn.dataset.action==='exp-html' || btn.dataset.action==='exp-print'){
       const picks = Array.from(detail.querySelectorAll('[data-action="exp-pick"]:checked')).map(x=>x.getAttribute('data-upd'));
-      if (!picks.length){ alert('Sélection vide'); return; }
       const b = readClientBlob();
       const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
-      const sel = (card.updates||[]).filter(u=>picks.includes(String(u.id)));
+      const all = (card?.updates||[]).slice().sort((a,b)=>a.ts<b.ts?1:-1);
+      const chosen = picks.length ? all.filter(u=>picks.includes(String(u.id))) : all;
+    
+      const groups = {};
+      for (const u of chosen){
+        const k = _dayKey(u.ts);
+        (groups[k] = groups[k] || []).push(u);
+      }
+    
       const esc = s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-  
+      const thinkBadge = card?.state?.think ? ' 🤔' : '';
+    
       if (btn.dataset.action==='exp-md'){
-        const md = sel.map(u=>`## ${_dayKey(u.ts)} ${new Date(u.ts).toLocaleTimeString()} • ${u.origin} • ${u.type}\n\n${u.md||u.html||''}`).join('\n\n');
-        const blob = new Blob([md], {type:'text/markdown'}); const a=document.createElement('a');
-        a.href=URL.createObjectURL(blob); a.download=`card-${cardId}-selection.md`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1e3);
+        const md = [
+          `# Card #${cardId}${thinkBadge} — ${(card?.title||'Sans titre')}`,
+          ...(Object.keys(groups).sort((a,b)=>a<b?1:-1).map(day=>{
+            const items = groups[day].map(u=>{
+              const meta = [];
+              meta.push(new Date(u.ts).toLocaleTimeString());
+              if (u.origin) meta.push(u.origin);
+              if (u.type)   meta.push(u.type);
+              if (u.meta?.think) meta.push('🤔');
+              if (u.meta?.prompt) meta.push('[prompt]');
+              return `## ${day} • ${meta.join(' • ')}\n\n${u.md || u.html || ''}${u.meta?.prompt?`\n\n> Prompt:\n>\n> ${u.meta.prompt}`:''}`;
+            }).join('\n\n');
+            return items;
+          }))
+        ].join('\n\n');
+        const blob = new Blob([md], {type:'text/markdown'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `card-${cardId}.md`; a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
         return;
       }
+    
       const html = `<!doctype html><meta charset="utf-8"><title>Card #${cardId}</title><style>
         body{font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial;padding:20px;color:#111}
-        h2{font-size:16px;margin:16px 0 6px} .meta{opacity:.7;font-size:12px}
-        pre{white-space:pre-wrap}
+        h1{font-size:20px;margin:0 0 12px} h2{font-size:14px;margin:14px 0 6px}
+        .meta{opacity:.7;font-size:12px} pre{white-space:pre-wrap}
         @media print{@page{margin:12mm}}
       </style>
-      <h1>Card #${cardId} — ${(card.title||'Sans titre').replace(/</g,'&lt;')}</h1>
-      ${sel.map(u=>`<h2>${_dayKey(u.ts)} ${new Date(u.ts).toLocaleTimeString()} • ${u.origin} • ${u.type}</h2>
-      <pre>${esc(u.md||u.html||'')}</pre>`).join('')}`;
+      <h1>Card #${cardId}${thinkBadge} — ${esc(card?.title||'Sans titre')}</h1>
+      ${Object.keys(groups).sort((a,b)=>a<b?1:-1).map(day=>{
+        return `<h2>${day}</h2>` + groups[day].map(u=>{
+          const meta = [];
+          meta.push(new Date(u.ts).toLocaleTimeString());
+          if (u.origin) meta.push(u.origin);
+          if (u.type)   meta.push(u.type);
+          if (u.meta?.think) meta.push('🤔');
+          return `<div class="meta">${esc(meta.join(' • '))}${u.meta?.prompt?' • [prompt]':''}</div>
+          <pre>${esc(u.md || u.html || '')}</pre>
+          ${u.meta?.prompt?`<details><summary>Prompt</summary><pre>${esc(u.meta.prompt)}</pre></details>`:''}`;
+        }).join('');
+      }).join('')}`;
       if (btn.dataset.action==='exp-html'){
         const blob = new Blob([html], {type:'text/html'}); const a=document.createElement('a');
-        a.href=URL.createObjectURL(blob); a.download=`card-${cardId}-selection.html`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1e3);
+        a.href=URL.createObjectURL(blob); a.download=`card-${cardId}.html`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1e3);
       } else {
         const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.focus(); w.print();
       }
       return;
     }
+
   });
 
   grid.addEventListener('click', (ev)=>{
@@ -408,6 +443,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
