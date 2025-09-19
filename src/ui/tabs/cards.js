@@ -89,6 +89,140 @@ function cardPrint(c){
 }
 
 export function mountCardsTab(host = document.getElementById('tab-cards')){
+  // --- boot cards UI (sticky + zones) ---
+  __cards_migrate_v2_once?.();
+  
+  host.style.display = 'flex';
+  host.style.flexDirection = 'column';
+  
+  const bar = host.querySelector('.btns');
+  if (bar){
+    bar.style.position = 'sticky';
+    bar.style.top = '0';
+    bar.style.zIndex = '2';
+    bar.style.background = 'var(--bg,#0f0f10)';
+    bar.style.paddingBottom = '8px';
+  }
+  
+  let timeline = host.querySelector('#cards-timeline');
+  let detail   = host.querySelector('#card-detail');
+  
+  if (!timeline){
+    timeline = document.createElement('div');
+    timeline.id = 'cards-timeline';
+    timeline.style.cssText = 'display:flex;gap:8px;overflow:auto;padding:8px 4px;';
+    bar ? bar.insertAdjacentElement('afterend', timeline) : host.prepend(timeline);
+  }
+  if (!detail){
+    detail = document.createElement('div');
+    detail.id = 'card-detail';
+    detail.style.cssText = 'flex:1 1 auto; overflow:auto; padding:8px 4px 16px;';
+    host.appendChild(detail);
+  }
+  
+  // helpers locaux
+  function _dayKey(ts){ const d=new Date(ts); const m=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0'); return `${d.getFullYear()}-${m}-${dd}`; }
+  function fmt(ts){ try{ return ts? new Date(ts).toLocaleString() : ''; }catch{return '';} }
+
+  function renderTimeline(){
+    const b = readClientBlob();
+    const cards = (b.cards||[]).slice().sort((a,b)=> (a.updated_ts<b.updated_ts)?1:-1);
+    const html = cards.map(c=>`
+      <button class="card-mini ${c.state?.deleted?'is-del':''}" data-card-id="${c.id}"
+        style="border:1px solid #2a2a2a;border-radius:10px;padding:8px;min-width:220px;background:#161616;text-align:left">
+        <div style="font-size:12px;opacity:.8;display:flex;gap:8px;align-items:center">
+          <b>#${c.id}</b> ${c.state?.think?'🤔':''}
+          <span style="margin-left:auto">${fmt(c.updated_ts||c.created_ts)}</span>
+        </div>
+        <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(c.title||'Sans titre').replace(/</g,'&lt;')}</div>
+        ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
+      </button>
+    `).join('');
+    host.querySelector('#cards-timeline').innerHTML = html || '<div style="opacity:.6">Aucune card</div>';
+  }
+  renderTimeline();
+  
+  host.querySelector('#cards-timeline').addEventListener('click',(ev)=>{
+    const btn = ev.target.closest('[data-card-id]');
+    if (!btn) return;
+    const id = btn.getAttribute('data-card-id');
+    host.dataset.selectedCardId = id;
+    renderDetail(id);
+  });
+
+  function renderDetail(cardId){
+    const b = readClientBlob();
+    const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+    const detail = host.querySelector('#card-detail');
+    if (!card){ detail.innerHTML = '<div style="opacity:.7">Aucune card</div>'; return; }
+  
+    // assurer au moins une section
+    if (!card.sections?.length){ card.sections=[{id:'1', title:'Proposition 1'}]; writeClientBlob(b); }
+  
+    const sectionsHtml = card.sections.map(sec=>{
+      const f = (card.ui?.filters?.[sec.id]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
+      const days = listCardDays(card.id, sec.id);
+      const view = getCardView(card.id, { sectionId: sec.id, days: f.days, types: f.types });
+  
+      const chipsDays = days.map(d=>`<label class="chip">
+        <input type="checkbox" data-action="sec-day" data-sec="${sec.id}" value="${d}" ${f.days.includes(d)?'checked':''}> ${d}
+      </label>`).join('');
+  
+      const typeNames = [['analyse','Analyse'],['note','Note'],['comment','Commentaire'],['client_md','Client MD'],['client_html','Client HTML']];
+      const chipsTypes = typeNames.map(([val,lab])=>`<label class="chip">
+        <input type="checkbox" data-action="sec-type" data-sec="${sec.id}" value="${val}" ${f.types.includes(val)?'checked':''}> ${lab}
+      </label>`).join('');
+  
+      const groups = view.groups.map(g=>`
+        <section class="day-group" data-day="${g.day}" style="border:1px dashed #2a2a2a;border-radius:10px;padding:8px;margin:8px 0">
+          <div style="font-size:12px;opacity:.8;margin-bottom:6px">${g.day}</div>
+          ${g.items.map(u=>`
+            <article class="upd" data-upd="${u.id}" data-sec="${sec.id}"
+              style="border:1px solid #333;border-radius:8px;padding:8px;margin:6px 0;background:#181818">
+              <div style="display:flex;gap:8px;align-items:center;font-size:12px;opacity:.8">
+                <span>${new Date(u.ts).toLocaleTimeString()}</span>
+                ${u.origin?`<span>• ${u.origin}</span>`:''}
+                ${u.type?`<span>• ${u.type}</span>`:''}
+                ${u.meta?.think?`<span>• 🤔</span>`:''}
+                <label style="margin-left:auto;font-weight:500">
+                  <input type="checkbox" data-action="exp-pick" data-upd="${u.id}"> sélectionner
+                </label>
+                <label style="margin-left:8px;opacity:.9">
+                  <input type="checkbox" data-action="hide-upd" data-upd="${u.id}"> masquer
+                </label>
+              </div>
+              <pre style="white-space:pre-wrap;margin:6px 0 0 0">${(u.md||u.html||'').replace(/</g,'&lt;')}</pre>
+              ${u.meta?.prompt?`<details style="margin-top:6px"><summary>Prompt</summary><pre style="white-space:pre-wrap">${(u.meta.prompt||'').replace(/</g,'&lt;')}</pre></details>`:''}
+            </article>
+          `).join('')}
+        </section>
+      `).join('');
+  
+      return `
+        <div class="section" data-sec="${sec.id}" style="border:1px solid #2a2a2a;border-radius:12px;padding:10px;margin:10px 0;background:#141415">
+          <header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <h4 style="margin:0">${(sec.title||('Section '+sec.id)).replace(/</g,'&lt;')}</h4>
+            <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+              ${chipsDays}
+              ${chipsTypes}
+              <button class="btn btn-xs" data-action="sec-select-all" data-sec="${sec.id}">Sélectionner tout</button>
+              <button class="btn btn-xs" data-action="sec-clear" data-sec="${sec.id}">Tout masquer</button>
+            </div>
+          </header>
+          ${groups || '<div style="opacity:.6;padding:6px 0">Aucun élément pour ce filtre.</div>'}
+        </div>
+      `;
+    }).join('');
+  
+    detail.innerHTML = sectionsHtml + `
+      <div class="export-bar" style="position:sticky;bottom:0;padding:8px;background:#101010;border-top:1px solid #2a2a2a;display:flex;gap:8px">
+        <button class="btn btn-xs" data-action="exp-md">Exporter MD (sélection)</button>
+        <button class="btn btn-xs" data-action="exp-html">Exporter HTML (sélection)</button>
+        <button class="btn btn-xs" data-action="exp-print">Imprimer/PDF (sélection)</button>
+      </div>
+    `;
+  }
+   
   if (!host) return;
   host.innerHTML = html();
 
@@ -438,11 +572,98 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       return;
     }
   });
+  // toggle filtres (jours/types)
+  host.querySelector('#card-detail').addEventListener('change', (ev)=>{
+    const cb = ev.target.closest('input[type="checkbox"]');
+    if (!cb) return;
+    const cardId = host.dataset.selectedCardId;
+    if (!cardId) return;
+  
+    if (cb.dataset.action==='sec-day' || cb.dataset.action==='sec-type'){
+      const sec = cb.dataset.sec;
+      const b = readClientBlob(); const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+      const f = (card.ui?.filters?.[sec]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
+      const set = new Set((cb.dataset.action==='sec-day' ? f.days : f.types));
+      cb.checked ? set.add(cb.value) : set.delete(cb.value);
+      if (cb.dataset.action==='sec-day')  setSectionFilters(cardId, sec, {days:[...set], types:f.types});
+      else                                setSectionFilters(cardId, sec, {days:f.days, types:[...set]});
+      renderDetail(cardId);
+    }
+  });
+  
+  // boutons section + export
+  host.querySelector('#card-detail').addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('[data-action]');
+    if (!btn) return;
+    const detail = host.querySelector('#card-detail');
+    const cardId = host.dataset.selectedCardId;
+  
+    if (btn.dataset.action==='sec-select-all'){
+      const sec = btn.dataset.sec;
+      detail.querySelectorAll(`.section[data-sec="${sec}"] [data-action="exp-pick"]`).forEach(x=>x.checked=true);
+      return;
+    }
+    if (btn.dataset.action==='sec-clear'){
+      const sec = btn.dataset.sec;
+      detail.querySelectorAll(`.section[data-sec="${sec}"] .upd`).forEach(x=>x.style.display='none');
+      return;
+    }
+  
+    if (btn.dataset.action==='exp-md' || btn.dataset.action==='exp-html' || btn.dataset.action==='exp-print'){
+      const picks = Array.from(detail.querySelectorAll('[data-action="exp-pick"]:checked')).map(x=>x.getAttribute('data-upd'));
+      const b = readClientBlob();
+      const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+      const all  = (card?.updates||[]).slice().sort((a,b)=>a.ts<b.ts?1:-1);
+      const chosen = picks.length ? all.filter(u=>picks.includes(String(u.id))) : all;
+  
+      const groups = {};
+      for (const u of chosen){ const k=_dayKey(u.ts); (groups[k]=groups[k]||[]).push(u); }
+  
+      const esc = s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      const thinkBadge = card?.state?.think ? ' 🤔' : '';
+  
+      if (btn.dataset.action==='exp-md'){
+        const md = [
+          `# Card #${cardId}${thinkBadge} — ${(card?.title||'Sans titre')}`,
+          ...Object.keys(groups).sort((a,b)=>a<b?1:-1).map(day=>groups[day].map(u=>{
+            const meta=[new Date(u.ts).toLocaleTimeString(), u.origin, u.type].filter(Boolean).join(' • ');
+            return `## ${day} • ${meta}\n\n${u.md||u.html||''}${u.meta?.prompt?`\n\n> Prompt:\n>\n> ${u.meta.prompt}`:''}`;
+          }).join('\n\n'))
+        ].join('\n\n');
+        const blob = new Blob([md], {type:'text/markdown'}); const a=document.createElement('a');
+        a.href=URL.createObjectURL(blob); a.download=`card-${cardId}.md`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1e3);
+        return;
+      }
+  
+      const html = `<!doctype html><meta charset="utf-8"><title>Card #${cardId}</title><style>
+        body{font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial;padding:20px;color:#111}
+        h1{font-size:20px;margin:0 0 12px} h2{font-size:14px;margin:14px 0 6px}
+        .meta{opacity:.7;font-size:12px} pre{white-space:pre-wrap}
+        @media print{@page{margin:12mm}}
+      </style>
+      <h1>Card #${cardId}${thinkBadge} — ${esc(card?.title||'Sans titre')}</h1>
+      ${Object.keys(groups).sort((a,b)=>a<b?1:-1).map(day=>{
+        return `<h2>${day}</h2>` + groups[day].map(u=>{
+          const meta=[new Date(u.ts).toLocaleTimeString(), u.origin, u.type, u.meta?.think?'🤔':null].filter(Boolean).join(' • ');
+          return `<div class="meta">${esc(meta)}${u.meta?.prompt?' • [prompt]':''}</div>
+          <pre>${esc(u.md||u.html||'')}</pre>
+          ${u.meta?.prompt?`<details><summary>Prompt</summary><pre>${esc(u.meta.prompt)}</pre></details>`:''}`;
+        }).join('')}).join('')}`;
+      if (btn.dataset.action==='exp-html'){
+        const blob = new Blob([html], {type:'text/html'}); const a=document.createElement('a');
+        a.href=URL.createObjectURL(blob); a.download=`card-${cardId}.html`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1e3);
+      } else {
+        const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.focus(); w.print();
+      }
+      return;
+    }
+  });
 
 }
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
