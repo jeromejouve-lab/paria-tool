@@ -3,6 +3,120 @@ import { readClientBlob, writeClientBlob } from '../core/store.js';
 import { logEvent } from './journal.js';
 import { bootstrapWorkspace } from '../core/net.js';
 
+// ---- Cards v2: sections + updates (append-only) ----
+function _dayKey(ts){ const d=new Date(ts); return `${d.getFullYear()}-${(d.getMonth()+1+'').padStart(2,'0')}-${(d.getDate()+'').padStart(2,'0')}`; }
+function _ensureSeq(b,key){ b.seq=b.seq||{}; b.seq[key]=(b.seq[key]||0)+1; return b.seq[key]; }
+
+export function migrateCards_v2(){
+  const b = readClientBlob();
+  if (!Array.isArray(b.cards)) return;
+  let changed=false;
+  for (const c of b.cards){
+    c.sections = c.sections || [];       // [{id,title}]
+    c.updates  = c.updates  || [];       // [{id,section_id,ts,origin,type,md?,html?}]
+    c.ui       = c.ui       || {filters:{}};
+    if (!c.created_ts) { c.created_ts = Date.now(); changed=true; }
+    if (!c.updated_ts) { c.updated_ts = c.created_ts; changed=true; }
+  }
+  if (changed) writeClientBlob(b);
+}
+
+export function ensureSection(cardId, sectionId, title){
+  const b = readClientBlob();
+  const c = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+  if (!c) return false;
+  c.sections = c.sections||[];
+  if (!c.sections.find(s=>String(s.id)===String(sectionId))){
+    c.sections.push({id:sectionId, title: title||('Section '+sectionId)});
+    writeClientBlob(b);
+  }
+  return true;
+}
+
+export function touchCard(cardId){
+  const b = readClientBlob();
+  const c = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+  if (!c) return false;
+  c.updated_ts = Date.now();
+  b.journal = b.journal||[];
+  b.journal.push({type:'card.touched', card_id:cardId, ts:c.updated_ts});
+  writeClientBlob(b);
+  return true;
+}
+
+export function appendCardUpdate(cardId, sectionId, payload){
+  const b = readClientBlob();
+  const c = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+  if (!c) return null;
+  c.sections = c.sections||[];
+  if (!c.sections.find(s=>String(s.id)===String(sectionId))){
+    c.sections.push({id:sectionId, title: payload?.section_title||('Section '+sectionId)});
+  }
+  c.updates = c.updates||[];
+  const id = _ensureSeq(b, 'updates_id');
+  const u = {
+    id, section_id: sectionId,
+    ts: payload?.ts || Date.now(),
+    origin: payload?.origin || 'client',
+    type: payload?.type   || 'note',
+    md:   payload?.md || null,
+    html: payload?.html || null,
+    meta: payload?.meta || null
+  };
+  c.updates.push(u);
+  c.updated_ts = Date.now();
+  b.journal = b.journal||[];
+  b.journal.push({type:'card.section.appended', card_id:cardId, section_id:sectionId, update_id:id, ts:c.updated_ts});
+  writeClientBlob(b);
+  return id;
+}
+
+export function setSectionFilters(cardId, sectionId, filters){
+  const b = readClientBlob();
+  const c = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+  if (!c) return false;
+  c.ui = c.ui||{filters:{}};
+  c.ui.filters = c.ui.filters||{};
+  c.ui.filters[sectionId] = { days: filters.days||[], types: filters.types||[] };
+  writeClientBlob(b);
+  return true;
+}
+
+export function listCardDays(cardId, sectionId){
+  const b = readClientBlob();
+  const c = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+  if (!c) return [];
+  const days = new Set();
+  (c.updates||[]).forEach(u=>{
+    if (String(u.section_id)===String(sectionId)) days.add(_dayKey(u.ts));
+  });
+  return Array.from(days).sort((a,b)=>a<b?1:-1);
+}
+
+export function getCardView(cardId, {sectionId, days=[], types=[]}={}){
+  const b = readClientBlob();
+  const c = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+  if (!c) return {section:null, groups:[]};
+  const section = (c.sections||[]).find(s=>String(s.id)===String(sectionId));
+  const filtDays  = new Set(days||[]);
+  const filtTypes = new Set((types&&types.length)?types: ['analyse','note','comment','client_md','client_html']);
+  const items = (c.updates||[]).filter(u=>{
+    if (String(u.section_id)!==String(sectionId)) return false;
+    if (!filtTypes.has(u.type)) return false;
+    if (filtDays.size && !filtDays.has(_dayKey(u.ts))) return false;
+    return true;
+  }).sort((a,b)=>a.ts<b.ts?1:-1);
+  const groups = [];
+  let curKey=null, cur=[];
+  for (const it of items){
+    const k=_dayKey(it.ts);
+    if (k!==curKey){ if (cur.length) groups.push({day:curKey, items:cur}); curKey=k; cur=[]; }
+    cur.push(it);
+  }
+  if (cur.length) groups.push({day:curKey, items:cur});
+  return {section, groups};
+}
+
 const uid = () => Math.random().toString(36).slice(2)+Date.now().toString(36);
 
 // [ADD] Profil Client — persistant par client (transverse à tous les services)
@@ -148,11 +262,17 @@ function cardPrint(c){
   w.print(); // l’utilisateur choisit “Enregistrer en PDF” si besoin
 }
 
+// auto-migration (à appeler une fois au boot UI)
+export function __cards_migrate_v2_once(){
+  try{ migrateCards_v2(); }catch(e){ console.warn('[migrateCards_v2]', e); }
+}
+
 /* INDEX
 - Cards CRUD & AI flags, Charter ops, Scenario ops incl. promote
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
