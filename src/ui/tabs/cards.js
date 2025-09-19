@@ -509,10 +509,18 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   
     // soft delete / restore
     if (btn.dataset.action === 'card-soft-delete'){
-      const isDeleted = cardEl.classList.contains('is-deleted');
+      const cardEl = btn.closest('[data-card-id], .card');
+      const id = cardEl?.getAttribute('data-card-id');
+      const isDeleted = cardEl?.classList.contains('is-del');
+    
       softDeleteCard(id, !isDeleted);
-      cardEl.classList.toggle('is-deleted', !isDeleted);
+    
+      // on NE supprime PAS du DOM ; on togglera la classe et on met à jour le label
+      cardEl?.classList.toggle('is-del', !isDeleted);
       btn.textContent = !isDeleted ? 'Restaurer' : 'Supprimer';
+    
+      // on peut re-render la timeline (elle inclut désormais les supprimées)
+      renderTimeline();
       return;
     }
   
@@ -662,6 +670,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
