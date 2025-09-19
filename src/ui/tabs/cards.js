@@ -182,28 +182,58 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
   function renderTimeline(){
     const b = readClientBlob();
-    const cards = (b.cards||[]).slice().sort((a,b)=> (a.updated_ts<b.updated_ts)?1:-1);
-    const html = cards.map(c=>`
-      <button class="card-mini ${c.state?.deleted?'is-del':''}" data-card-id="${c.id}"
-        style="border:1px solid #2a2a2a;border-radius:10px;padding:8px;min-width:220px;background:#161616;text-align:left">
-        <div style="font-size:12px;opacity:.8;display:flex;gap:8px;align-items:center">
-          <b>#${c.id}</b> ${c.state?.think?'🤔':''}
-          <span style="margin-left:auto">${fmt(c.updated_ts||c.created_ts)}</span>
+    const selId = String(host.dataset.selectedCardId || '');
+    const cards = (b.cards || []).slice().sort((a,b)=> (a.updated_ts<b.updated_ts)?1:-1);
+  
+    timeline.innerHTML = cards.map(c=>{
+      const isDel = !!c.state?.deleted;
+      const isAct = selId && String(c.id) === selId;
+      return `
+        <div class="card-mini-wrap" style="position:relative">
+          <button class="card-mini ${isDel?'is-del':''} ${isAct?'is-active':''}"
+                  data-card-id="${c.id}"
+                  style="border:1px solid #2a2a2a;border-radius:10px;padding:8px;min-width:240px;background:#161616;text-align:left">
+            <div style="font-size:12px;opacity:.8;display:flex;gap:8px;align-items:center">
+              <b>#${c.id}</b> ${c.state?.think?'🤔':''}
+              <span style="margin-left:auto">${(c.updated_ts||c.created_ts)?new Date(c.updated_ts||c.created_ts).toLocaleString():''}</span>
+            </div>
+            <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              ${(c.title||'Sans titre').replace(/</g,'&lt;')}
+            </div>
+            ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
+          </button>
+          <button class="icon-btn" data-action="mini-soft-delete" data-id="${c.id}"
+                  title="${isDel?'Restaurer':'Supprimer'}"
+                  style="position:absolute;right:6px;top:6px;font-size:12px;opacity:.9">${isDel?'↩︎':'🗑️'}</button>
         </div>
-        <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(c.title||'Sans titre').replace(/</g,'&lt;')}</div>
-        ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
-      </button>
-    `).join('');
-    timeline.innerHTML = html || '<div style="opacity:.6">Aucune card</div>';
+      `;
+    }).join('') || '<div style="opacity:.6">Aucune card</div>';
   }
+
   renderTimeline();
   
-  timeline.addEventListener('click', (ev)=>{
+  timeline.addEventListener('click',(ev)=>{
+    // 1) clic sur la poubelle/restaurer : ne change PAS la sélection
+    const del = ev.target.closest('[data-action="mini-soft-delete"]');
+    if (del){
+      const id = del.dataset.id;
+      const b  = readClientBlob();
+      const c  = (b.cards||[]).find(x=>String(x.id)===String(id));
+      const nowDel = !c?.state?.deleted;
+      softDeleteCard(id, nowDel);
+      renderTimeline();
+      // si on vient de supprimer la card sélectionnée, on garde la vue telle quelle (card courante inchangée)
+      return;
+    }
+  
+    // 2) clic sur une minicard : ignorer si supprimée
     const btn = ev.target.closest('[data-card-id]');
     if (!btn) return;
-    const id = btn.getAttribute('data-card-id');
-    host.dataset.selectedCardId = id;
-    renderDetail(id);
+    if (btn.classList.contains('is-del')) return; // non sélectionnable quand supprimée
+  
+    host.dataset.selectedCardId = btn.getAttribute('data-card-id');
+    renderTimeline();           // met le halo sur la card active
+    renderDetail(host.dataset.selectedCardId);
   });
 
   function renderDetail(cardId){
@@ -695,6 +725,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
