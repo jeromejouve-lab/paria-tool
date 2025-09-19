@@ -123,6 +123,62 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   // helpers locaux
   function _dayKey(ts){ const d=new Date(ts); const m=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0'); return `${d.getFullYear()}-${m}-${dd}`; }
   function fmt(ts){ try{ return ts? new Date(ts).toLocaleString() : ''; }catch{return '';} }
+  // --- Overlay calendrier multi-jours par section ---
+  let calOverlay=null;
+  function ensureCalOverlay(){
+    if (calOverlay) return calOverlay;
+    calOverlay = document.createElement('div');
+    calOverlay.id = 'cards-cal-overlay';
+    calOverlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:9999';
+    calOverlay.innerHTML = `<div id="cards-cal-panel" style="background:#111;border:1px solid #333;border-radius:12px;min-width:360px;max-width:680px;max-height:80vh;overflow:auto;padding:12px">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <strong style="font-size:14px">Sélection de jours</strong>
+        <span style="margin-left:auto"></span>
+        <button class="btn btn-xs" data-cal="apply">Appliquer</button>
+        <button class="btn btn-xs" data-cal="close">Fermer</button>
+      </div>
+      <div class="months"></div>
+    </div>`;
+    document.body.appendChild(calOverlay);
+    calOverlay.addEventListener('click',(e)=>{
+      if (e.target===calOverlay || e.target.getAttribute('data-cal')==='close') calOverlay.style.display='none';
+    });
+    return calOverlay;
+  }
+  function showSectionCalendar(cardId, secId){
+    const ov = ensureCalOverlay();
+    const b = readClientBlob();
+    const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+    const f = (card.ui?.filters?.[secId]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
+    const days = listCardDays(cardId, secId); // ['YYYY-MM-DD', ...]
+    // grouper par mois
+    const byMonth = {};
+    for(const d of days){
+      const m = d.slice(0,7); // YYYY-MM
+      (byMonth[m]=byMonth[m]||[]).push(d);
+    }
+    const months = Object.keys(byMonth).sort();
+    const box = ov.querySelector('.months');
+    box.innerHTML = months.map(m=>{
+      const items = byMonth[m].map(d=>`
+        <label class="chip"><input type="checkbox" data-cal="day" value="${d}" ${f.days.includes(d)?'checked':''}> ${d}</label>
+      `).join('');
+      return `<section style="border:1px solid #2a2a2a;border-radius:10px;padding:8px;margin:8px 0">
+        <div style="opacity:.8;font-size:12px;margin-bottom:6px">${m}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${items||'<em style="opacity:.6">Aucun jour</em>'}</div>
+      </section>`;
+    }).join('') || '<div style="opacity:.6">Aucun jour disponible</div>';
+  
+    // appliquer
+    const apply = ov.querySelector('[data-cal="apply"]');
+    apply.onclick = ()=>{
+      const sel = Array.from(ov.querySelectorAll('[data-cal="day"]:checked')).map(x=>x.value);
+      setSectionFilters(cardId, secId, {days: sel, types: f.types});
+      ov.style.display='none';
+      renderDetail(cardId);
+    };
+    ov.style.display='flex';
+  }
 
   function renderTimeline(){
     const b = readClientBlob();
@@ -158,7 +214,12 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   
     // assurer au moins une section
     if (!card.sections?.length){ card.sections=[{id:'1', title:'Proposition 1'}]; writeClientBlob(b); }
-  
+    const toolbar = `
+      <div class="card-toolbar" data-card-id="${card.id}" style="position:sticky;top:0;background:#101010;border-bottom:1px solid #2a2a2a;padding:6px;display:flex;gap:8px;z-index:1">
+        <button class="btn btn-xs" data-action="card-soft-delete">${card.state?.deleted?'Restaurer':'Supprimer'}</button>
+      </div>
+    `;
+
     const sectionsHtml = card.sections.map(sec=>{
       const f = (card.ui?.filters?.[sec.id]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
       const days = listCardDays(card.id, sec.id);
@@ -205,6 +266,9 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
             <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
               ${chipsDays}
               ${chipsTypes}
+              <button class="btn btn-xs" data-action="sec-calendar" data-sec="${sec.id}">Calendrier</button>
+              <button class="btn btn-xs" data-action="sec-import-md" data-sec="${sec.id}">Importer MD</button>
+              <button class="btn btn-xs" data-action="sec-import-html" data-sec="${sec.id}">Importer HTML</button>
               <button class="btn btn-xs" data-action="sec-select-all" data-sec="${sec.id}">Sélectionner tout</button>
               <button class="btn btn-xs" data-action="sec-clear" data-sec="${sec.id}">Tout masquer</button>
             </div>
@@ -214,7 +278,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       `;
     }).join('');
   
-    detail.innerHTML = sectionsHtml + `
+    detail.innerHTML = toolbar + sectionsHtml + `
       <div class="export-bar" style="position:sticky;bottom:0;padding:8px;background:#101010;border-top:1px solid #2a2a2a;display:flex;gap:8px">
         <button class="btn btn-xs" data-action="exp-md">Exporter MD (sélection)</button>
         <button class="btn btn-xs" data-action="exp-html">Exporter HTML (sélection)</button>
@@ -328,6 +392,13 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       renderDetail(cardId);
       return;
     }
+
+    if (cb.dataset.action==='hide-upd'){
+      const art = cb.closest('.upd');
+      if (art) art.style.display = cb.checked ? 'none' : '';
+      return;
+    }
+
   });
 
   detail.addEventListener('click', (ev)=>{
@@ -345,7 +416,46 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       detail.querySelectorAll(`.section[data-sec="${sec}"] .upd`).forEach(x=>x.style.display='none');
       return;
     }
-  
+    if (btn.dataset.action==='sec-calendar'){
+      const sec = btn.dataset.sec;
+      const cardId = host.dataset.selectedCardId;
+      if (!cardId) return;
+      showSectionCalendar(cardId, sec);
+      return;
+    }
+    if (btn.dataset.action==='sec-import-md'){
+      const sec = btn.dataset.sec;
+      const cardId = host.dataset.selectedCardId; if(!cardId) return;
+      const md = prompt('Colle le Markdown du client :');
+      if (md!=null){
+        appendCardUpdate(cardId, sec, { origin:'client', type:'client_md', md });
+        touchCard(cardId);
+        renderDetail(cardId);
+      }
+      return;
+    }
+    if (btn.dataset.action==='sec-import-html'){
+      const sec = btn.dataset.sec;
+      const cardId = host.dataset.selectedCardId; if(!cardId) return;
+      const html = prompt('Colle le HTML du client (source de confiance) :');
+      if (html!=null){
+        appendCardUpdate(cardId, sec, { origin:'client', type:'client_html', html });
+        touchCard(cardId);
+        renderDetail(cardId);
+      }
+      return;
+    }
+    if (btn.dataset.action==='card-soft-delete'){
+      const cardId = host.dataset.selectedCardId; if(!cardId) return;
+      const b = readClientBlob();
+      const c = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+      const isDel = !!c?.state?.deleted;
+      softDeleteCard(cardId, !isDel);
+      renderTimeline();   // la minicard reste visible mais bordure rouge
+      renderDetail(cardId);
+      return;
+    }
+
     // exports
     if (btn.dataset.action==='exp-md' || btn.dataset.action==='exp-html' || btn.dataset.action==='exp-print'){
       const picks = Array.from(detail.querySelectorAll('[data-action="exp-pick"]:checked')).map(x=>x.getAttribute('data-upd'));
@@ -585,6 +695,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
