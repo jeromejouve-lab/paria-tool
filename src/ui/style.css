@@ -64,4 +64,8 @@
 .card .ops{ display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
 .card .ops .btn-xs{ font-size:12px; padding:4px 8px; }
 
+#cards-timeline::-webkit-scrollbar,
+#card-detail::-webkit-scrollbar{ height:8px; width:8px }
+.chip{ display:inline-flex; gap:6px; align-items:center; padding:4px 8px; border:1px solid #2a2a2a; border-radius:999px; font-size:12px; background:#151515 }
+.card-mini.is-del{ border-color:#cc3344; background:#161214 }
 
