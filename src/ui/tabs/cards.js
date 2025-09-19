@@ -230,7 +230,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
   // layout de base
   host.style.display='flex'; host.style.flexDirection='column';
-  const bar = host.querySelector('.btns');
+
   if (bar){ bar.style.position='sticky'; bar.style.top='0'; bar.style.zIndex='2'; bar.style.background='var(--bg,#0f0f10)'; }
   
   let timeline = host.querySelector('#cards-timeline');
@@ -663,6 +663,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
