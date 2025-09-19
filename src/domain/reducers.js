@@ -132,7 +132,7 @@ export function writeClientProfile(client, data){
 
 // --- Cards (v2: cards + updates) — remplace le bloc items
 export function listCards(){
-  return (readClientBlob().cards||[]).filter(c=>!c?.state?.deleted);
+  return (readClientBlob().cards||[]);
 }
 
 export function createCard({title='',content='',tags=[]}={}){
@@ -403,6 +403,7 @@ export function __cards_migrate_v2_once(){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
