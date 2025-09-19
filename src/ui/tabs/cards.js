@@ -5,6 +5,11 @@ import {
 } from '../../domain/reducers.js';
 import { askAI } from '../../core/ai.js';
 
+import {
+  getCardView, setSectionFilters, listCardDays,
+  appendCardUpdate, touchCard, __cards_migrate_v2_once
+} from "../../domain/reducers.js";
+
 const $ = (s,r=document)=>r.querySelector(s);
 
 function html(){
@@ -78,6 +83,18 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   if (!host) return;
   host.innerHTML = html();
 
+  __cards_migrate_v2_once();
+
+  // layout de base
+  host.style.display='flex'; host.style.flexDirection='column';
+  const bar = host.querySelector('.btns');
+  if (bar){ bar.style.position='sticky'; bar.style.top='0'; bar.style.zIndex='2'; bar.style.background='var(--bg,#0f0f10)'; }
+  
+  let timeline = host.querySelector('#cards-timeline');
+  let detail   = host.querySelector('#card-detail');
+  if (!timeline){ timeline=document.createElement('div'); timeline.id='cards-timeline'; timeline.style.cssText='display:flex;gap:8px;overflow:auto;padding:8px 4px;'; bar?.insertAdjacentElement('afterend', timeline); }
+  if (!detail){   detail  =document.createElement('div'); detail.id='card-detail'; detail.style.cssText='flex:1 1 auto; overflow:auto; padding:8px 4px 16px;'; bar?.parentNode?.appendChild(detail); }
+
   // ---- Layout scrollable sous la barre d'actions ----
   const root   = host;                              // conteneur de l'onglet Cards
   const bar    = root.querySelector('.btns');       // barre d'actions du haut (Analyser / Export / etc.)
@@ -137,8 +154,175 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
     f.reset(); mountCardsTab(host);
   });
+
+  function fmt(ts){ try{ return ts? new Date(ts).toLocaleString() : ''; }catch{return '';} }
+
+  function renderTimeline(){
+    const b = readClientBlob();
+    const cards = (b.cards||[]).slice().sort((a,b)=> (a.updated_ts<b.updated_ts)?1:-1);
+    timeline.innerHTML = cards.map(c=>`
+      <button class="card-mini ${c.state?.deleted?'is-del':''}" data-card-id="${c.id}"
+              style="border:1px solid #2a2a2a;border-radius:10px;padding:8px;min-width:220px;background:#161616;text-align:left">
+        <div style="font-size:12px;opacity:.8;display:flex;gap:8px;align-items:center">
+          <b>#${c.id}</b> ${c.state?.think?'🤔':''}
+          <span style="margin-left:auto">${fmt(c.updated_ts||c.created_ts)}</span>
+        </div>
+        <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(c.title||'Sans titre').replace(/</g,'&lt;')}</div>
+        ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
+      </button>
+    `).join('');
+  }
+  renderTimeline();
   
+  timeline.addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('[data-card-id]');
+    if (!btn) return;
+    const id = btn.getAttribute('data-card-id');
+    host.dataset.selectedCardId = id;
+    renderDetail(id);
+  });
+
+  function renderDetail(cardId){
+    const b = readClientBlob();
+    const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+    if (!card){ detail.innerHTML = '<div style="opacity:.7">Aucune card</div>'; return; }
+  
+    // sections : si vide, créer une "Proposition 1" par défaut (id=1)
+    if (!card.sections?.length){ card.sections=[{id:1, title:'Proposition 1'}]; writeClientBlob(b); }
+  
+    detail.innerHTML = card.sections.map(sec=>{
+      const f = (card.ui?.filters?.[sec.id]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
+      const availableDays = listCardDays(card.id, sec.id);
+      const view = getCardView(card.id, {sectionId: sec.id, days: f.days, types: f.types});
+      const chips = availableDays.map(d=>`<label class="chip"><input type="checkbox" data-action="sec-day" data-sec="${sec.id}" value="${d}" ${f.days.includes(d)?'checked':''}> ${d}</label>`).join('');
+      const typeNames = [['analyse','Analyse'],['note','Note'],['comment','Commentaire'],['client_md','Client MD'],['client_html','Client HTML']];
+      const types = typeNames.map(([val,lab])=>`<label class="chip"><input type="checkbox" data-action="sec-type" data-sec="${sec.id}" value="${val}" ${f.types.includes(val)?'checked':''}> ${lab}</label>`).join('');
+  
+      const groupsHtml = view.groups.map(g=>`
+        <section class="day-group" data-day="${g.day}" style="border:1px dashed #2a2a2a;border-radius:10px;padding:8px;margin:8px 0">
+          <div style="font-size:12px;opacity:.8;margin-bottom:6px">${g.day}</div>
+          ${g.items.map(it=>`
+            <article class="upd" data-upd="${it.id}" style="border:1px solid #333;border-radius:8px;padding:8px;margin:6px 0;background:#181818">
+              <div style="display:flex;gap:8px;align-items:center;font-size:12px;opacity:.8">
+                <span>${new Date(it.ts).toLocaleTimeString()}</span>
+                <span>• ${it.origin}</span>
+                <span>• ${it.type}</span>
+                <label style="margin-left:auto;font-weight:500"><input type="checkbox" data-action="exp-pick" data-upd="${it.id}"> sélectionner</label>
+                <label style="margin-left:8px;opacity:.9"><input type="checkbox" data-action="hide-upd" data-upd="${it.id}"> masquer</label>
+              </div>
+              <pre style="white-space:pre-wrap;margin:6px 0 0 0">${(it.md||it.html||'').replace(/</g,'&lt;')}</pre>
+            </article>
+          `).join('')}
+        </section>
+      `).join('');
+  
+      return `
+        <div class="section" data-sec="${sec.id}" style="border:1px solid #2a2a2a;border-radius:12px;padding:10px;margin:10px 0;background:#141415">
+          <header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <h4 style="margin:0">${(sec.title||('Section '+sec.id)).replace(/</g,'&lt;')}</h4>
+            <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+              ${chips}
+              ${types}
+              <button class="btn btn-xs" data-action="sec-select-all" data-sec="${sec.id}">Sélectionner tout</button>
+              <button class="btn btn-xs" data-action="sec-clear" data-sec="${sec.id}">Tout masquer</button>
+            </div>
+          </header>
+          ${groupsHtml || '<div style="opacity:.6;padding:6px 0">Aucun élément pour ce filtre.</div>'}
+        </div>
+      `;
+    }).join('') + `
+      <div class="export-bar" style="position:sticky;bottom:0;padding:8px;background:#101010;border-top:1px solid #2a2a2a;display:flex;gap:8px">
+        <button class="btn btn-xs" data-action="exp-md">Exporter MD (sélection)</button>
+        <button class="btn btn-xs" data-action="exp-html">Exporter HTML (sélection)</button>
+        <button class="btn btn-xs" data-action="exp-print">Imprimer/PDF (sélection)</button>
+      </div>
+    `;
+  }
+
   // -- actions sur les petites cards (compact) --
+
+  detail.addEventListener('change', (ev)=>{
+    const cb = ev.target.closest('input[type="checkbox"]');
+    if (!cb) return;
+    const cardId = host.dataset.selectedCardId;
+    if (!cardId) return;
+  
+    // toggle days
+    if (cb.dataset.action==='sec-day'){
+      const sec = cb.dataset.sec;
+      const b = readClientBlob();
+      const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+      const f = (card.ui?.filters?.[sec]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
+      const set = new Set(f.days||[]);
+      cb.checked ? set.add(cb.value) : set.delete(cb.value);
+      setSectionFilters(cardId, sec, {days:[...set], types:f.types});
+      renderDetail(cardId);
+      return;
+    }
+  
+    // toggle types
+    if (cb.dataset.action==='sec-type'){
+      const sec = cb.dataset.sec;
+      const b = readClientBlob();
+      const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+      const f = (card.ui?.filters?.[sec]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
+      const set = new Set(f.types||[]);
+      cb.checked ? set.add(cb.value) : set.delete(cb.value);
+      setSectionFilters(cardId, sec, {days:f.days, types:[...set]});
+      renderDetail(cardId);
+      return;
+    }
+  });
+
+  detail.addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('[data-action]');
+    if (!btn) return;
+    const cardId = host.dataset.selectedCardId;
+  
+    if (btn.dataset.action==='sec-select-all'){
+      const sec = btn.dataset.sec;
+      detail.querySelectorAll(`.section[data-sec="${sec}"] [data-action="exp-pick"]`).forEach(x=>x.checked=true);
+      return;
+    }
+    if (btn.dataset.action==='sec-clear'){
+      const sec = btn.dataset.sec;
+      detail.querySelectorAll(`.section[data-sec="${sec}"] .upd`).forEach(x=>x.style.display='none');
+      return;
+    }
+  
+    // exports
+    if (btn.dataset.action==='exp-md' || btn.dataset.action==='exp-html' || btn.dataset.action==='exp-print'){
+      const picks = Array.from(detail.querySelectorAll('[data-action="exp-pick"]:checked')).map(x=>x.getAttribute('data-upd'));
+      if (!picks.length){ alert('Sélection vide'); return; }
+      const b = readClientBlob();
+      const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+      const sel = (card.updates||[]).filter(u=>picks.includes(String(u.id)));
+      const esc = s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  
+      if (btn.dataset.action==='exp-md'){
+        const md = sel.map(u=>`## ${_dayKey(u.ts)} ${new Date(u.ts).toLocaleTimeString()} • ${u.origin} • ${u.type}\n\n${u.md||u.html||''}`).join('\n\n');
+        const blob = new Blob([md], {type:'text/markdown'}); const a=document.createElement('a');
+        a.href=URL.createObjectURL(blob); a.download=`card-${cardId}-selection.md`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1e3);
+        return;
+      }
+      const html = `<!doctype html><meta charset="utf-8"><title>Card #${cardId}</title><style>
+        body{font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial;padding:20px;color:#111}
+        h2{font-size:16px;margin:16px 0 6px} .meta{opacity:.7;font-size:12px}
+        pre{white-space:pre-wrap}
+        @media print{@page{margin:12mm}}
+      </style>
+      <h1>Card #${cardId} — ${(card.title||'Sans titre').replace(/</g,'&lt;')}</h1>
+      ${sel.map(u=>`<h2>${_dayKey(u.ts)} ${new Date(u.ts).toLocaleTimeString()} • ${u.origin} • ${u.type}</h2>
+      <pre>${esc(u.md||u.html||'')}</pre>`).join('')}`;
+      if (btn.dataset.action==='exp-html'){
+        const blob = new Blob([html], {type:'text/html'}); const a=document.createElement('a');
+        a.href=URL.createObjectURL(blob); a.download=`card-${cardId}-selection.html`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1e3);
+      } else {
+        const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.focus(); w.print();
+      }
+      return;
+    }
+  });
 
   grid.addEventListener('click', (ev)=>{
     const btn = ev.target.closest('[data-action]');
@@ -216,6 +400,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
