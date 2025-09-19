@@ -97,7 +97,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
   // ---- Layout scrollable sous la barre d'actions ----
   const root   = host;                              // conteneur de l'onglet Cards
-  const bar    = root.querySelector('.btns');       // barre d'actions du haut (Analyser / Export / etc.)
   const list   = root.querySelector('#cards-grid'); // conteneur des cards (on crée juste après si absent)
   
   root.style.display = 'flex';
@@ -400,6 +399,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
