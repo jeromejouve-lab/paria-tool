@@ -223,9 +223,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     `;
   }
    
-  if (!host) return;
-  host.innerHTML = html();
-
   __cards_migrate_v2_once();
 
   // layout de base
@@ -297,88 +294,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   });
 
   function fmt(ts){ try{ return ts? new Date(ts).toLocaleString() : ''; }catch{return '';} }
-
-  function renderTimeline(){
-    const b = readClientBlob();
-    const cards = (b.cards||[]).slice().sort((a,b)=> (a.updated_ts<b.updated_ts)?1:-1);
-    timeline.innerHTML = cards.map(c=>`
-      <button class="card-mini ${c.state?.deleted?'is-del':''}" data-card-id="${c.id}"
-              style="border:1px solid #2a2a2a;border-radius:10px;padding:8px;min-width:220px;background:#161616;text-align:left">
-        <div style="font-size:12px;opacity:.8;display:flex;gap:8px;align-items:center">
-          <b>#${c.id}</b> ${c.state?.think?'🤔':''}
-          <span style="margin-left:auto">${fmt(c.updated_ts||c.created_ts)}</span>
-        </div>
-        <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(c.title||'Sans titre').replace(/</g,'&lt;')}</div>
-        ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
-      </button>
-    `).join('');
-  }
-  renderTimeline();
-  
-  timeline.addEventListener('click', (ev)=>{
-    const btn = ev.target.closest('[data-card-id]');
-    if (!btn) return;
-    const id = btn.getAttribute('data-card-id');
-    host.dataset.selectedCardId = id;
-    renderDetail(id);
-  });
-
-  function renderDetail(cardId){
-    const b = readClientBlob();
-    const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
-    if (!card){ detail.innerHTML = '<div style="opacity:.7">Aucune card</div>'; return; }
-  
-    // sections : si vide, créer une "Proposition 1" par défaut (id=1)
-    if (!card.sections?.length){ card.sections=[{id:1, title:'Proposition 1'}]; writeClientBlob(b); }
-  
-    detail.innerHTML = card.sections.map(sec=>{
-      const f = (card.ui?.filters?.[sec.id]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
-      const availableDays = listCardDays(card.id, sec.id);
-      const view = getCardView(card.id, {sectionId: sec.id, days: f.days, types: f.types});
-      const chips = availableDays.map(d=>`<label class="chip"><input type="checkbox" data-action="sec-day" data-sec="${sec.id}" value="${d}" ${f.days.includes(d)?'checked':''}> ${d}</label>`).join('');
-      const typeNames = [['analyse','Analyse'],['note','Note'],['comment','Commentaire'],['client_md','Client MD'],['client_html','Client HTML']];
-      const types = typeNames.map(([val,lab])=>`<label class="chip"><input type="checkbox" data-action="sec-type" data-sec="${sec.id}" value="${val}" ${f.types.includes(val)?'checked':''}> ${lab}</label>`).join('');
-  
-      const groupsHtml = view.groups.map(g=>`
-        <section class="day-group" data-day="${g.day}" style="border:1px dashed #2a2a2a;border-radius:10px;padding:8px;margin:8px 0">
-          <div style="font-size:12px;opacity:.8;margin-bottom:6px">${g.day}</div>
-          ${g.items.map(it=>`
-            <article class="upd" data-upd="${it.id}" style="border:1px solid #333;border-radius:8px;padding:8px;margin:6px 0;background:#181818">
-              <div style="display:flex;gap:8px;align-items:center;font-size:12px;opacity:.8">
-                <span>${new Date(it.ts).toLocaleTimeString()}</span>
-                <span>• ${it.origin}</span>
-                <span>• ${it.type}</span>
-                <label style="margin-left:auto;font-weight:500"><input type="checkbox" data-action="exp-pick" data-upd="${it.id}"> sélectionner</label>
-                <label style="margin-left:8px;opacity:.9"><input type="checkbox" data-action="hide-upd" data-upd="${it.id}"> masquer</label>
-              </div>
-              <pre style="white-space:pre-wrap;margin:6px 0 0 0">${(it.md||it.html||'').replace(/</g,'&lt;')}</pre>
-            </article>
-          `).join('')}
-        </section>
-      `).join('');
-  
-      return `
-        <div class="section" data-sec="${sec.id}" style="border:1px solid #2a2a2a;border-radius:12px;padding:10px;margin:10px 0;background:#141415">
-          <header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <h4 style="margin:0">${(sec.title||('Section '+sec.id)).replace(/</g,'&lt;')}</h4>
-            <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-              ${chips}
-              ${types}
-              <button class="btn btn-xs" data-action="sec-select-all" data-sec="${sec.id}">Sélectionner tout</button>
-              <button class="btn btn-xs" data-action="sec-clear" data-sec="${sec.id}">Tout masquer</button>
-            </div>
-          </header>
-          ${groupsHtml || '<div style="opacity:.6;padding:6px 0">Aucun élément pour ce filtre.</div>'}
-        </div>
-      `;
-    }).join('') + `
-      <div class="export-bar" style="position:sticky;bottom:0;padding:8px;background:#101010;border-top:1px solid #2a2a2a;display:flex;gap:8px">
-        <button class="btn btn-xs" data-action="exp-md">Exporter MD (sélection)</button>
-        <button class="btn btn-xs" data-action="exp-html">Exporter HTML (sélection)</button>
-        <button class="btn btn-xs" data-action="exp-print">Imprimer/PDF (sélection)</button>
-      </div>
-    `;
-  }
 
   // -- actions sur les petites cards (compact) --
 
@@ -670,6 +585,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
