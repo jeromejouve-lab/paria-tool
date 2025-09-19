@@ -159,11 +159,19 @@ export function toggleCharterAIStatus(aiId,key){ const b=readClientBlob(); b.cha
 export function removeCharterAI(aiId){ const b=readClientBlob(); b.charter.ai=(b.charter.ai||[]).map(p=>p.id===aiId?({...p,state:{...(p.state||{}),deleted:true,updated_ts:Date.now()}}):p); writeClientBlob(b); logEvent('charter/ai-remove',{kind:'charter',id:'_'},{aiId}); return true; }
 export function pushSelectedCharterToCards(){
   const b = readClientBlob();
-  const sel = (b.charter?.ai||[]).filter(p => p?.state?.selected && !p?.state?.deleted);
+
+  // --- source sélection : prioriser paria.charter (même source que l'UI) ---
+  const chLocal = (()=>{ try{ return JSON.parse(localStorage.getItem('paria.charter')||'{}'); }catch{ return {}; } })();
+  const chBlob  = b.charter || {};
+  const chSrc   = (Array.isArray(chLocal.ai) && chLocal.ai.length>=0) ? chLocal : chBlob;
+
+  // sélection effective
+  const sel = (chSrc.ai||[]).filter(p => p?.state?.selected && !p?.state?.deleted);
   if (!sel.length) return 0;
 
+  // init structures blob
   b.cards = b.cards || [];
-  b.seq = b.seq || {};
+  b.seq   = b.seq   || {};
   b.seq.cards_id   = b.seq.cards_id   || 0;
   b.seq.updates_id = b.seq.updates_id || 0;
 
@@ -171,31 +179,33 @@ export function pushSelectedCharterToCards(){
 
   for (const p of sel){
     // 1) nouvelle card
-    const id = (++b.seq.cards_id);
+    const cardId = (++b.seq.cards_id);
+    const sectionId = String(p.id||'1');
+
     const card = {
-      id,
+      id: cardId,
       title:   p.title   || '',
       tags:    Array.isArray(p.tags) ? p.tags : [],
-      // vue "courante" minimale (le détail sera dans updates[])
-      content: p.content || '',
+      content: p.content || '',                        // vue "courante" minimale
       state:   { think: !!(p?.state?.think) },
       created_ts: p.ts || Date.now(),
       updated_ts: p.ts || Date.now(),
       origin: { kind:'charter', ai_id:String(p.id||''), pushed_ts: Date.now() },
-      sections: [{ id: String(p.id||'1'), title: p.title || 'Proposition' }],
+      sections: [{ id: sectionId, title: p.title || 'Proposition' }],
       updates:  []
     };
-    // 2) première update = ANALYSE IA (charter)
+
+    // 2) première update = ANALYSE IA (avec prompt + penser)
     const updId = (++b.seq.updates_id);
     card.updates.push({
       id: updId,
-      section_id: String(p.id||'1'),
+      section_id: sectionId,
       ts: p.ts || Date.now(),
       origin: 'charter',
       type: 'analyse',
       md: p.content || '',
       html: null,
-      meta: { prompt: p.prompt || b.charter?.last_prompt || null, think: !!(p?.state?.think) }
+      meta: { prompt: p.prompt || chSrc.last_prompt || null, think: !!(p?.state?.think) }
     });
 
     b.cards.push(card);
@@ -205,6 +215,7 @@ export function pushSelectedCharterToCards(){
   writeClientBlob(b);
   return count;
 }
+
 
 
 
@@ -293,6 +304,7 @@ export function __cards_migrate_v2_once(){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
