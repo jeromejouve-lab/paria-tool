@@ -130,26 +130,100 @@ export function writeClientProfile(client, data){
   return true;
 }
 
-// --- Cards
-export function listCards(){ return (readClientBlob().items||[]).filter(c=>!c?.state?.deleted); }
+// --- Cards (v2: cards + updates) — remplace le bloc items
+export function listCards(){
+  return (readClientBlob().cards||[]).filter(c=>!c?.state?.deleted);
+}
+
 export function createCard({title='',content='',tags=[]}={}){
-  const blob=readClientBlob(); const id=uid();
-  blob.items.push({ id, title, content, tags:[...tags], notes:[], comments:[], ai:[], state:{deleted:false,think:false,selected:false,created_ts:Date.now(),updated_ts:Date.now()} });
-  writeClientBlob(blob); logEvent('card/create',{kind:'card',id}); return id;
+  const b = readClientBlob();
+  b.cards = b.cards || [];
+  b.seq   = b.seq   || {};
+  b.seq.cards_id = b.seq.cards_id || 0;
+
+  const id = (++b.seq.cards_id);
+  const card = {
+    id,
+    title,
+    tags:[...tags],
+    content: content||'',
+    state:{ deleted:false, think:false },
+    created_ts: Date.now(),
+    updated_ts: Date.now(),
+    sections: [],
+    updates: []
+  };
+  b.cards.push(card);
+  writeClientBlob(b);
+  logEvent('card/create',{kind:'card',id});
+  return id;
 }
-export function updateCard(id,patch={}){
-  const blob=readClientBlob(); const it=(blob.items||[]).find(c=>c.id===id); if(!it) return false;
-  Object.assign(it, patch); it.state={...(it.state||{}), updated_ts:Date.now()}; writeClientBlob(blob);
-  logEvent('card/update',{kind:'card',id}); return true;
+
+export function updateCard(id, patch={}){
+  const b = readClientBlob();
+  const it = (b.cards||[]).find(c=>String(c.id)===String(id));
+  if(!it) return false;
+  Object.assign(it, patch);
+  it.updated_ts = Date.now();
+  writeClientBlob(b);
+  logEvent('card/update',{kind:'card',id});
+  return true;
 }
-export function softDeleteCard(id){ const b=readClientBlob(); const it=(b.items||[]).find(c=>c.id===id); if(!it) return false; it.state={...(it.state||{}),deleted:true,updated_ts:Date.now()}; writeClientBlob(b); logEvent('card/remove',{kind:'card',id}); return true; }
-export function restoreCard(id){ const b=readClientBlob(); const it=(b.items||[]).find(c=>c.id===id); if(!it) return false; it.state={...(it.state||{}),deleted:false,updated_ts:Date.now()}; writeClientBlob(b); logEvent('card/restore',{kind:'card',id}); return true; }
-export function toggleThink(id,v=null){ const b=readClientBlob(); const it=(b.items||[]).find(c=>c.id===id); if(!it) return false; const nv=(v==null)?!it.state?.think:!!v; it.state={...(it.state||{}),think:nv,updated_ts:Date.now()}; writeClientBlob(b); logEvent('card/think',{kind:'card',id},{value:nv}); return true; }
-export function addNote(id,{author='moi',text=''}){ const b=readClientBlob(); const it=(b.items||[]).find(c=>c.id===id); if(!it) return false; it.notes=it.notes||[]; it.notes.push({id:uid(),author,text,ts:Date.now()}); it.state={...(it.state||{}),updated_ts:Date.now()}; writeClientBlob(b); logEvent('card/note',{kind:'card',id}); return true; }
-export function addComment(id,{author='moi',text=''}){ const b=readClientBlob(); const it=(b.items||[]).find(c=>c.id===id); if(!it) return false; it.comments=it.comments||[]; it.comments.push({id:uid(),author,text,ts:Date.now()}); it.state={...(it.state||{}),updated_ts:Date.now()}; writeClientBlob(b); logEvent('card/comment',{kind:'card',id}); return true; }
-export function addAItoCard(id, list=[]){ const b=readClientBlob(); const it=(b.items||[]).find(c=>c.id===id); if(!it) return false; it.ai=(it.ai||[]).concat(list); it.state={...(it.state||{}),updated_ts:Date.now()}; writeClientBlob(b); logEvent('card/ai-add',{kind:'card',id},{count:list.length}); return true; }
-export function toggleCardAIStatus(id, aiId, key){ const b=readClientBlob(); const it=(b.items||[]).find(c=>c.id===id); if(!it) return false; it.ai=(it.ai||[]).map(x=>x.id===aiId?({...x,state:{...(x.state||{}),[key]:!x.state?.[key],updated_ts:Date.now()}}):x); writeClientBlob(b); logEvent('card/ai-flag',{kind:'card',id},{aiId,key}); return true; }
-export function removeCardAI(id, aiId){ const b=readClientBlob(); const it=(b.items||[]).find(c=>c.id===id); if(!it) return false; it.ai=(it.ai||[]).map(x=>x.id===aiId?({...x,state:{...(x.state||{}),deleted:true,updated_ts:Date.now()}}):x); writeClientBlob(b); logEvent('card/ai-remove',{kind:'card',id},{aiId}); return true; }
+
+export function softDeleteCard(id, deleted=true){
+  const b = readClientBlob();
+  const it = (b.cards||[]).find(c=>String(c.id)===String(id));
+  if(!it) return false;
+  it.state = { ...(it.state||{}), deleted: !!deleted };
+  it.updated_ts = Date.now();
+  writeClientBlob(b);
+  logEvent(deleted?'card/remove':'card/restore',{kind:'card',id});
+  return true;
+}
+export function restoreCard(id){ return softDeleteCard(id,false); }
+
+export function toggleThink(id, v=null){
+  const b = readClientBlob();
+  const it = (b.cards||[]).find(c=>String(c.id)===String(id));
+  if(!it) return false;
+  const nv = (v==null)? !it.state?.think : !!v;
+  it.state = { ...(it.state||{}), think: nv };
+  it.updated_ts = Date.now();
+  writeClientBlob(b);
+  logEvent('card/think',{kind:'card',id},{value:nv});
+  return true;
+}
+
+// Notes/Commentaires → deviennent des updates
+export function addNote(id, {author='moi', text=''}){
+  ensureSection(id,'1','Proposition 1');
+  appendCardUpdate(id,'1',{ origin:'client', type:'note', md:text, meta:{author} });
+  touchCard(id);
+  return true;
+}
+export function addComment(id, {author='moi', text=''}){
+  ensureSection(id,'1','Proposition 1');
+  appendCardUpdate(id,'1',{ origin:'client', type:'comment', md:text, meta:{author} });
+  touchCard(id);
+  return true;
+}
+
+// Compat “AI” (ancien) → on append des updates d’analyse
+export function addAItoCard(id, list=[]){
+  ensureSection(id,'1','Proposition 1');
+  for (const it of (list||[])){
+    appendCardUpdate(id,'1',{
+      origin:'charter',
+      type:'analyse',
+      md: it?.content || '',
+      meta:{ title:it?.title||'', tags:it?.tags||[], think:!!(it?.state?.think) }
+    });
+  }
+  touchCard(id);
+  return true;
+}
+export function toggleCardAIStatus(){ return true; } // no-op v2 (compat)
+export function removeCardAI(){ return true; }       // no-op v2 (compat)
 
 // --- Charter
 export function getCharter(){ return readClientBlob().charter; }
@@ -232,11 +306,19 @@ export function removeCardFromScenario(id,cardId){ const b=readClientBlob(); con
 export function softDeleteScenario(id){ const b=readClientBlob(); const sc=(b.scenarios||[]).find(s=>s.id===id); if(!sc) return false; sc.state={...(sc.state||{}),deleted:true,updated_ts:Date.now()}; writeClientBlob(b); logEvent('scenario/remove',{kind:'scenario',id}); return true; }
 export function restoreScenario(id){ const b=readClientBlob(); const sc=(b.scenarios||[]).find(s=>s.id===id); if(!sc) return false; sc.state={...(sc.state||{}),deleted:false,updated_ts:Date.now()}; writeClientBlob(b); logEvent('scenario/restore',{kind:'scenario',id}); return true; }
 export function promoteScenario(id, {targetCardId=null}={}){
-  const b=readClientBlob(); const sc=(b.scenarios||[]).find(s=>s.id===id); if(!sc) return false;
-  const content = (sc.cards||[]).map(x=> (b.items||[]).find(c=>c.id===x.card_id)?.content || '').join('\n\n');
+  const b = readClientBlob();
+  const sc = (b.scenarios||[]).find(s=>s.id===id);
+  if(!sc) return false;
+
+  const content = (sc.cards||[])
+    .map(x => (b.cards||[]).find(c=>String(c.id)===String(x.card_id))?.content || '')
+    .join('\n\n');
+
   if (targetCardId){ updateCard(targetCardId,{ content }); }
   else { createCard({ title: sc.title||'Scénario', content }); }
-  logEvent('scenario/promote',{kind:'scenario',id}); return true;
+
+  logEvent('scenario/promote',{kind:'scenario',id});
+  return true;
 }
 
 // --- Session/Projecteur (sur card active)
@@ -245,8 +327,25 @@ export function setSession(patch){ const b=readClientBlob(); b.meta=b.meta||{}; 
 export function startSession(cardId){ return setSession({ status:'running', card_id:cardId, started_ts:Date.now() }); }
 export function pauseSession(){ return setSession({ status:'paused' }); }
 export function stopSession(){ return setSession({ status:'stopped', stopped_ts:Date.now() }); }
-export function addSessionComment({author='moi',text=''}){ const b=readClientBlob(); const sid=b.meta?.session?.card_id; if (!sid) return false; const it=(b.items||[]).find(c=>c.id===sid); if(!it) return false; it.comments=it.comments||[]; it.comments.push({id:uid(),author,text,ts:Date.now()}); writeClientBlob(b); logEvent('session/comment',{kind:'card',id:sid}); return true; }
-export function addSessionAnnotation({author='moi',text=''}){ const b=readClientBlob(); const sid=b.meta?.session?.card_id; if (!sid) return false; const it=(b.items||[]).find(c=>c.id===sid); if(!it) return false; it.notes=it.notes||[]; it.notes.push({id:uid(),author,text,ts:Date.now()}); writeClientBlob(b); logEvent('session/annotate',{kind:'card',id:sid}); return true; }
+export function addSessionComment({author='moi',text=''}){
+  const b = readClientBlob();
+  const sid = b.meta?.session?.card_id;
+  if (!sid) return false;
+  ensureSection(sid,'1','Proposition 1');
+  appendCardUpdate(sid,'1',{ origin:'projecteur', type:'comment', md:text, meta:{author} });
+  touchCard(sid);
+  return true;
+}
+
+export function addSessionAnnotation({author='moi',text=''}){
+  const b = readClientBlob();
+  const sid = b.meta?.session?.card_id;
+  if (!sid) return false;
+  ensureSection(sid,'1','Proposition 1');
+  appendCardUpdate(sid,'1',{ origin:'projecteur', type:'note', md:text, meta:{author} });
+  touchCard(sid);
+  return true;
+}
 
 // --- Bootstrap workspace (Git/Drive arbo)
 export async function bootstrapWorkspaceIfNeeded(client, service){
@@ -281,7 +380,7 @@ function cardToHTML(c){
     pre{white-space:pre-wrap}
     @media print{ @page { margin: 12mm; } }
   </style>
-  <div class="meta">#${c.id} — ${fmtTs(c.created_ts)}</div>
+  <div class="meta">#${c.id} — ${new Date(c.created_ts||Date.now()).toLocaleString()}</div>
   <h1>${esc(c.title||'Sans titre')}</h1>
   <pre>${esc(c.content||'')}</pre>
   ${tags?`<div class="meta">${esc(tags)}</div>`:''}`;
@@ -304,6 +403,7 @@ export function __cards_migrate_v2_once(){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
