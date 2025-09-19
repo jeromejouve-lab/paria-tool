@@ -138,11 +138,11 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
         ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
       </button>
     `).join('');
-    host.querySelector('#cards-timeline').innerHTML = html || '<div style="opacity:.6">Aucune card</div>';
+    timeline.innerHTML = html || '<div style="opacity:.6">Aucune card</div>';
   }
   renderTimeline();
   
-  host.querySelector('#cards-timeline').addEventListener('click',(ev)=>{
+  timeline.addEventListener('click', (ev)=>{
     const btn = ev.target.closest('[data-card-id]');
     if (!btn) return;
     const id = btn.getAttribute('data-card-id');
@@ -234,6 +234,8 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   if (bar){ bar.style.position='sticky'; bar.style.top='0'; bar.style.zIndex='2'; bar.style.background='var(--bg,#0f0f10)'; }
   if (!timeline){ timeline=document.createElement('div'); timeline.id='cards-timeline'; timeline.style.cssText='display:flex;gap:8px;overflow:auto;padding:8px 4px;'; bar?.insertAdjacentElement('afterend', timeline); }
   if (!detail){   detail  =document.createElement('div'); detail.id='card-detail'; detail.style.cssText='flex:1 1 auto; overflow:auto; padding:8px 4px 16px;'; bar?.parentNode?.appendChild(detail); }
+  if (!timeline) throw new Error('[Cards] #cards-timeline introuvable');
+  if (!detail)   throw new Error('[Cards] #card-detail introuvable');
 
   // ---- Layout scrollable sous la barre d'actions ----
   const root   = host;                              // conteneur de l'onglet Cards
@@ -570,7 +572,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     }
   });
   // toggle filtres (jours/types)
-  host.querySelector('#card-detail').addEventListener('change', (ev)=>{
+  detail.addEventListener('change', (ev)=>{
     const cb = ev.target.closest('input[type="checkbox"]');
     if (!cb) return;
     const cardId = host.dataset.selectedCardId;
@@ -589,7 +591,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   });
   
   // boutons section + export
-  host.querySelector('#card-detail').addEventListener('click', (ev)=>{
+  detail.addEventListener('click', (ev)=>{
     const btn = ev.target.closest('[data-action]');
     if (!btn) return;
     const detail = host.querySelector('#card-detail');
@@ -660,6 +662,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
