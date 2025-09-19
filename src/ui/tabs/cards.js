@@ -10,7 +10,16 @@ import {
   appendCardUpdate, touchCard, __cards_migrate_v2_once
 } from "../../domain/reducers.js";
 
+import { readClientBlob, writeClientBlob } from "../../core/store.js";
+
 const $ = (s,r=document)=>r.querySelector(s);
+
+function _dayKey(ts){
+  const d = new Date(ts);
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
 
 function html(){
   const cards = listCards();
@@ -399,6 +408,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
