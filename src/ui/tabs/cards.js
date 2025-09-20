@@ -49,12 +49,14 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   host.style.display = 'flex';
   host.style.flexDirection = 'column';
   
-  const bar = host.querySelector('.btns');
+  let bar = host.querySelector('.btns');
   if (!bar) {
     const b = document.createElement('div');
     b.className = 'btns';
     b.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px 4px';
     host.prepend(b);
+    bar = b;
+
   }
 
   if (bar && !bar.querySelector('[data-action="workset-save"]')) {
@@ -609,6 +611,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
