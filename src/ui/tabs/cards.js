@@ -167,36 +167,28 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     const selId = String(host.dataset.selectedCardId || '');
     const cards = (b.cards || []).slice().sort((a,b)=> (a.updated_ts<b.updated_ts)?1:-1);
       
-    timeline.innerHTML = cards.map(c=>{
-      const isDel = !!c.state?.deleted;
-      const isAct = selId && String(c.id) === selId;
-      const isSel = selectedIds.has(String(c.id));
-      const isPri = String(primaryId||'') === String(c.id);
-      
-      return `
-        <button class="card-mini ${c.state?.deleted?'is-del':''} ${String(primaryId||'')===String(c.id)?'is-active':''} ${selectedIds?.has?.(String(c.id))?'is-selected':''}"
-                data-card-id="${c.id}"
-                style="position:relative;border:1px solid #2a2a2a;border-radius:10px;padding:8px;min-width:240px;background:#161616;text-align:left">
-          <div class="meta-row" style="font-size:12px;opacity:.85;display:flex;gap:8px;align-items:center">
-            <b>#${c.id}</b> ${c.state?.think?'🤔':''}
-            <span class="ts" style="margin-left:auto">${(c.updated_ts||c.created_ts)?new Date(c.updated_ts||c.created_ts).toLocaleString():''}</span>
-            <button class="mini-trash" data-action="mini-soft-delete" data-id="${c.id}"
-                    title="${c.state?.deleted?'Restaurer':'Supprimer'}" aria-label="${c.state?.deleted?'Restaurer':'Supprimer'}">
-              ${c.state?.deleted?'↩︎':'🗑️'}
-            </button>
-          </div>
-          <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            ${(
-              (c.title && c.title.trim())
-              || (b.charter?.title && b.charter.title.trim())
-              || (b.charter?.service ? ('Service: '+b.charter.service) : 'Sans titre')
-            ).replace(/</g,'&lt;')}
-          </div>
-          ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
-        </button>
-      `;
+    const worksets = (b.worksets||[]).slice().sort((a,b)=> a.created_ts<b.created_ts ? 1 : -1);
 
-    }).join('') || '<div style="opacity:.6">Aucune card</div>';
+    const wsHtml = worksets.map(ws=>{
+      const created = ws.created_ts ? new Date(ws.created_ts).toLocaleString() : '';
+      return `
+      <article class="card-mini is-workset" data-kind="workset" data-wsid="${ws.id}"
+               style="box-shadow:0 0 0 2px #f6c24a inset; background:#1a1608; border-color:#f6c24a">
+        <header style="display:flex;align-items:center;gap:6px;font-size:12px;opacity:.85">
+          <span class="badge" style="background:#f6c24a;color:#111;padding:0 6px;border-radius:999px;font-weight:600">WS</span>
+          <span class="ts" style="margin-left:auto">${created}</span>
+        </header>
+        <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">
+          ${String(ws.title||'Sélection').replace(/</g,'&lt;')}
+        </div>
+        <div style="font-size:11px;opacity:.7;margin-top:2px">${(ws.card_ids||[]).length} card(s)</div>
+      </article>`;
+    }).join('');
+    
+    const cardsHtml = cards.map(c=>` ... `).join(''); // <— garde ton template existant tel quel
+    
+    timeline.innerHTML = (wsHtml + cardsHtml) || '<em style="opacity:.6;padding:4px 0">Aucune card</em>';
+
   }
 
   renderTimeline();
@@ -230,7 +222,25 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       }
       return;
     }
-  
+
+    // appliquer un workset (sélection virtuelle)
+    {
+      const wsTile = ev.target.closest('.card-mini[data-kind="workset"]');
+      if (wsTile){
+        const wid = String(wsTile.getAttribute('data-wsid')||'');
+        const b = readClientBlob();
+        const ws = (b.worksets||[]).find(x=>String(x.id)===wid);
+        if (ws && (ws.card_ids||[]).length){
+          // primaire = 1ère, le reste en sélection
+          primaryId = String(ws.card_ids[0]);
+          selectedIds = new Set(ws.card_ids.slice(1).map(String));
+          renderTimeline();
+          renderDetail();
+        }
+        return;
+      }
+    }
+
     // clic sur mini-card
     const btn = ev.target.closest('[data-card-id]');
     if (!btn) return;
@@ -457,6 +467,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     const title = prompt('Nom de la sélection (workset) :', 'Sélection du jour');
     if (title!=null){
       const wid = saveWorkset({ title, card_ids: ids });
+      renderTimeline();
     }
   });
   
@@ -635,6 +646,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
