@@ -146,24 +146,22 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       const isPri = String(primaryId||'') === String(c.id);
       
       return `
-        <div class="card-mini-wrap" style="position:relative">
-          <button class="card-mini ${c.state?.deleted?'is-del':''} ${isSel?'is-selected':''} ${isPri?'is-active':''}"
-                  data-card-id="${c.id}"
-                  style="border:1px solid #2a2a2a;border-radius:10px;padding:8px;min-width:240px;background:#161616;text-align:left">
-            <div style="font-size:12px;opacity:.8;display:flex;gap:8px;align-items:center">
-              <b>#${c.id}</b> ${c.state?.think?'🤔':''}
-              <span style="margin-left:auto">${(c.updated_ts||c.created_ts)?new Date(c.updated_ts||c.created_ts).toLocaleString():''}</span>
-            </div>
-            <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-              ${(c.title||'Sans titre').replace(/</g,'&lt;')}
-            </div>
-            ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
-          </button>
-          <button class="mini-trash"
-                  data-action="mini-soft-delete" data-id="${c.id}"
-                  title="${isDel?'Restaurer':'Supprimer'}" aria-label="${isDel?'Restaurer':'Supprimer'}">🗑️</button>
-        </div>
+        <button class="card-mini ${c.state?.deleted?'is-del':''} ${String(primaryId||'')===String(c.id)?'is-active':''} ${selectedIds?.has?.(String(c.id))?'is-selected':''}"
+                data-card-id="${c.id}"
+                style="position:relative;border:1px solid #2a2a2a;border-radius:10px;padding:8px;min-width:240px;background:#161616;text-align:left">
+          <div class="meta-row" style="font-size:12px;opacity:.85;display:flex;gap:8px;align-items:center">
+            <b>#${c.id}</b> ${c.state?.think?'🤔':''}
+            <span class="ts" style="margin-left:auto">${(c.updated_ts||c.created_ts)?new Date(c.updated_ts||c.created_ts).toLocaleString():''}</span>
+            <button class="mini-trash" data-action="mini-soft-delete" data-id="${c.id}"
+                    title="${c.state?.deleted?'Restaurer':'Supprimer'}" aria-label="${c.state?.deleted?'Restaurer':'Supprimer'}">🗑️</button>
+          </div>
+          <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            ${(c.title||'Sans titre').replace(/</g,'&lt;')}
+          </div>
+          ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
+        </button>
       `;
+
     }).join('') || '<div style="opacity:.6">Aucune card</div>';
   }
 
@@ -487,6 +485,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
