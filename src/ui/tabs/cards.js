@@ -158,7 +158,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
             </button>
           </div>
           <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            ${(c.title || 'Sans titre').replace(/</g,'&lt;')}
+            ${((c.title && c.title.trim()) ? c.title : (b.charter?.title || 'Sans titre')).replace(/</g,'&lt;')}
           </div>
           ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
         </button>
@@ -364,10 +364,11 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   detail.addEventListener('change', (ev)=>{
     const cb = ev.target.closest('input[type="checkbox"]');
     if (!cb) return;
-    const cardId = host.dataset.selectedCardId;
+    const cardId = cb.dataset.card || host.dataset.selectedCardId; // <-- clé
     if (!cardId) return;
   
     // toggle days
+    // sec-day
     if (cb.dataset.action==='sec-day'){
       const sec = cb.dataset.sec;
       const b = readClientBlob();
@@ -376,11 +377,10 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       const set = new Set(f.days||[]);
       cb.checked ? set.add(cb.value) : set.delete(cb.value);
       setSectionFilters(cardId, sec, {days:[...set], types:f.types});
-      renderDetail(cardId);
+      renderDetail();
       return;
     }
-  
-    // toggle types
+    // sec-type
     if (cb.dataset.action==='sec-type'){
       const sec = cb.dataset.sec;
       const b = readClientBlob();
@@ -389,7 +389,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       const set = new Set(f.types||[]);
       cb.checked ? set.add(cb.value) : set.delete(cb.value);
       setSectionFilters(cardId, sec, {days:f.days, types:[...set]});
-      renderDetail(cardId);
+      renderDetail();
       return;
     }
 
@@ -435,11 +435,12 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     }
     if (btn.dataset.action==='sec-calendar'){
       const sec = btn.dataset.sec;
-      const cardId = host.dataset.selectedCardId;
+      const cardId = btn.dataset.card || host.dataset.selectedCardId;
       if (!cardId) return;
       showSectionCalendar(cardId, sec);
       return;
     }
+
     if (btn.dataset.action==='sec-import-md'){
       const sec = btn.dataset.sec;
       const cardId = host.dataset.selectedCardId; if(!cardId) return;
@@ -465,70 +466,106 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   
     // exports
     if (btn.dataset.action==='exp-md' || btn.dataset.action==='exp-html' || btn.dataset.action==='exp-print'){
-      const picks = Array.from(detail.querySelectorAll('[data-action="exp-pick"]:checked')).map(x=>x.getAttribute('data-upd'));
-      const b = readClientBlob();
-      const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
-      const all = (card?.updates||[]).slice().sort((a,b)=>a.ts<b.ts?1:-1);
-      const chosen = picks.length ? all.filter(u=>picks.includes(String(u.id))) : all;
+      // 1) cartes concernées = primaire puis autres sélectionnées
+      const ids = [];
+      if (primaryId) ids.push(String(primaryId));
+      for (const x of (selectedIds||new Set())) if (String(x)!==String(primaryId)) ids.push(String(x));
+      if (!ids.length) return;
     
-      const groups = {};
-      for (const u of chosen){
-        const k = _dayKey(u.ts);
-        (groups[k] = groups[k] || []).push(u);
-      }
-    
-      const esc = s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-      const thinkBadge = card?.state?.think ? ' 🤔' : '';
-    
-      if (btn.dataset.action==='exp-md'){
-        const md = [
-          `# Card #${cardId}${thinkBadge} — ${(card?.title||'Sans titre')}`,
-          ...(Object.keys(groups).sort((a,b)=>a<b?1:-1).map(day=>{
-            const items = groups[day].map(u=>{
-              const meta = [];
-              meta.push(new Date(u.ts).toLocaleTimeString());
-              if (u.origin) meta.push(u.origin);
-              if (u.type)   meta.push(u.type);
-              if (u.meta?.think) meta.push('🤔');
-              if (u.meta?.prompt) meta.push('[prompt]');
-              return `## ${day} • ${meta.join(' • ')}\n\n${u.md || u.html || ''}${u.meta?.prompt?`\n\n> Prompt:\n>\n> ${u.meta.prompt}`:''}`;
-            }).join('\n\n');
-            return items;
-          }))
-        ].join('\n\n');
-        const blob = new Blob([md], {type:'text/markdown'});
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `card-${cardId}.md`; a.click();
-        setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
-        return;
-      }
-    
-      const html = `<!doctype html><meta charset="utf-8"><title>Card #${cardId}</title><style>
-        body{font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial;padding:20px;color:#111}
-        h1{font-size:20px;margin:0 0 12px} h2{font-size:14px;margin:14px 0 6px}
-        .meta{opacity:.7;font-size:12px} pre{white-space:pre-wrap}
-        @media print{@page{margin:12mm}}
-      </style>
-      <h1>Card #${cardId}${thinkBadge} — ${esc(card?.title||'Sans titre')}</h1>
-      ${Object.keys(groups).sort((a,b)=>a<b?1:-1).map(day=>{
-        return `<h2>${day}</h2>` + groups[day].map(u=>{
-          const meta = [];
-          meta.push(new Date(u.ts).toLocaleTimeString());
-          if (u.origin) meta.push(u.origin);
-          if (u.type)   meta.push(u.type);
-          if (u.meta?.think) meta.push('🤔');
-          return `<div class="meta">${esc(meta.join(' • '))}${u.meta?.prompt?' • [prompt]':''}</div>
-          <pre>${esc(u.md || u.html || '')}</pre>
-          ${u.meta?.prompt?`<details><summary>Prompt</summary><pre>${esc(u.meta.prompt)}</pre></details>`:''}`;
-        }).join('');
-      }).join('')}`;
-      if (btn.dataset.action==='exp-html'){
-        const blob = new Blob([html], {type:'text/html'}); const a=document.createElement('a');
-        a.href=URL.createObjectURL(blob); a.download=`card-${cardId}.html`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1e3);
+      // 2) cases cochées -> groupées par card
+      const picks = Array.from(detail.querySelectorAll('[data-action="exp-pick"]:checked'));
+      const picksByCard = new Map();
+      if (picks.length){
+        for (const el of picks){
+          const cid = String(el.getAttribute('data-card'));
+          const uid = String(el.getAttribute('data-upd'));
+          if (!picksByCard.has(cid)) picksByCard.set(cid, new Set());
+          picksByCard.get(cid).add(uid);
+        }
       } else {
-        const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.focus(); w.print();
+        // si aucune case cochée : on exporte TOUT des cards sélectionnées
+        for (const cid of ids) picksByCard.set(String(cid), null);
+      }
+    
+      const b = readClientBlob();
+      const esc = s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    
+      // 3) Construit le contenu multi-card
+      const outMD = [];
+      const outHTML = [];
+    
+      for (const cid of ids){
+        const card = (b.cards||[]).find(x=>String(x.id)===String(cid));
+        if (!card || card.state?.deleted) continue;
+        const chosen = (()=> {
+          const wanted = picksByCard.get(String(cid)); // null => tout
+          const all = (card.updates||[]).slice().sort((a,b)=>a.ts<b.ts?1:-1);
+          return wanted ? all.filter(u=>wanted.has(String(u.id))) : all;
+        })();
+        if (!chosen.length) continue;
+    
+        // group by day
+        const groups = {};
+        for (const u of chosen){ const k=_dayKey(u.ts); (groups[k]=groups[k]||[]).push(u); }
+    
+        // MD
+        outMD.push(`# Card #${cid}${card.state?.think?' 🤔':''} — ${(card.title||b.charter?.title||'Sans titre')}`);
+        for (const day of Object.keys(groups).sort((a,b)=>a<b?1:-1)){
+          for (const u of groups[day]){
+            const meta = [];
+            meta.push(new Date(u.ts).toLocaleTimeString());
+            if (u.origin) meta.push(u.origin);
+            if (u.type)   meta.push(u.type);
+            if (u.meta?.think) meta.push('🤔');
+            const head = `## ${day} • ${meta.join(' • ')}`;
+            const body = (u.md || u.html || '');
+            const prompt = u.meta?.prompt ? `\n\n> Prompt:\n>\n> ${u.meta.prompt}` : '';
+            outMD.push(`${head}\n\n${body}${prompt}`);
+          }
+        }
+    
+        // HTML
+        const htmlParts = [`<h1>Card #${cid}${card.state?.think?' 🤔':''} — ${esc(card.title||b.charter?.title||'Sans titre')}</h1>`];
+        for (const day of Object.keys(groups).sort((a,b)=>a<b?1:-1)){
+          htmlParts.push(`<h2>${esc(day)}</h2>`);
+          for (const u of groups[day]){
+            const meta = [];
+            meta.push(new Date(u.ts).toLocaleTimeString());
+            if (u.origin) meta.push(u.origin);
+            if (u.type)   meta.push(u.type);
+            if (u.meta?.think) meta.push('🤔');
+            htmlParts.push(
+              `<div class="meta">${esc(meta.join(' • '))}${u.meta?.prompt?' • [prompt]':''}</div>`+
+              `<pre>${esc(u.md || u.html || '')}</pre>`+
+              (u.meta?.prompt?`<details><summary>Prompt</summary><pre>${esc(u.meta.prompt)}</pre></details>`:'')
+            );
+          }
+        }
+        outHTML.push(htmlParts.join(''));
+      }
+    
+      // 4) Emission
+      if (btn.dataset.action==='exp-md'){
+        const blob = new Blob([outMD.join('\n\n')], {type:'text/markdown'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `cards-selection.md`; a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+      } else {
+        const html = `<!doctype html><meta charset="utf-8"><title>Cards — export</title><style>
+          body{font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial;padding:20px;color:#eee;background:#111}
+          h1{font-size:20px;margin:12px 0} h2{font-size:14px;margin:12px 0 6px}
+          .meta{opacity:.7;font-size:12px} pre{white-space:pre-wrap}
+          @media print{@page{margin:12mm}}
+        </style>${outHTML.join('<hr>')}`;
+        if (btn.dataset.action==='exp-html'){
+          const blob = new Blob([html], {type:'text/html'}); const a=document.createElement('a');
+          a.href=URL.createObjectURL(blob); a.download=`cards-selection.html`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1e3);
+        } else {
+          const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.focus(); w.print();
+        }
       }
       return;
     }
+
 
   });
  
@@ -536,6 +573,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
