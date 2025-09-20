@@ -59,14 +59,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
   }
 
-  if (bar && !bar.querySelector('[data-action="workset-save"]')) {
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-xs';
-    btn.dataset.action = 'workset-save';
-    btn.textContent = 'Enregistrer la sélection';
-    bar.appendChild(btn);
-  }
-
   if (bar){
     bar.style.position = 'sticky';
     bar.style.top = '0';
@@ -82,8 +74,25 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     timeline = document.createElement('div');
     timeline.id = 'cards-timeline';
     timeline.style.cssText = 'display:flex;gap:8px;overflow:auto;padding:8px 4px;';
+  
+    // -- actions sous la timeline (gauche)
+    let actions = host.querySelector('#cards-actions');
+    if (!actions){
+      actions = document.createElement('div');
+      actions.id = 'cards-actions';
+      actions.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px 4px';
+      timeline.insertAdjacentElement('afterend', actions);
+    }
+    if (!actions.querySelector('[data-action="workset-save"]')){
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-xs';
+      btn.dataset.action = 'workset-save';
+      btn.textContent = 'Enregistrer la sélection';
+      actions.appendChild(btn);
+    }
     bar ? bar.insertAdjacentElement('afterend', timeline) : host.prepend(timeline);
   }
+
   if (!detail){
     detail = document.createElement('div');
     detail.id = 'card-detail';
@@ -433,6 +442,23 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
   });
 
+  // -- actions globales sur l'onglet (ex: workset-save sous la timeline)
+  host.addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('[data-action="workset-save"]');
+    if (!btn) return;
+  
+    const ids = [];
+    if (primaryId) ids.push(String(primaryId));
+    for (const x of (selectedIds||new Set())) if (String(x)!==String(primaryId)) ids.push(String(x));
+    if (!ids.length) { alert('Aucune card sélectionnée.'); return; }
+  
+    const title = prompt('Nom de la sélection (workset) :', 'Sélection du jour');
+    if (title!=null){
+      const wid = saveWorkset({ title, card_ids: ids });
+      alert(`Sélection enregistrée (#${wid})`);
+    }
+  });
+  
   detail.addEventListener('click', (ev)=>{
     const btn = ev.target.closest('[data-action]');
     if (!btn) return;
@@ -608,6 +634,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
