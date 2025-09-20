@@ -69,5 +69,8 @@
 .chip{ display:inline-flex; gap:6px; align-items:center; padding:4px 8px; border:1px solid #2a2a2a; border-radius:999px; font-size:12px; background:#151515 }
 .card-mini.is-active{ outline:2px solid #3b82f6; outline-offset:2px; }
 .card-mini.is-del{ border-color:#cc3344; background:#161214; opacity:.75; }
+.upd.is-hidden .upd-body{ display:none; }
+.upd.is-hidden{ opacity:.85; background:#131313; }
+
 
 
