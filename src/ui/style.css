@@ -80,5 +80,7 @@
 .mini-trash:hover{ background:rgba(255,255,255,.08); }
 .mini-trash:focus{ outline:none; box-shadow:none; } /* supprime la bordure bleue */
 
+.card-mini.is-selected{ outline:1px solid #3b82f6; outline-offset:2px; }
+.card-mini.is-active{ outline:2px solid #3b82f6; outline-offset:2px; } /* halo fort pour la courante */
 
 
