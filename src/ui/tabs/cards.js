@@ -158,7 +158,11 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
             </button>
           </div>
           <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            ${((c.title && c.title.trim()) ? c.title : (b.charter?.title || 'Sans titre')).replace(/</g,'&lt;')}
+            ${(
+              (c.title && c.title.trim())
+              || (b.charter?.title && b.charter.title.trim())
+              || (b.charter?.service ? ('Service: '+b.charter.service) : 'Sans titre')
+            ).replace(/</g,'&lt;')}
           </div>
           ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
         </button>
@@ -245,7 +249,8 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
         <div class="card-block" data-card="${card.id}" style="border:1px solid #2a2a2a;border-radius:12px;margin:8px 0;background:#141415">
           <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #2a2a2a">
             <strong>#${card.id}</strong>${card.state?.think?'&nbsp;🤔':''}
-            <span style="margin-left:8px">${(card.title||'Proposition').replace(/</g,'&lt;')}</span>
+            <span style="margin-left:8px">${(card.title || b.charter?.title || (b.charter?.service?('Service: '+b.charter.service):'Sans titre'))
+.replace(/</g,'&lt;')}</span>
             <span style="margin-left:auto;opacity:.8;font-size:12px">${new Date(card.updated_ts||card.created_ts||Date.now()).toLocaleString()}</span>
           </div>
       `);
@@ -573,6 +578,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
