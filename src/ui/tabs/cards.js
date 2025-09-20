@@ -177,15 +177,25 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       const b  = readClientBlob();
       const c  = (b.cards||[]).find(x=>String(x.id)===String(id));
       if (!c) return;
+    
       const nowDel = !c.state?.deleted;
       softDeleteCard(id, nowDel);
     
-      // MAJ sélection : retirée si supprimée
+      // MAJ sélection : si supprimée → retirer du Set + gérer la primaire
       if (nowDel){
         if (selectedIds?.has?.(id)) selectedIds.delete(id);
         if (String(primaryId||'')===id) primaryId = null;
       }
-      renderTimeline();  // ↩︎ / 🗑️ et halo rouge
+    
+      renderTimeline();
+      renderDetail();   // <-- re-render multi-cards (la supprimée disparaît du détail)
+
+      if (!selectedIds || selectedIds.size===0){
+        primaryId = null;
+        const detail = host.querySelector('#card-detail');
+        detail.innerHTML = '<div style="opacity:.7">Aucune card sélectionnée</div>';
+        return;
+      }
       return;
     }
   
@@ -210,7 +220,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   
     host.dataset.selectedCardId = primaryId || id; // rétrocompat
     renderTimeline();              // met à jour le halo
-    renderDetail(primaryId || id); // ouvre le détail
+    renderDetail(); // ouvre le détail
   });
   
   function renderDetail(){
@@ -383,6 +393,18 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       return;
     }
 
+    // exp-pick : rien à faire à part la case cochée
+    if (cb.dataset.action==='exp-pick'){
+      return;
+    }
+    
+    // hide-upd : masque uniquement le corps
+    if (cb.dataset.action==='hide-upd'){
+      const art = cb.closest('.upd');
+      if (art) art.classList.toggle('is-hidden', cb.checked);
+      return;
+    }
+
     const art = cb.closest('.upd');
     if (art) art.classList.toggle('is-hidden', cb.checked);
     return;
@@ -395,10 +417,13 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     const cardId = host.dataset.selectedCardId;
   
     if (btn.dataset.action==='sec-select-all'){
-      const sec = btn.dataset.sec;
-      detail.querySelectorAll(`.section[data-sec="${sec}"] [data-action="exp-pick"]`).forEach(x=>x.checked=true);
+      const cardId = btn.dataset.card; // important en mode multi-cards
+      const secId  = btn.dataset.sec;
+      const scope  = detail.querySelector(`.card-block[data-card="${cardId}"] .section[data-sec="${secId}"]`);
+      scope?.querySelectorAll('[data-action="exp-pick"]').forEach(x=>x.checked=true);
       return;
     }
+
     if (btn.dataset.action==='sec-clear'){
       const sec = btn.dataset.sec;
       detail.querySelectorAll(`.section[data-sec="${sec}"] .upd`).forEach(x=>{
@@ -511,6 +536,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
