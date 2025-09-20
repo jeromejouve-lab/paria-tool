@@ -289,7 +289,7 @@ export function pushSelectedCharterToCards(){
 
     const card = {
       id: cardId,
-      title:   p.title || chSrc?.title || (chSrc?.service ? `Service: ${chSrc.service}` : ''),
+      title:   chSrc?.title || (chSrc?.service ? `Service: ${chSrc.service}` : (p.title || '')),
       tags:    Array.isArray(p.tags) ? p.tags : [],
       content: p.content || '',                        // vue "courante" minimale
       state:   { think: !!(p?.state?.think) },
@@ -431,6 +431,7 @@ export function __cards_migrate_v2_once(){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
