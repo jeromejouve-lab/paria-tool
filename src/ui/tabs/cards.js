@@ -166,45 +166,46 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   }
 
   renderTimeline();
-  
+    
   timeline.addEventListener('click',(ev)=>{
-    // poubelle : ne change pas la sélection
+    // 🗑️ / ↩︎ : ne change PAS la sélection
     const del = ev.target.closest('[data-action="mini-soft-delete"]');
     if (del){
       const id = String(del.dataset.id);
       const b  = readClientBlob();
       const c  = (b.cards||[]).find(x=>String(x.id)===id);
-      const nowDel = !c?.state?.deleted;
+      if (!c) return;
+      const nowDel = !c.state?.deleted;
       softDeleteCard(id, nowDel);
-      // si on supprime une carte sélectionnée → on l'enlève proprement de l'état
-      if (selectedIds.has(id)) selectedIds.delete(id);
-      if (String(primaryId||'')===id) primaryId = null;
+      // si supprimée → on la retire des sélections éventuelles
+      if (selectedIds?.has?.(id)) selectedIds.delete(id);
+      if (String(primaryId||'') === id) primaryId = null;
       renderTimeline();
       return;
     }
   
-    // mini-card : sélection
+    // clic sur mini-card
     const btn = ev.target.closest('[data-card-id]');
     if (!btn) return;
     if (btn.classList.contains('is-del')) return; // supprimées = non sélectionnables
   
     const id = String(btn.getAttribute('data-card-id'));
   
-    if (ev.ctrlKey || ev.metaKey){ // toggle sans casser la sélection
+    if (ev.ctrlKey || ev.metaKey){
+      // toggle sans casser la sélection en cours
+      if (!selectedIds) selectedIds = new Set();
       if (selectedIds.has(id)) selectedIds.delete(id);
       else selectedIds.add(id);
-      // si pas de primaire encore, on fixe la première
-      if (!primaryId) primaryId = id;
+      if (!primaryId) primaryId = id; // première primaire si inexistante
     } else {
       // sélection simple
       selectedIds = new Set([id]);
       primaryId   = id;
     }
   
-    host.dataset.selectedCardId = primaryId || id; // compat existant
-    renderTimeline();
-    // pour l’instant, on continue d’afficher le détail de la carte primaire (évolution multi-card au prochain pas)
-    renderDetail(primaryId || id);
+    host.dataset.selectedCardId = primaryId || id; // rétrocompat
+    renderTimeline();              // met à jour le halo
+    renderDetail(primaryId || id); // ouvre le détail
   });
   
   function renderDetail(cardId){
@@ -212,9 +213,11 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
     const detail = host.querySelector('#card-detail');
     if (!card){ detail.innerHTML = '<div style="opacity:.7">Aucune card</div>'; return; }
-  
-    // assurer au moins une section
-    if (!card.sections?.length){ card.sections=[{id:'1', title:'Proposition 1'}]; writeClientBlob(b); }
+    if (!card.sections?.length){
+      const b = readClientBlob();
+      card.sections = [{id:'1', title:'Proposition'}];
+      writeClientBlob(b);
+    }
 
     const sectionsHtml = card.sections.map(sec=>{
       const f = (card.ui?.filters?.[sec.id]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
@@ -485,6 +488,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
