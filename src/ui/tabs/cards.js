@@ -1,7 +1,7 @@
 // PARIA-V2-CLEAN v1.0.0 | ui/tabs/cards.js (injection)
 import {
   listCards, toggleThink, softDeleteCard,
-  addNote, addComment, addAItoCard, updateCard
+  addNote, addComment, addAItoCard, updateCard, saveWorkset, listWorksets
 } from '../../domain/reducers.js';
 import { askAI } from '../../core/ai.js';
 
@@ -485,7 +485,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       if (!ids.length) { alert('Aucune card sélectionnée.'); return; }
       const title = prompt('Nom de la sélection (workset) :', 'Sélection du jour');
       if (title!=null){
-        const { saveWorkset } = await import('../../domain/reducers.js');
         const wid = saveWorkset({ title, card_ids: ids });
         alert(`Sélection enregistrée (#${wid})`);
       }
@@ -601,6 +600,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
