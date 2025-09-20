@@ -155,9 +155,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     const b = readClientBlob();
     const selId = String(host.dataset.selectedCardId || '');
     const cards = (b.cards || []).slice().sort((a,b)=> (a.updated_ts<b.updated_ts)?1:-1);
-    const displayTitle =
-      (c.title && c.title !== 'Proposition') ? c.title :
-      (b.charter?.title || (b.charter?.service ? b.charter.service : 'Sans titre'));
       
     timeline.innerHTML = cards.map(c=>{
       const isDel = !!c.state?.deleted;
@@ -611,6 +608,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
