@@ -42,7 +42,10 @@ function cardPrint(c){
 export function mountCardsTab(host = document.getElementById('tab-cards')){
   // --- boot cards UI (sticky + zones) ---
   __cards_migrate_v2_once?.();
-  
+
+  let selectedIds = new Set();   // autres cartes sélectionnées
+  let primaryId   = null;        // carte courante (halo fort)
+
   host.style.display = 'flex';
   host.style.flexDirection = 'column';
   
@@ -139,9 +142,12 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     timeline.innerHTML = cards.map(c=>{
       const isDel = !!c.state?.deleted;
       const isAct = selId && String(c.id) === selId;
+      const isSel = selectedIds.has(String(c.id));
+      const isPri = String(primaryId||'') === String(c.id);
+      
       return `
         <div class="card-mini-wrap" style="position:relative">
-          <button class="card-mini ${isDel?'is-del':''} ${isAct?'is-active':''}"
+          <button class="card-mini ${c.state?.deleted?'is-del':''} ${isSel?'is-selected':''} ${isPri?'is-active':''}"
                   data-card-id="${c.id}"
                   style="border:1px solid #2a2a2a;border-radius:10px;padding:8px;min-width:240px;background:#161616;text-align:left">
             <div style="font-size:12px;opacity:.8;display:flex;gap:8px;align-items:center">
@@ -465,6 +471,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
