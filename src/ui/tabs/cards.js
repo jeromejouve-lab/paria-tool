@@ -175,14 +175,17 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     if (del){
       const id = String(del.dataset.id);
       const b  = readClientBlob();
-      const c  = (b.cards||[]).find(x=>String(x.id)===id);
+      const c  = (b.cards||[]).find(x=>String(x.id)===String(id));
       if (!c) return;
       const nowDel = !c.state?.deleted;
       softDeleteCard(id, nowDel);
-      // si supprimée → on la retire des sélections éventuelles
-      if (selectedIds?.has?.(id)) selectedIds.delete(id);
-      if (String(primaryId||'') === id) primaryId = null;
-      renderTimeline();
+    
+      // MAJ sélection : retirée si supprimée
+      if (nowDel){
+        if (selectedIds?.has?.(id)) selectedIds.delete(id);
+        if (String(primaryId||'')===id) primaryId = null;
+      }
+      renderTimeline();  // ↩︎ / 🗑️ et halo rouge
       return;
     }
   
@@ -210,78 +213,95 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     renderDetail(primaryId || id); // ouvre le détail
   });
   
-  function renderDetail(cardId){
-    const b = readClientBlob();
-    const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+  function renderDetail(){
     const detail = host.querySelector('#card-detail');
-    if (!card){ detail.innerHTML = '<div style="opacity:.7">Aucune card</div>'; return; }
-    if (!card.sections?.length){
-      const b = readClientBlob();
-      card.sections = [{id:'1', title:'Proposition'}];
-      writeClientBlob(b);
+    const b = readClientBlob();
+  
+    // ordre : primaire d'abord, puis autres sélectionnées
+    const ids = [];
+    if (primaryId) ids.push(String(primaryId));
+    for (const x of (selectedIds||new Set())) if (String(x)!==String(primaryId)) ids.push(String(x));
+    if (!ids.length){ detail.innerHTML = '<div style="opacity:.7">Aucune card sélectionnée</div>'; return; }
+  
+    const chunks = [];
+  
+    for (const cardId of ids){
+      const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+      if (!card || card.state?.deleted) continue;
+      if (!card.sections?.length){ card.sections=[{id:'1', title:'Proposition'}]; writeClientBlob(b); }
+  
+      // header card
+      chunks.push(`
+        <div class="card-block" data-card="${card.id}" style="border:1px solid #2a2a2a;border-radius:12px;margin:8px 0;background:#141415">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #2a2a2a">
+            <strong>#${card.id}</strong>${card.state?.think?'&nbsp;🤔':''}
+            <span style="margin-left:8px">${(card.title||'Proposition').replace(/</g,'&lt;')}</span>
+            <span style="margin-left:auto;opacity:.8;font-size:12px">${new Date(card.updated_ts||card.created_ts||Date.now()).toLocaleString()}</span>
+          </div>
+      `);
+  
+      // sections
+      for (const sec of (card.sections||[])){
+        const f = (card.ui?.filters?.[sec.id]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
+        const days = listCardDays(card.id, sec.id);
+        const view = getCardView(card.id, { sectionId: sec.id, days: f.days, types: f.types });
+  
+        const chipsDays = days.map(d=>`<label class="chip">
+          <input type="checkbox" data-action="sec-day" data-card="${card.id}" data-sec="${sec.id}" value="${d}" ${f.days.includes(d)?'checked':''}> ${d}
+        </label>`).join('');
+  
+        const typeNames = [['analyse','Analyse'],['note','Note'],['comment','Commentaire'],['client_md','Client MD'],['client_html','Client HTML']];
+        const chipsTypes = typeNames.map(([val,lab])=>`<label class="chip">
+          <input type="checkbox" data-action="sec-type" data-card="${card.id}" data-sec="${sec.id}" value="${val}" ${f.types.includes(val)?'checked':''}> ${lab}
+        </label>`).join('');
+  
+        const groups = view.groups.map(g=>`
+          <section class="day-group" data-day="${g.day}" style="border:1px dashed #2a2a2a;border-radius:10px;padding:8px;margin:8px 0">
+            <div style="font-size:12px;opacity:.8;margin-bottom:6px">${g.day}</div>
+            ${g.items.map(u=>`
+              <article class="upd" data-upd="${u.id}" data-card="${card.id}" data-sec="${sec.id}"
+                style="border:1px solid #333;border-radius:8px;padding:8px;margin:6px 0;background:#181818">
+                <div class="upd-head" style="display:flex;gap:8px;align-items:center;font-size:12px;opacity:.9">
+                  <span>${new Date(u.ts).toLocaleTimeString()}</span>
+                  ${u.origin?`<span>• ${u.origin}</span>`:''}
+                  ${u.type?`<span>• ${u.type}</span>`:''}
+                  ${u.meta?.think?`<span>• 🤔</span>`:''}
+                  <label style="margin-left:auto;font-weight:500">
+                    <input type="checkbox" data-action="exp-pick" data-card="${card.id}" data-upd="${u.id}"> sélectionner
+                  </label>
+                  <label style="margin-left:8px;opacity:.9">
+                    <input type="checkbox" data-action="hide-upd" data-card="${card.id}" data-upd="${u.id}"> masquer
+                  </label>
+                </div>
+                <div class="upd-body">
+                  <pre style="white-space:pre-wrap;margin:6px 0 0 0">${(u.md||u.html||'').replace(/</g,'&lt;')}</pre>
+                  ${u.meta?.prompt?`<details style="margin-top:6px"><summary>Prompt</summary><pre style="white-space:pre-wrap">${(u.meta.prompt||'').replace(/</g,'&lt;')}</pre></details>`:''}
+                </div>
+              </article>
+            `).join('')}
+          </section>
+        `).join('');
+  
+        chunks.push(`
+          <div class="section" data-sec="${sec.id}" style="padding:10px">
+            <header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <h4 style="margin:0">${(sec.title||('Section '+sec.id)).replace(/</g,'&lt;')}</h4>
+              <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+                ${chipsDays}
+                ${chipsTypes}
+                <button class="btn btn-xs" data-action="sec-calendar" data-card="${card.id}" data-sec="${sec.id}">Calendrier</button>
+                <button class="btn btn-xs" data-action="sec-select-all" data-card="${card.id}" data-sec="${sec.id}">Sélectionner tout</button>
+                <button class="btn btn-xs" data-action="sec-clear" data-card="${card.id}" data-sec="${sec.id}">Tout masquer</button>
+              </div>
+            </header>
+            ${groups || '<div style="opacity:.6;padding:6px 0">Aucun élément pour ce filtre.</div>'}
+          </div>
+        `);
+      }
+      chunks.push(`</div>`); // fin card-block
     }
-
-    const sectionsHtml = card.sections.map(sec=>{
-      const f = (card.ui?.filters?.[sec.id]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
-      const days = listCardDays(card.id, sec.id);
-      const view = getCardView(card.id, { sectionId: sec.id, days: f.days, types: f.types });
   
-      const chipsDays = days.map(d=>`<label class="chip">
-        <input type="checkbox" data-action="sec-day" data-sec="${sec.id}" value="${d}" ${f.days.includes(d)?'checked':''}> ${d}
-      </label>`).join('');
-  
-      const typeNames = [['analyse','Analyse'],['note','Note'],['comment','Commentaire'],['client_md','Client MD'],['client_html','Client HTML']];
-      const chipsTypes = typeNames.map(([val,lab])=>`<label class="chip">
-        <input type="checkbox" data-action="sec-type" data-sec="${sec.id}" value="${val}" ${f.types.includes(val)?'checked':''}> ${lab}
-      </label>`).join('');
-  
-      const groups = view.groups.map(g=>`
-        <section class="day-group" data-day="${g.day}" style="border:1px dashed #2a2a2a;border-radius:10px;padding:8px;margin:8px 0">
-          <div style="font-size:12px;opacity:.8;margin-bottom:6px">${g.day}</div>
-          ${g.items.map(u=>`
-            <article class="upd" data-upd="${u.id}" data-sec="${sec.id}"
-              style="border:1px solid #333;border-radius:8px;padding:8px;margin:6px 0;background:#181818">
-              <div class="upd-head" style="display:flex;gap:8px;align-items:center;font-size:12px;opacity:.8">
-                <span>${new Date(u.ts).toLocaleTimeString()}</span>
-                ${u.origin?`<span>• ${u.origin}</span>`:''}
-                ${u.type?`<span>• ${u.type}</span>`:''}
-                ${u.meta?.think?`<span>• 🤔</span>`:''}
-                <label style="margin-left:auto;font-weight:500">
-                  <input type="checkbox" data-action="exp-pick" data-upd="${u.id}"> sélectionner
-              </label>
-              <label style="margin-left:8px;opacity:.9">
-                <input type="checkbox" data-action="hide-upd" data-upd="${u.id}"> masquer
-              </label>
-            </div>
-            <div class="upd-body">
-              <pre style="white-space:pre-wrap;margin:6px 0 0 0">${(u.md||u.html||'').replace(/</g,'&lt;')}</pre>
-              ${u.meta?.prompt?`<details style="margin-top:6px"><summary>Prompt</summary><pre style="white-space:pre-wrap">${(u.meta.prompt||'').replace(/</g,'&lt;')}</pre></details>`:''}
-            </div>
-          </article>
-          `).join('')}
-        </section>
-      `).join('');
-  
-      return `
-        <div class="section" data-sec="${sec.id}" style="border:1px solid #2a2a2a;border-radius:12px;padding:10px;margin:10px 0;background:#141415">
-          <header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <h4 style="margin:0">${(sec.title||('Section '+sec.id)).replace(/</g,'&lt;')}</h4>
-            <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-              ${chipsDays}
-              ${chipsTypes}
-              <button class="btn btn-xs" data-action="sec-calendar" data-sec="${sec.id}">Calendrier</button>
-              <button class="btn btn-xs" data-action="sec-import-md" data-sec="${sec.id}">Importer MD</button>
-              <button class="btn btn-xs" data-action="sec-import-html" data-sec="${sec.id}">Importer HTML</button>
-              <button class="btn btn-xs" data-action="sec-select-all" data-sec="${sec.id}">Sélectionner tout</button>
-              <button class="btn btn-xs" data-action="sec-clear" data-sec="${sec.id}">Tout masquer</button>
-            </div>
-          </header>
-          ${groups || '<div style="opacity:.6;padding:6px 0">Aucun élément pour ce filtre.</div>'}
-        </div>
-      `;
-    }).join('');
-  
-    detail.innerHTML = sectionsHtml + `
+    detail.innerHTML = chunks.join('') + `
       <div class="export-bar" style="position:sticky;bottom:0;padding:8px;background:#101010;border-top:1px solid #2a2a2a;display:flex;gap:8px">
         <button class="btn btn-xs" data-action="exp-md">Exporter MD (sélection)</button>
         <button class="btn btn-xs" data-action="exp-html">Exporter HTML (sélection)</button>
@@ -289,6 +309,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       </div>
     `;
   }
+
    
   __cards_migrate_v2_once();
 
@@ -490,6 +511,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
