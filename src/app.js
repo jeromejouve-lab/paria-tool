@@ -55,6 +55,31 @@ export function boot(){
   const firstBtn = document.querySelector('[data-tab]');
   const first = TABS.includes(hash) ? hash : (firstBtn?.dataset?.tab && TABS.includes(firstBtn.dataset.tab) ? firstBtn.dataset.tab : 'settings');
   showTab(first);
+
+  // --- Auto-backup Git / 5 min ---
+  try{
+    import('./core/net.js').then(({ saveToGit })=>{
+      const pad=v=>String(v).padStart(2,'0');
+      setInterval(()=>{
+        const b = window.readClientBlob?.(); if(!b) return;
+        const now=new Date(); const dateStr=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+        const client = (b.charter?.client||'client').replace(/\|/g,'-');
+        const service= (b.charter?.service||'service').replace(/\|/g,'-');
+        const workId = `${client}|${service}|${dateStr}`;
+        saveToGit({ workId, data: b }).then(r=>console.log('[auto-backup]', r.status||r.detail));
+      }, 5*60*1000);
+      // expose un snapshot manuel
+      window.pariaSnapshotNow = ()=> {
+        const b = window.readClientBlob?.(); if(!b) return;
+        const now=new Date(); const dateStr=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+        const client = (b.charter?.client||'client').replace(/\|/g,'-');
+        const service= (b.charter?.service||'service').replace(/\|/g,'-');
+        const workId = `${client}|${service}|${dateStr}`;
+        return saveToGit({ workId, data: b });
+      };
+    });
+  }catch(e){ console.warn('auto-backup disabled', e); }
+
 }
 
 // auto-boot
@@ -66,6 +91,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
