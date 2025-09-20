@@ -158,10 +158,11 @@ export function createCard({title='',content='',tags=[]}={}){
   const id = (++b.seq.cards_id);
   const card = {
     id,
-    title,
-    tags:[...tags],
-    content: content||'',
-    state:{ deleted:false, think:false },
+    // NEW: fallback propre depuis le Charter si title est vide
+    title: title || (b.charter?.title || (b.charter?.service ? b.charter.service : 'Sans titre')),
+    tags: [...tags],            // FIX: pas " [.tags] "
+    content: content || '',
+    state: { deleted:false, think:false },
     created_ts: Date.now(),
     updated_ts: Date.now(),
     sections: [],
@@ -194,6 +195,7 @@ export function softDeleteCard(id, deleted=true){
   logEvent(deleted?'card/remove':'card/restore',{kind:'card',id});
   return true;
 }
+
 export function restoreCard(id){ return softDeleteCard(id,false); }
 
 export function toggleThink(id, v=null){
@@ -431,6 +433,7 @@ export function __cards_migrate_v2_once(){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
