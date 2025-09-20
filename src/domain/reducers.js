@@ -96,14 +96,15 @@ export function listCardDays(cardId, sectionId){
     days.add(`${d.getFullYear()}-${m}-${dd}`);
   }
 
-  // fallback : au moins le jour de création de la card
-  if (days.size===0 && c.created_ts){
+  // + toujours created_ts en plus des updates (même s'il y a déjà des jours)
+  if (c.created_ts){
     const d = new Date(c.created_ts);
     const m = String(d.getMonth()+1).padStart(2,'0');
     const dd= String(d.getDate()).padStart(2,'0');
     days.add(`${d.getFullYear()}-${m}-${dd}`);
   }
   return Array.from(days).sort();
+
 }
 
 export function getCardView(cardId, {sectionId, days=[], types=[]}={}){
@@ -207,6 +208,23 @@ export function toggleThink(id, v=null){
   return true;
 }
 
+export function saveWorkset({ title='Sélection', card_ids=[] } = {}){
+  const b = readClientBlob();
+  b.worksets = b.worksets || [];
+  b.seq = b.seq || {};
+  b.seq.worksets_id = b.seq.worksets_id || 0;
+  const id = (++b.seq.worksets_id);
+  const ws = { id, title, card_ids: Array.from(new Set(card_ids.map(String))), created_ts: Date.now() };
+  b.worksets.push(ws);
+  writeClientBlob(b);
+  logEvent('workset/save', { kind:'workset', id }, { card_ids: ws.card_ids });
+  return id;
+}
+export function listWorksets(){
+  const b = readClientBlob();
+  return b.worksets || [];
+}
+
 // Notes/Commentaires → deviennent des updates
 export function addNote(id, {author='moi', text=''}){
   ensureSection(id,'1','Proposition 1');
@@ -271,7 +289,7 @@ export function pushSelectedCharterToCards(){
 
     const card = {
       id: cardId,
-      title:   p.title   || '',
+      title:   p.title || chSrc?.title || (chSrc?.service ? `Service: ${chSrc.service}` : ''),
       tags:    Array.isArray(p.tags) ? p.tags : [],
       content: p.content || '',                        // vue "courante" minimale
       state:   { think: !!(p?.state?.think) },
@@ -302,9 +320,6 @@ export function pushSelectedCharterToCards(){
   writeClientBlob(b);
   return count;
 }
-
-
-
 
 export function restoreCharter(){ const b=readClientBlob(); b.charter.state={...(b.charter?.state||{}),deleted:false,updated_ts:Date.now()}; writeClientBlob(b); logEvent('charter/restore',{kind:'charter',id:'_'}); return true; }
 
@@ -416,6 +431,7 @@ export function __cards_migrate_v2_once(){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
