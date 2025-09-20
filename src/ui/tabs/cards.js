@@ -50,6 +50,15 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   host.style.flexDirection = 'column';
   
   const bar = host.querySelector('.btns');
+
+  if (bar && !bar.querySelector('[data-action="workset-save"]')) {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-xs';
+    btn.dataset.action = 'workset-save';
+    btn.textContent = 'Enregistrer la sélection';
+    bar.appendChild(btn);
+  }
+
   if (bar){
     bar.style.position = 'sticky';
     bar.style.top = '0';
@@ -468,6 +477,20 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       }
       return;
     }
+
+    if (btn.dataset.action==='workset-save'){
+      const ids = [];
+      if (primaryId) ids.push(String(primaryId));
+      for (const x of (selectedIds||new Set())) if (String(x)!==String(primaryId)) ids.push(String(x));
+      if (!ids.length) { alert('Aucune card sélectionnée.'); return; }
+      const title = prompt('Nom de la sélection (workset) :', 'Sélection du jour');
+      if (title!=null){
+        const { saveWorkset } = await import('../../domain/reducers.js');
+        const wid = saveWorkset({ title, card_ids: ids });
+        alert(`Sélection enregistrée (#${wid})`);
+      }
+      return;
+    }
   
     // exports
     if (btn.dataset.action==='exp-md' || btn.dataset.action==='exp-html' || btn.dataset.action==='exp-print'){
@@ -578,6 +601,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
