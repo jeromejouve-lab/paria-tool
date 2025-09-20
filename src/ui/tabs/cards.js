@@ -31,55 +31,6 @@ function html(){
 
 function fmtTs(ts){ try{ return ts ? new Date(ts).toLocaleString() : ''; }catch{ return ''; } }
 
-function renderCard(c){
-  const think = c?.state?.think ? '🤔 ' : '';
-  const del   = c?.state?.deleted;
-  return `
-  <article class="card ${del?'is-deleted':''}" data-card-id="${c.id}">
-    <div class="meta">
-      <span class="id">#${c.id}</span>
-      ${c.tags?.length ? `<span>${c.tags.map(t=>`#${t}`).join(' ')}</span>` : ''}
-      <span class="ts">${fmtTs(c.created_ts || c.ts)}</span>
-    </div>
-    <h4>${think}${(c.title||'Sans titre').replace(/</g,'&lt;')}</h4>
-    <div class="ops">
-      <button class="btn btn-xs" data-action="card-export-md">MD</button>
-      <button class="btn btn-xs" data-action="card-export-html">HTML</button>
-      <button class="btn btn-xs" data-action="card-export-pdf">PDF/Print</button>
-      <button class="btn btn-xs" data-action="card-import-md">Intégrer MD client</button>
-      <button class="btn btn-xs" data-action="card-import-html">Intégrer HTML client</button>
-      <button class="btn btn-xs" data-action="card-soft-delete">${del?'Restaurer':'Supprimer'}</button>
-    </div>
-  </article>`;
-}
-
-function download(filename, text, type='text/plain'){
-  const blob = new Blob([text], {type});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
-}
-
-function cardToMarkdown(c){
-  const tags = (c.tags||[]).map(t=>`#${t}`).join(' ');
-  return `# ${c.title||'Sans titre'}\n\n${c.content||''}\n\n${tags?`\n${tags}\n`:''}`;
-}
-function cardToHTML(c){
-  const tags = (c.tags||[]).map(t=>`#${t}`).join(' ');
-  const esc = s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-  return `<!doctype html><meta charset="utf-8">
-  <title>${esc(c.title||'Sans titre')}</title>
-  <style>
-    body{font:14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Arial; padding:24px; color:#111}
-    .meta{opacity:.7;font-size:12px;margin-bottom:8px}
-    h1{font-size:20px;margin:0 0 12px 0}
-    pre{white-space:pre-wrap}
-    @media print{ @page { margin: 12mm; } }
-  </style>
-  <div class="meta">#${c.id} — ${fmtTs(c.created_ts)}</div>
-  <h1>${esc(c.title||'Sans titre')}</h1>
-  <pre>${esc(c.content||'')}</pre>
-  ${tags?`<div class="meta">${esc(tags)}</div>`:''}`;
-}
 function cardPrint(c){
   const w = window.open('', '_blank');
   w.document.write(cardToHTML(c));
@@ -244,11 +195,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   
     // assurer au moins une section
     if (!card.sections?.length){ card.sections=[{id:'1', title:'Proposition 1'}]; writeClientBlob(b); }
-    const toolbar = `
-      <div class="card-toolbar" data-card-id="${card.id}" style="position:sticky;top:0;background:#101010;border-bottom:1px solid #2a2a2a;padding:6px;display:flex;gap:8px;z-index:1">
-        <button class="btn btn-xs" data-action="card-soft-delete">${card.state?.deleted?'Restaurer':'Supprimer'}</button>
-      </div>
-    `;
 
     const sectionsHtml = card.sections.map(sec=>{
       const f = (card.ui?.filters?.[sec.id]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
@@ -270,21 +216,23 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
           ${g.items.map(u=>`
             <article class="upd" data-upd="${u.id}" data-sec="${sec.id}"
               style="border:1px solid #333;border-radius:8px;padding:8px;margin:6px 0;background:#181818">
-              <div style="display:flex;gap:8px;align-items:center;font-size:12px;opacity:.8">
+              <div class="upd-head" style="display:flex;gap:8px;align-items:center;font-size:12px;opacity:.8">
                 <span>${new Date(u.ts).toLocaleTimeString()}</span>
                 ${u.origin?`<span>• ${u.origin}</span>`:''}
                 ${u.type?`<span>• ${u.type}</span>`:''}
                 ${u.meta?.think?`<span>• 🤔</span>`:''}
                 <label style="margin-left:auto;font-weight:500">
                   <input type="checkbox" data-action="exp-pick" data-upd="${u.id}"> sélectionner
-                </label>
-                <label style="margin-left:8px;opacity:.9">
-                  <input type="checkbox" data-action="hide-upd" data-upd="${u.id}"> masquer
-                </label>
-              </div>
+              </label>
+              <label style="margin-left:8px;opacity:.9">
+                <input type="checkbox" data-action="hide-upd" data-upd="${u.id}"> masquer
+              </label>
+            </div>
+            <div class="upd-body">
               <pre style="white-space:pre-wrap;margin:6px 0 0 0">${(u.md||u.html||'').replace(/</g,'&lt;')}</pre>
               ${u.meta?.prompt?`<details style="margin-top:6px"><summary>Prompt</summary><pre style="white-space:pre-wrap">${(u.meta.prompt||'').replace(/</g,'&lt;')}</pre></details>`:''}
-            </article>
+            </div>
+          </article>
           `).join('')}
         </section>
       `).join('');
@@ -308,7 +256,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       `;
     }).join('');
   
-    detail.innerHTML = toolbar + sectionsHtml + `
+    detail.innerHTML = toolbar + sectionsHtml + \`` **par**
       <div class="export-bar" style="position:sticky;bottom:0;padding:8px;background:#101010;border-top:1px solid #2a2a2a;display:flex;gap:8px">
         <button class="btn btn-xs" data-action="exp-md">Exporter MD (sélection)</button>
         <button class="btn btn-xs" data-action="exp-html">Exporter HTML (sélection)</button>
@@ -353,40 +301,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   grid.style.flex = '1 1 auto';
   grid.style.overflow = 'auto';
 
-  
-  // Actions (think / delete / analyze)
-  host.addEventListener('click', async (ev)=>{
-    const act = ev.target.closest('[data-action]');
-    if (!act) return;
-    const wrap = ev.target.closest('[data-card-id]'); if (!wrap) return;
-    const id = wrap.dataset.cardId;
-
-    if (act.dataset.action==='card-soft-delete'){ softDeleteCard(id); return mountCardsTab(host); }
-    if (act.dataset.action==='card-think'){ toggleThink(id); return mountCardsTab(host); }
-    if (act.dataset.action==='card-analyze'){
-      const r = await askAI({ mode:'ideas', subject:{kind:'card', id}, payload:{}, context:{ tab:'cards' } });
-      if (r.status==='ok') addAItoCard(id, r.results);
-      return mountCardsTab(host);
-    }
-  });
-
-  // Notes & commentaires
-  host.addEventListener('submit', (ev)=>{
-    const f = ev.target;
-    if (!f.matches('[data-form="note"],[data-form="comment"]')) return;
-    ev.preventDefault();
-    const id = f.closest('[data-card-id]')?.dataset?.cardId; if (!id) return;
-    const fd = new FormData(f);
-    const text=(fd.get('text')||'').toString().trim();
-    const author=(fd.get('author')||'moi').toString();
-    if (!text) return;
-
-    if (f.dataset.form==='note') addNote(id,{author,text});
-    else addComment(id,{author,text});
-
-    f.reset(); mountCardsTab(host);
-  });
-
   function fmt(ts){ try{ return ts? new Date(ts).toLocaleString() : ''; }catch{return '';} }
 
   // -- actions sur les petites cards (compact) --
@@ -423,11 +337,9 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       return;
     }
 
-    if (cb.dataset.action==='hide-upd'){
-      const art = cb.closest('.upd');
-      if (art) art.style.display = cb.checked ? 'none' : '';
-      return;
-    }
+    const art = cb.closest('.upd');
+    if (art) art.classList.toggle('is-hidden', cb.checked);
+    return;
 
   });
 
@@ -443,7 +355,11 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     }
     if (btn.dataset.action==='sec-clear'){
       const sec = btn.dataset.sec;
-      detail.querySelectorAll(`.section[data-sec="${sec}"] .upd`).forEach(x=>x.style.display='none');
+      detail.querySelectorAll(`.section[data-sec="${sec}"] .upd`).forEach(x=>{
+        x.classList.add('is-hidden');
+        const h = x.querySelector('input[data-action="hide-upd"]');
+        if (h) h.checked = true;
+      });
       return;
     }
     if (btn.dataset.action==='sec-calendar'){
@@ -475,17 +391,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       }
       return;
     }
-    if (btn.dataset.action==='card-soft-delete'){
-      const cardId = host.dataset.selectedCardId; if(!cardId) return;
-      const b = readClientBlob();
-      const c = (b.cards||[]).find(x=>String(x.id)===String(cardId));
-      const isDel = !!c?.state?.deleted;
-      softDeleteCard(cardId, !isDel);
-      renderTimeline();   // la minicard reste visible mais bordure rouge
-      renderDetail(cardId);
-      return;
-    }
-
+  
     // exports
     if (btn.dataset.action==='exp-md' || btn.dataset.action==='exp-html' || btn.dataset.action==='exp-print'){
       const picks = Array.from(detail.querySelectorAll('[data-action="exp-pick"]:checked')).map(x=>x.getAttribute('data-upd'));
@@ -554,177 +460,12 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     }
 
   });
-
-  grid.addEventListener('click', (ev)=>{
-    const btn = ev.target.closest('[data-action]');
-    if (!btn) return;
-    const cardEl = btn.closest('.card,[data-card-id]');
-    if (!cardEl) return;
-    const id = cardEl.getAttribute('data-card-id');
-  
-    // soft delete / restore
-    if (btn.dataset.action === 'card-soft-delete'){
-      const cardEl = btn.closest('[data-card-id], .card');
-      const id = cardEl?.getAttribute('data-card-id');
-      const isDeleted = cardEl?.classList.contains('is-del');
-    
-      softDeleteCard(id, !isDeleted);
-    
-      // on NE supprime PAS du DOM ; on togglera la classe et on met à jour le label
-      cardEl?.classList.toggle('is-del', !isDeleted);
-      btn.textContent = !isDeleted ? 'Restaurer' : 'Supprimer';
-    
-      // on peut re-render la timeline (elle inclut désormais les supprimées)
-      renderTimeline();
-      return;
-    }
-  
-    // export MD
-    if (btn.dataset.action === 'card-export-md'){
-      const b = readClientBlob();
-      const c = (b.cards||[]).find(x=>String(x.id)===String(id));
-      const tags = (c?.tags||[]).map(t=>`#${t}`).join(' ');
-      const md = `# ${c?.title||'Sans titre'}\n\n${c?.content||''}\n\n${tags?`\n${tags}\n`:''}`;
-      const blob = new Blob([md], {type:'text/markdown'});
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `card-${id}.md`; a.click();
-      setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
-      return;
-    }
-  
-    // export HTML (+ print/PDF)
-    if (btn.dataset.action === 'card-export-html' || btn.dataset.action === 'card-export-pdf'){
-      const b = readClientBlob();
-      const c = (b.cards||[]).find(x=>String(x.id)===String(id));
-      const esc = s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-      const tags = (c?.tags||[]).map(t=>`#${t}`).join(' ');
-      const html = `<!doctype html><meta charset="utf-8">
-  <title>${esc(c?.title||'Sans titre')}</title>
-  <style>
-    body{font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial;padding:24px;color:#111}
-    .meta{opacity:.7;font-size:12px;margin-bottom:8px}
-    h1{font-size:20px;margin:0 0 12px 0}
-    pre{white-space:pre-wrap}
-    @media print{ @page { margin:12mm; } }
-  </style>
-  <div class="meta">#${id} — ${c?.created_ts?new Date(c.created_ts).toLocaleString():''}</div>
-  <h1>${esc(c?.title||'Sans titre')}</h1>
-  <pre>${esc(c?.content||'')}</pre>
-  ${tags?`<div class="meta">${esc(tags)}</div>`:''}`;
-      if (btn.dataset.action === 'card-export-html'){
-        const blob = new Blob([html], {type:'text/html'});
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `card-${id}.html`; a.click();
-        setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
-      } else {
-        const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.focus(); w.print();
-      }
-      return;
-    }
-  
-    // import MD
-    if (btn.dataset.action === 'card-import-md'){
-      const md = prompt('Colle ici le Markdown du client :');
-      if (md!=null) updateCard(id, { content: md });
-      return;
-    }
-  
-    // import HTML
-    if (btn.dataset.action === 'card-import-html'){
-      const html = prompt('Colle ici le HTML du client (source de confiance) :');
-      if (html!=null) updateCard(id, { content_html: html });
-      return;
-    }
-  });
-  // toggle filtres (jours/types)
-  detail.addEventListener('change', (ev)=>{
-    const cb = ev.target.closest('input[type="checkbox"]');
-    if (!cb) return;
-    const cardId = host.dataset.selectedCardId;
-    if (!cardId) return;
-  
-    if (cb.dataset.action==='sec-day' || cb.dataset.action==='sec-type'){
-      const sec = cb.dataset.sec;
-      const b = readClientBlob(); const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
-      const f = (card.ui?.filters?.[sec]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
-      const set = new Set((cb.dataset.action==='sec-day' ? f.days : f.types));
-      cb.checked ? set.add(cb.value) : set.delete(cb.value);
-      if (cb.dataset.action==='sec-day')  setSectionFilters(cardId, sec, {days:[...set], types:f.types});
-      else                                setSectionFilters(cardId, sec, {days:f.days, types:[...set]});
-      renderDetail(cardId);
-    }
-  });
-  
-  // boutons section + export
-  detail.addEventListener('click', (ev)=>{
-    const btn = ev.target.closest('[data-action]');
-    if (!btn) return;
-    const detail = host.querySelector('#card-detail');
-    const cardId = host.dataset.selectedCardId;
-  
-    if (btn.dataset.action==='sec-select-all'){
-      const sec = btn.dataset.sec;
-      detail.querySelectorAll(`.section[data-sec="${sec}"] [data-action="exp-pick"]`).forEach(x=>x.checked=true);
-      return;
-    }
-    if (btn.dataset.action==='sec-clear'){
-      const sec = btn.dataset.sec;
-      detail.querySelectorAll(`.section[data-sec="${sec}"] .upd`).forEach(x=>x.style.display='none');
-      return;
-    }
-  
-    if (btn.dataset.action==='exp-md' || btn.dataset.action==='exp-html' || btn.dataset.action==='exp-print'){
-      const picks = Array.from(detail.querySelectorAll('[data-action="exp-pick"]:checked')).map(x=>x.getAttribute('data-upd'));
-      const b = readClientBlob();
-      const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
-      const all  = (card?.updates||[]).slice().sort((a,b)=>a.ts<b.ts?1:-1);
-      const chosen = picks.length ? all.filter(u=>picks.includes(String(u.id))) : all;
-  
-      const groups = {};
-      for (const u of chosen){ const k=_dayKey(u.ts); (groups[k]=groups[k]||[]).push(u); }
-  
-      const esc = s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-      const thinkBadge = card?.state?.think ? ' 🤔' : '';
-  
-      if (btn.dataset.action==='exp-md'){
-        const md = [
-          `# Card #${cardId}${thinkBadge} — ${(card?.title||'Sans titre')}`,
-          ...Object.keys(groups).sort((a,b)=>a<b?1:-1).map(day=>groups[day].map(u=>{
-            const meta=[new Date(u.ts).toLocaleTimeString(), u.origin, u.type].filter(Boolean).join(' • ');
-            return `## ${day} • ${meta}\n\n${u.md||u.html||''}${u.meta?.prompt?`\n\n> Prompt:\n>\n> ${u.meta.prompt}`:''}`;
-          }).join('\n\n'))
-        ].join('\n\n');
-        const blob = new Blob([md], {type:'text/markdown'}); const a=document.createElement('a');
-        a.href=URL.createObjectURL(blob); a.download=`card-${cardId}.md`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1e3);
-        return;
-      }
-  
-      const html = `<!doctype html><meta charset="utf-8"><title>Card #${cardId}</title><style>
-        body{font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial;padding:20px;color:#111}
-        h1{font-size:20px;margin:0 0 12px} h2{font-size:14px;margin:14px 0 6px}
-        .meta{opacity:.7;font-size:12px} pre{white-space:pre-wrap}
-        @media print{@page{margin:12mm}}
-      </style>
-      <h1>Card #${cardId}${thinkBadge} — ${esc(card?.title||'Sans titre')}</h1>
-      ${Object.keys(groups).sort((a,b)=>a<b?1:-1).map(day=>{
-        return `<h2>${day}</h2>` + groups[day].map(u=>{
-          const meta=[new Date(u.ts).toLocaleTimeString(), u.origin, u.type, u.meta?.think?'🤔':null].filter(Boolean).join(' • ');
-          return `<div class="meta">${esc(meta)}${u.meta?.prompt?' • [prompt]':''}</div>
-          <pre>${esc(u.md||u.html||'')}</pre>
-          ${u.meta?.prompt?`<details><summary>Prompt</summary><pre>${esc(u.meta.prompt)}</pre></details>`:''}`;
-        }).join('')}).join('')}`;
-      if (btn.dataset.action==='exp-html'){
-        const blob = new Blob([html], {type:'text/html'}); const a=document.createElement('a');
-        a.href=URL.createObjectURL(blob); a.download=`card-${cardId}.html`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1e3);
-      } else {
-        const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.focus(); w.print();
-      }
-      return;
-    }
-  });
-
+ 
 }
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
