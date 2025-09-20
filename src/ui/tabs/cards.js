@@ -158,7 +158,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
             </button>
           </div>
           <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            ${(c.title||'Proposition').replace(/</g,'&lt;')}
+            ${(c.title || 'Sans titre').replace(/</g,'&lt;')}
           </div>
           ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
         </button>
@@ -511,6 +511,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
