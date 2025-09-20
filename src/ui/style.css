@@ -71,6 +71,14 @@
 .card-mini.is-del{ border-color:#cc3344; background:#161214; opacity:.75; }
 .upd.is-hidden .upd-body{ display:none; }
 .upd.is-hidden{ opacity:.85; background:#131313; }
+.mini-trash{
+  position:absolute; right:6px; top:6px;
+  width:24px; height:24px;
+  display:flex; align-items:center; justify-content:center;
+  border:none; outline:none; background:transparent; cursor:pointer; border-radius:6px;
+}
+.mini-trash:hover{ background:rgba(255,255,255,.08); }
+.mini-trash:focus{ outline:none; box-shadow:none; } /* supprime la bordure bleue */
 
 
 
