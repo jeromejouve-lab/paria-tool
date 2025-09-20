@@ -7,7 +7,7 @@ import { askAI } from '../../core/ai.js';
 
 import {
   getCardView, setSectionFilters, listCardDays,
-  appendCardUpdate, touchCard, __cards_migrate_v2_once
+  appendCardUpdate, touchCard, __cards_migrate_v2_once, createCard
 } from "../../domain/reducers.js";
 
 import { readClientBlob, writeClientBlob } from "../../core/store.js";
@@ -93,6 +93,14 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     btn.dataset.action = 'workset-save';
     btn.textContent = 'Enregistrer la sélection';
     actions.appendChild(btn);
+  }
+  
+  if (!actions.querySelector('[data-action="consolidate-selection"]')){
+    const btn2 = document.createElement('button');
+    btn2.className = 'btn btn-xs';
+    btn2.dataset.action = 'consolidate-selection';
+    btn2.textContent = 'Consolider la sélection';
+    actions.appendChild(btn2);
   }
 
   if (!detail){
@@ -187,10 +195,81 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     
     const cardsHtml = cards.map(c=>` ... `).join(''); // <— garde ton template existant tel quel
     
-    timeline.innerHTML = (wsHtml + cardsHtml) || '<em style="opacity:.6;padding:4px 0">Aucune card</em>';
+    const items = [
+      ...(b.worksets||[]).map(ws => ({
+        kind:'ws',
+        id: 'ws:'+ws.id,
+        ts: ws.last_used_ts || ws.created_ts || 0,
+        ws
+      })),
+      ...(b.cards||[]).map(c => ({
+        kind:'card',
+        id: String(c.id),
+        ts: c.updated_ts || c.created_ts || 0,
+        card: c
+      })),
+    ].sort((a,b)=> a.ts < b.ts ? 1 : -1);
 
+    function esc(s){ return String(s||'').replace(/</g,'&lt;'); }
+    
+    const html = items.map(it=>{
+      if (it.kind==='ws'){
+        const ws = it.ws;
+        const created = ws.created_ts ? new Date(ws.created_ts).toLocaleString() : '';
+        const tip = `${esc(ws.title||'Sélection')} — ${(ws.card_ids||[]).length} card(s)`;
+        return `
+        <article class="card-mini is-workset"
+                 data-kind="workset" data-wsid="${ws.id}"
+                 title="${tip}"
+                 style="border-radius:12px;border:1px solid #f6c24a;background:#1a1608;box-shadow:0 0 0 2px #f6c24a inset;min-width:220px;padding:6px 8px">
+          <header style="display:flex;align-items:center;gap:6px;font-size:12px;opacity:.85">
+            <span class="badge" style="background:#f6c24a;color:#111;padding:0 6px;border-radius:999px;font-weight:600">WS</span>
+            <span class="ts" style="margin-left:auto">${created}</span>
+            <button class="btn btn-xxs" title="Supprimer le workset" data-action="ws-delete" data-wsid="${ws.id}" style="margin-left:8px">🗑️</button>
+          </header>
+          <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">
+            ${esc(ws.title||'Sélection')}
+          </div>
+        </article>`;
+      } else {
+        const c = it.card;
+        const id   = String(c.id);
+        const isDel= !!(c.state?.deleted);
+        const isAct= String(primaryId||'')===id;
+        const isSel= (selectedIds||new Set()).has(id);
+        const cls  = `card-mini ${isDel?'is-del':''} ${isAct?'is-active':''} ${isSel?'is-selected':''}`;
+        const title= (
+          (c.title && c.title.trim())
+          || (b.charter?.title && b.charter.title.trim())
+          || (b.charter?.service ? ('Service: '+b.charter.service) : 'Sans titre')
+        ).replace(/</g,'&lt;');
+        const ts   = new Date(c.updated_ts || c.created_ts || Date.now()).toLocaleString();
+        const btn  = isDel ? '↩︎' : '🗑️';
+        const tip  = isDel ? 'Restaurer' : 'Supprimer';
+        const think= c.state?.think ? ' • 🤔' : '';
+        // halo orange pour consolidation, rouge si supprimée (classe is-del), sinon défaut
+        const halo = c.state?.consolidated ? 'box-shadow:0 0 0 2px #ff8c00 inset;border-color:#ff8c00;' : '';
+    
+        return `
+        <article class="${cls}" data-kind="card" data-card-id="${id}"
+                 title="${esc(title)}"
+                 style="border-radius:12px;border:1px solid #2a2a2a;${halo}padding:6px 8px;min-width:220px;background:#141415">
+          <header style="display:flex;align-items:center;gap:6px;font-size:12px;opacity:.85">
+            <span>#${id}${think}</span>
+            <span class="ts" style="margin-left:auto">${ts}</span>
+            <button class="btn btn-xxs" title="${tip}" data-action="mini-soft-delete" data-id="${id}" style="margin-left:8px">${btn}</button>
+          </header>
+          <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">
+            ${title}
+          </div>
+        </article>`;
+      }
+    }).join('');
+    
+    timeline.innerHTML = html || '<em style="opacity:.6;padding:4px 0">Aucune card</em>';
+    
   }
-
+  
   renderTimeline();
     
   timeline.addEventListener('click',(ev)=>{
@@ -469,6 +548,73 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       const wid = saveWorkset({ title, card_ids: ids });
       renderTimeline();
     }
+
+    // A) appliquer un workset
+    {
+      const wsTile = ev.target.closest('.card-mini[data-kind="workset"]');
+      if (wsTile && !ev.target.closest('button')){
+        const wid = String(wsTile.getAttribute('data-wsid')||'');
+        const b = readClientBlob();
+        const ws = (b.worksets||[]).find(x=>String(x.id)===wid);
+        if (ws && ws.card_ids?.length){
+          primaryId   = String(ws.card_ids[0]);
+          selectedIds = new Set(ws.card_ids.slice(1).map(String));
+          // maj last_used_ts pour tri
+          ws.last_used_ts = Date.now();
+          writeClientBlob(b);
+          renderTimeline();
+          renderDetail();
+        }
+        return;
+      }
+    }
+    
+    // B) supprimer un workset (tuile WS)
+    {
+      const del = ev.target.closest('button[data-action="ws-delete"]');
+      if (del){
+        const wid = String(del.getAttribute('data-wsid')||'');
+        const b = readClientBlob();
+        b.worksets = (b.worksets||[]).filter(x=>String(x.id)!==wid);
+        writeClientBlob(b);
+        renderTimeline();
+        return;
+      }
+    }
+    
+    // C) consolider la sélection (bouton sous timeline)
+    {
+      const btnCons = ev.target.closest('[data-action="consolidate-selection"]');
+      if (btnCons){
+        const ids = [];
+        if (primaryId) ids.push(String(primaryId));
+        for (const x of (selectedIds||new Set())) if (String(x)!==String(primaryId)) ids.push(String(x));
+        if (!ids.length){ alert('Aucune card sélectionnée.'); return; }
+    
+        const title = prompt('Titre de la consolidation :','Consolidation');
+        const newId = createCard({ title: title||'Consolidation', tags:['consolidation'] });
+    
+        // marquer consolidation + provenance (meta)
+        const b = readClientBlob();
+        const nc = (b.cards||[]).find(c=>String(c.id)===String(newId));
+        if (nc){
+          nc.state = nc.state || {};
+          nc.state.consolidated = true;
+          nc.meta = nc.meta || {};
+          nc.meta.consolidated_from = ids.slice();
+          nc.updated_ts = Date.now();
+          writeClientBlob(b);
+        }
+    
+        // afficher la nouvelle card en primaire
+        primaryId = String(newId);
+        selectedIds = new Set();
+        renderTimeline();
+        renderDetail();
+        return;
+      }
+    }
+
   });
   
   detail.addEventListener('click', (ev)=>{
@@ -646,6 +792,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
