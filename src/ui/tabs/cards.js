@@ -50,6 +50,12 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   host.style.flexDirection = 'column';
   
   const bar = host.querySelector('.btns');
+  if (!bar) {
+    const b = document.createElement('div');
+    b.className = 'btns';
+    b.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px 4px';
+    host.prepend(b);
+  }
 
   if (bar && !bar.querySelector('[data-action="workset-save"]')) {
     const btn = document.createElement('button');
@@ -600,6 +606,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
