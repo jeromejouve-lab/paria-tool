@@ -153,10 +153,12 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
             <b>#${c.id}</b> ${c.state?.think?'🤔':''}
             <span class="ts" style="margin-left:auto">${(c.updated_ts||c.created_ts)?new Date(c.updated_ts||c.created_ts).toLocaleString():''}</span>
             <button class="mini-trash" data-action="mini-soft-delete" data-id="${c.id}"
-                    title="${c.state?.deleted?'Restaurer':'Supprimer'}" aria-label="${c.state?.deleted?'Restaurer':'Supprimer'}">🗑️</button>
+                    title="${c.state?.deleted?'Restaurer':'Supprimer'}" aria-label="${c.state?.deleted?'Restaurer':'Supprimer'}">
+              ${c.state?.deleted?'↩︎':'🗑️'}
+            </button>
           </div>
           <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            ${(c.title||'Sans titre').replace(/</g,'&lt;')}
+            ${(c.title||'Proposition').replace(/</g,'&lt;')}
           </div>
           ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
         </button>
@@ -488,6 +490,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
