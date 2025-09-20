@@ -170,29 +170,45 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   renderTimeline();
   
   timeline.addEventListener('click',(ev)=>{
-    // 1) clic sur la poubelle/restaurer : ne change PAS la sélection
+    // poubelle : ne change pas la sélection
     const del = ev.target.closest('[data-action="mini-soft-delete"]');
     if (del){
-      const id = del.dataset.id;
+      const id = String(del.dataset.id);
       const b  = readClientBlob();
-      const c  = (b.cards||[]).find(x=>String(x.id)===String(id));
+      const c  = (b.cards||[]).find(x=>String(x.id)===id);
       const nowDel = !c?.state?.deleted;
       softDeleteCard(id, nowDel);
+      // si on supprime une carte sélectionnée → on l'enlève proprement de l'état
+      if (selectedIds.has(id)) selectedIds.delete(id);
+      if (String(primaryId||'')===id) primaryId = null;
       renderTimeline();
-      // si on vient de supprimer la card sélectionnée, on garde la vue telle quelle (card courante inchangée)
       return;
     }
   
-    // 2) clic sur une minicard : ignorer si supprimée
+    // mini-card : sélection
     const btn = ev.target.closest('[data-card-id]');
     if (!btn) return;
-    if (btn.classList.contains('is-del')) return; // non sélectionnable quand supprimée
+    if (btn.classList.contains('is-del')) return; // supprimées = non sélectionnables
   
-    host.dataset.selectedCardId = btn.getAttribute('data-card-id');
-    renderTimeline();           // met le halo sur la card active
-    renderDetail(host.dataset.selectedCardId);
+    const id = String(btn.getAttribute('data-card-id'));
+  
+    if (ev.ctrlKey || ev.metaKey){ // toggle sans casser la sélection
+      if (selectedIds.has(id)) selectedIds.delete(id);
+      else selectedIds.add(id);
+      // si pas de primaire encore, on fixe la première
+      if (!primaryId) primaryId = id;
+    } else {
+      // sélection simple
+      selectedIds = new Set([id]);
+      primaryId   = id;
+    }
+  
+    host.dataset.selectedCardId = primaryId || id; // compat existant
+    renderTimeline();
+    // pour l’instant, on continue d’afficher le détail de la carte primaire (évolution multi-card au prochain pas)
+    renderDetail(primaryId || id);
   });
-
+  
   function renderDetail(cardId){
     const b = readClientBlob();
     const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
@@ -471,6 +487,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
