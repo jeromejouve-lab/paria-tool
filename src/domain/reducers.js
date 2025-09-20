@@ -96,10 +96,11 @@ export function listCardDays(cardId, sectionId){
     days.add(`${d.getFullYear()}-${m}-${dd}`);
   }
 
-  // fallback : au moins le jour de création
+  // fallback : au moins le jour de création de la card
   if (days.size===0 && c.created_ts){
     const d = new Date(c.created_ts);
-    const m = String(d.getMonth()+1).padStart(2,'0'); const dd = String(d.getDate()).padStart(2,'0');
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const dd= String(d.getDate()).padStart(2,'0');
     days.add(`${d.getFullYear()}-${m}-${dd}`);
   }
   return Array.from(days).sort();
@@ -415,6 +416,7 @@ export function __cards_migrate_v2_once(){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
