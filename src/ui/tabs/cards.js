@@ -278,7 +278,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       `;
     }).join('');
   
-    detail.innerHTML = toolbar + sectionsHtml + `
+    detail.innerHTML = sectionsHtml + `
       <div class="export-bar" style="position:sticky;bottom:0;padding:8px;background:#101010;border-top:1px solid #2a2a2a;display:flex;gap:8px">
         <button class="btn btn-xs" data-action="exp-md">Exporter MD (sélection)</button>
         <button class="btn btn-xs" data-action="exp-html">Exporter HTML (sélection)</button>
@@ -487,6 +487,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
