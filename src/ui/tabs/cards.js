@@ -74,23 +74,25 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     timeline = document.createElement('div');
     timeline.id = 'cards-timeline';
     timeline.style.cssText = 'display:flex;gap:8px;overflow:auto;padding:8px 4px;';
-  
-    // -- actions sous la timeline (gauche)
-    let actions = host.querySelector('#cards-actions');
-    if (!actions){
-      actions = document.createElement('div');
-      actions.id = 'cards-actions';
-      actions.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px 4px';
-      timeline.insertAdjacentElement('afterend', actions);
-    }
-    if (!actions.querySelector('[data-action="workset-save"]')){
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-xs';
-      btn.dataset.action = 'workset-save';
-      btn.textContent = 'Enregistrer la sélection';
-      actions.appendChild(btn);
-    }
+    // 1) insérer d'abord la timeline dans le DOM
     bar ? bar.insertAdjacentElement('afterend', timeline) : host.prepend(timeline);
+  }
+  
+  // 2) garantir le conteneur d'actions SOUS la timeline (même si elle existait déjà)
+  let actions = host.querySelector('#cards-actions');
+  if (!actions){
+    actions = document.createElement('div');
+    actions.id = 'cards-actions';
+    actions.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px 4px';
+    timeline.insertAdjacentElement('afterend', actions);
+  }
+  // 3) garantir le bouton "Enregistrer la sélection"
+  if (!actions.querySelector('[data-action="workset-save"]')){
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-xs';
+    btn.dataset.action = 'workset-save';
+    btn.textContent = 'Enregistrer la sélection';
+    actions.appendChild(btn);
   }
 
   if (!detail){
@@ -634,6 +636,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
