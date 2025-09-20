@@ -85,12 +85,24 @@ export function setSectionFilters(cardId, sectionId, filters){
 export function listCardDays(cardId, sectionId){
   const b = readClientBlob();
   const c = (b.cards||[]).find(x=>String(x.id)===String(cardId));
-  if (!c) return [];
+  if(!c) return [];
   const days = new Set();
-  (c.updates||[]).forEach(u=>{
-    if (String(u.section_id)===String(sectionId)) days.add(_dayKey(u.ts));
-  });
-  return Array.from(days).sort((a,b)=>a<b?1:-1);
+
+  for(const u of (c.updates||[])){
+    if (String(u.section_id)!==String(sectionId)) continue;
+    const d = new Date(u.ts||c.updated_ts||c.created_ts||Date.now());
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const dd= String(d.getDate()).padStart(2,'0');
+    days.add(`${d.getFullYear()}-${m}-${dd}`);
+  }
+
+  // fallback : au moins le jour de création
+  if (days.size===0 && c.created_ts){
+    const d = new Date(c.created_ts);
+    const m = String(d.getMonth()+1).padStart(2,'0'); const dd = String(d.getDate()).padStart(2,'0');
+    days.add(`${d.getFullYear()}-${m}-${dd}`);
+  }
+  return Array.from(days).sort();
 }
 
 export function getCardView(cardId, {sectionId, days=[], types=[]}={}){
@@ -403,6 +415,7 @@ export function __cards_migrate_v2_once(){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
