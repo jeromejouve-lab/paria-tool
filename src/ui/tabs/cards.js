@@ -153,9 +153,9 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
             </div>
             ${c.tags?.length?`<div style="font-size:11px;opacity:.7">${c.tags.map(t=>`#${t}`).join(' ')}</div>`:''}
           </button>
-          <button class="icon-btn" data-action="mini-soft-delete" data-id="${c.id}"
-                  title="${isDel?'Restaurer':'Supprimer'}"
-                  style="position:absolute;right:6px;top:6px;font-size:12px;opacity:.9">${isDel?'↩︎':'🗑️'}</button>
+          <button class="mini-trash"
+                  data-action="mini-soft-delete" data-id="${c.id}"
+                  title="${isDel?'Restaurer':'Supprimer'}" aria-label="${isDel?'Restaurer':'Supprimer'}">🗑️</button>
         </div>
       `;
     }).join('') || '<div style="opacity:.6">Aucune card</div>';
@@ -465,6 +465,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
