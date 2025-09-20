@@ -73,8 +73,7 @@
 .upd.is-hidden{ opacity:.85; background:#131313; }
 
 .mini-trash{
-  margin-left:8px;
-  width:22px;height:22px;
+  margin-left:8px;width:22px;height:22px;
   display:flex;align-items:center;justify-content:center;
   border:none;background:transparent;cursor:pointer;border-radius:6px;
 }
@@ -82,8 +81,9 @@
 .mini-trash:focus{ outline:none; box-shadow:none; }
 
 .card-mini.is-selected{ outline:1px solid #3b82f6; outline-offset:2px; }
-.card-mini.is-active{ outline:2px solid #3b82f6; outline-offset:2px; } /* halo fort pour la courante */
-.card-mini.is-del{ border-color:#cc3344; background:#161214; opacity:.8; }
+.card-mini.is-active{ outline:2px solid #3b82f6; outline-offset:2px; }
+.card-mini.is-del{ border-color:#cc3344; background:#161214; opacity:.9; outline:2px solid #cc3344; outline-offset:2px; }
+
 
 
 
