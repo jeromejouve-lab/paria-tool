@@ -457,7 +457,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     const title = prompt('Nom de la sélection (workset) :', 'Sélection du jour');
     if (title!=null){
       const wid = saveWorkset({ title, card_ids: ids });
-      alert(`Sélection enregistrée (#${wid})`);
     }
   });
   
@@ -522,7 +521,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       const title = prompt('Nom de la sélection (workset) :', 'Sélection du jour');
       if (title!=null){
         const wid = saveWorkset({ title, card_ids: ids });
-        alert(`Sélection enregistrée (#${wid})`);
+
       }
       return;
     }
@@ -636,6 +635,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
