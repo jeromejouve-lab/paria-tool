@@ -21,7 +21,14 @@ export function usedBytes(){
   return total;
 }
 
+// devtools (console)
+if (typeof window !== 'undefined') {
+  window.readClientBlob  = readClientBlob;
+  window.writeClientBlob = writeClientBlob;
+}
+
 /* INDEX
 - ensureBaseBlob/readClientBlob/writeClientBlob
 - usedBytes()
 */
+
