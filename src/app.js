@@ -39,6 +39,12 @@ export function showTab(tab){
   try { history.replaceState(null,'',`#${tab}`); } catch {}
 }
 
+// init workspace (pull Git s’il faut) + lancer l’unique auto-backup
+import('./domain/reducers.js').then(({ hydrateOnEnter, startAutoBackup })=>{
+  hydrateOnEnter();          // merge du Git « aujourd’hui -> hier » si nécessaire
+  startAutoBackup(5*60*1000); // un seul timer global
+});
+
 export function boot(){
   // délégation de clic sur toute la page (boutons, liens, etc. portant data-tab)
   document.addEventListener('click', (ev)=>{
@@ -67,6 +73,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
