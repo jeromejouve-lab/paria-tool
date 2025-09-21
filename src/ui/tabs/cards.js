@@ -174,26 +174,8 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   function renderTimeline(){
     const b = readClientBlob();
     const selId = String(host.dataset.selectedCardId || '');
-    const cards = (b.cards || []).slice().sort((a,b)=> (a.updated_ts<b.updated_ts)?1:-1);
-      
-    const worksets = (b.worksets||[]).slice().sort((a,b)=> a.created_ts<b.created_ts ? 1 : -1);
-
-    const wsHtml = worksets.map(ws=>{
-      const created = ws.created_ts ? new Date(ws.created_ts).toLocaleString() : '';
-      return `
-      <article class="card-mini is-workset" data-kind="workset" data-wsid="${ws.id}"
-               style="box-shadow:0 0 0 2px #f6c24a inset; background:#1a1608; border-color:#f6c24a">
-        <header style="display:flex;align-items:center;gap:6px;font-size:12px;opacity:.85">
-          <span class="badge" style="background:#f6c24a;color:#111;padding:0 6px;border-radius:999px;font-weight:600">WS</span>
-          <span class="ts" style="margin-left:auto">${created}</span>
-        </header>
-        <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">
-          ${String(ws.title||'Sélection').replace(/</g,'&lt;')}
-        </div>
-        <div style="font-size:11px;opacity:.7;margin-top:2px">${(ws.card_ids||[]).length} card(s)</div>
-      </article>`;
-    }).join('');
-    
+    const cards = (b.cards || []).slice().sort((a,b)=> (a.updated_ts<b.updated_ts)?1:-1);   
+    const worksets = (b.worksets||[]).slice().sort((a,b)=> a.created_ts<b.created_ts ? 1 : -1);    
     const cardsHtml = cards.map(c=>` ... `).join(''); // <— garde ton template existant tel quel
     
     const items = [
@@ -550,89 +532,98 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   });
 
   // -- actions globales sur l'onglet (ex: workset-save sous la timeline)
-  host.addEventListener('click', (ev)=>{
-    const btn = ev.target.closest('[data-action="workset-save"]');
-    if (!btn) return;
+  // évite les doublons si mountCardsTab est rappelé
+  if (!host.dataset.cardsHandlersBound) {
+    host.dataset.cardsHandlersBound = '1';
   
-    const ids = [];
-    if (primaryId) ids.push(String(primaryId));
-    for (const x of (selectedIds||new Set())) if (String(x)!==String(primaryId)) ids.push(String(x));
-    if (!ids.length) { alert('Aucune card sélectionnée.'); return; }
+    host.addEventListener('click', (ev)=>{
   
-    const title = prompt('Nom de la sélection (workset) :', 'Sélection du jour');
-    if (title!=null){
-      const wid = saveWorkset({ title, card_ids: ids });
-      renderTimeline();
-    }
-
-    // A) appliquer un workset
-    {
-      const wsTile = ev.target.closest('.card-mini[data-kind="workset"]');
-      if (wsTile && !ev.target.closest('button')){
-        const wid = String(wsTile.getAttribute('data-wsid')||'');
-        const b = readClientBlob();
-        const ws = (b.worksets||[]).find(x=>String(x.id)===wid);
-        if (ws && ws.card_ids?.length){
-          primaryId   = String(ws.card_ids[0]);
-          selectedIds = new Set(ws.card_ids.slice(1).map(String));
-          // maj last_used_ts pour tri
-          ws.last_used_ts = Date.now();
+      // 1) Enregistrer la sélection (workset-save)
+      {
+        const btn = ev.target.closest('[data-action="workset-save"]');
+        if (btn){
+          const ids = [];
+          if (primaryId) ids.push(String(primaryId));
+          for (const x of (selectedIds||new Set())) if (String(x)!==String(primaryId)) ids.push(String(x));
+          if (!ids.length) { alert('Aucune card sélectionnée.'); return; }
+          const title = prompt('Nom de la sélection (workset) :', 'Sélection du jour');
+          if (title!=null){
+            saveWorkset({ title, card_ids: ids });
+            renderTimeline(); // affiche la tuile WS
+          }
+          return;
+        }
+      }
+  
+      // 2) Appliquer un workset (clic sur tuile WS, hors boutons)
+      {
+        const wsTile = ev.target.closest('.card-mini[data-kind="workset"]');
+        if (wsTile && !ev.target.closest('button')){
+          const wid = String(wsTile.getAttribute('data-wsid')||'');
+          const b = readClientBlob();
+          const ws = (b.worksets||[]).find(x=>String(x.id)===wid);
+          if (ws && ws.card_ids?.length){
+            primaryId   = String(ws.card_ids[0]);
+            selectedIds = new Set(ws.card_ids.slice(1).map(String));
+            // maj “dernier usage” pour le tri
+            ws.last_used_ts = Date.now();
+            writeClientBlob(b);
+            renderTimeline();
+            renderDetail();
+          }
+          return;
+        }
+      }
+  
+      // 3) Supprimer un workset (bouton 🗑️ sur tuile WS)
+      {
+        const del = ev.target.closest('button[data-action="ws-delete"]');
+        if (del){
+          const wid = String(del.getAttribute('data-wsid')||'');
+          const b = readClientBlob();
+          b.worksets = (b.worksets||[]).filter(x=>String(x.id)!==wid);
           writeClientBlob(b);
+          renderTimeline(); // la tuile WS disparaît
+          return;
+        }
+      }
+  
+      // 4) Consolider la sélection (bouton sous timeline)
+      {
+        const btnCons = ev.target.closest('[data-action="consolidate-selection"]');
+        if (btnCons){
+          const ids = [];
+          if (primaryId) ids.push(String(primaryId));
+          for (const x of (selectedIds||new Set())) if (String(x)!==String(primaryId)) ids.push(String(x));
+          if (!ids.length){ alert('Aucune card sélectionnée.'); return; }
+  
+          const title = prompt('Titre de la consolidation :','Consolidation');
+          const newId = createCard({ title: title||'Consolidation', tags:['consolidation'] });
+  
+          // marquer consolidation + provenance (meta)
+          const b = readClientBlob();
+          const nc = (b.cards||[]).find(c=>String(c.id)===String(newId));
+          if (nc){
+            nc.state = nc.state || {};
+            nc.state.consolidated = true;                 // halo orange
+            nc.meta = nc.meta || {};
+            nc.meta.consolidated_from = ids.slice();      // provenance
+            nc.updated_ts = Date.now();
+            writeClientBlob(b);
+          }
+  
+          // montrer la nouvelle card (mini-card visible immédiatement)
+          primaryId = String(newId);
+          selectedIds = new Set();
           renderTimeline();
           renderDetail();
+          return;
         }
-        return;
       }
-    }
-    
-    // B) supprimer un workset (tuile WS)
-    {
-      const del = ev.target.closest('button[data-action="ws-delete"]');
-      if (del){
-        const wid = String(del.getAttribute('data-wsid')||'');
-        const b = readClientBlob();
-        b.worksets = (b.worksets||[]).filter(x=>String(x.id)!==wid);
-        writeClientBlob(b);
-        renderTimeline();
-        return;
-      }
-    }
-    
-    // C) consolider la sélection (bouton sous timeline)
-    {
-      const btnCons = ev.target.closest('[data-action="consolidate-selection"]');
-      if (btnCons){
-        const ids = [];
-        if (primaryId) ids.push(String(primaryId));
-        for (const x of (selectedIds||new Set())) if (String(x)!==String(primaryId)) ids.push(String(x));
-        if (!ids.length){ alert('Aucune card sélectionnée.'); return; }
-    
-        const title = prompt('Titre de la consolidation :','Consolidation');
-        const newId = createCard({ title: title||'Consolidation', tags:['consolidation'] });
-    
-        // marquer consolidation + provenance (meta)
-        const b = readClientBlob();
-        const nc = (b.cards||[]).find(c=>String(c.id)===String(newId));
-        if (nc){
-          nc.state = nc.state || {};
-          nc.state.consolidated = true;
-          nc.meta = nc.meta || {};
-          nc.meta.consolidated_from = ids.slice();
-          nc.updated_ts = Date.now();
-          writeClientBlob(b);
-        }
-    
-        // afficher la nouvelle card en primaire
-        primaryId = String(newId);
-        selectedIds = new Set();
-        renderTimeline();
-        renderDetail();
-        return;
-      }
-    }
-
-  });
   
+    });
+  }
+ 
   detail.addEventListener('click', (ev)=>{
     const btn = ev.target.closest('[data-action]');
     if (!btn) return;
@@ -808,6 +799,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
