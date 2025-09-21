@@ -45,6 +45,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
   let selectedIds = new Set();   // autres cartes sélectionnées
   let primaryId   = null;        // carte courante (halo fort)
+  let activeWsId = null; // WS actuellement appliqué (pour halo de sélection)
 
   host.style.display = 'flex';
   host.style.flexDirection = 'column';
@@ -218,10 +219,10 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
         const created = ws.created_ts ? new Date(ws.created_ts).toLocaleString() : '';
         const tip = `${esc(ws.title||'Sélection')} — ${(ws.card_ids||[]).length} card(s)`;
         return `
-        <article class="card-mini is-workset"
-                 data-kind="workset" data-wsid="${ws.id}"
-                 title="${tip}"
-                 style="border-radius:12px;border:1px solid #f6c24a;background:#1a1608;box-shadow:0 0 0 2px #f6c24a inset;min-width:220px;padding:6px 8px">
+        <article class="card-mini is-workset${activeWsId===ws.id?' is-selected':''}"
+         data-kind="workset" data-wsid="${ws.id}"
+         title="${tip}"
+         style="border-radius:12px;border:1px solid #ffea00;background:#1a1608;box-shadow:0 0 0 2px #ffea00 inset;min-width:220px;padding:6px 8px">
           <header style="display:flex;align-items:center;gap:6px;font-size:12px;opacity:.85">
             <span class="badge" style="background:#f6c24a;color:#111;padding:0 6px;border-radius:999px;font-weight:600">WS</span>
             <span class="ts" style="margin-left:auto">${created}</span>
@@ -256,6 +257,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
                  style="border-radius:12px;border:1px solid #2a2a2a;${halo}padding:6px 8px;min-width:220px;background:#141415">
           <header style="display:flex;align-items:center;gap:6px;font-size:12px;opacity:.85">
             <span>#${id}${think}</span>
+            ${c.state?.consolidated ? '<span class="badge" title="Consolidation" style="background:#ff8c00;color:#111;padding:0 6px;border-radius:999px;font-weight:600;margin-left:6px">🧩</span>' : ''}
             <span class="ts" style="margin-left:auto">${ts}</span>
             <button class="btn btn-xxs" title="${tip}" data-action="mini-soft-delete" data-id="${id}" style="margin-left:8px">${btn}</button>
           </header>
@@ -289,7 +291,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
         if (selectedIds?.has?.(id)) selectedIds.delete(id);
         if (String(primaryId||'')===id) primaryId = null;
       }
-    
+  
       renderTimeline();
       renderDetail();   // <-- re-render multi-cards (la supprimée disparaît du détail)
 
@@ -313,6 +315,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
           // primaire = 1ère, le reste en sélection
           primaryId = String(ws.card_ids[0]);
           selectedIds = new Set(ws.card_ids.slice(1).map(String));
+          activeWsId = ws.id;
           renderTimeline();
           renderDetail();
         }
@@ -340,10 +343,23 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     }
   
     host.dataset.selectedCardId = primaryId || id; // rétrocompat
+    activeWsId = null;
+
     renderTimeline();              // met à jour le halo
     renderDetail(); // ouvre le détail
   });
-  
+
+  host.addEventListener('click', (ev)=>{
+    const del = ev.target.closest('button[data-action="ws-delete"]');
+    if (!del) return;
+    const wid = String(del.getAttribute('data-wsid')||'');
+    const b = readClientBlob();
+    b.worksets = (b.worksets||[]).filter(x=>String(x.id)!==wid);
+    if (activeWsId===wid) activeWsId=null;
+    writeClientBlob(b);
+    renderTimeline();
+  });
+
   function renderDetail(){
     const detail = host.querySelector('#card-detail');
     const b = readClientBlob();
@@ -792,6 +808,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
