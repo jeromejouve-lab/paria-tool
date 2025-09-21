@@ -483,11 +483,11 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       // 2) Appliquer un workset (clic sur tuile WS, hors boutons)
       {
         const wsTile = ev.target.closest('.card-mini[data-kind="workset"]');
-        activeWsId = ws.id;
         if (wsTile && !ev.target.closest('button')){
           const wid = String(wsTile.getAttribute('data-wsid')||'');
           const b = readClientBlob();
           const ws = (b.worksets||[]).find(x=>String(x.id)===wid);
+          activeWsId = ws.id;
           if (ws && ws.card_ids?.length){
             primaryId   = String(ws.card_ids[0]);
             selectedIds = new Set(ws.card_ids.slice(1).map(String));
@@ -495,7 +495,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
             ws.last_used_ts = Date.now();
             writeClientBlob(b);
             renderTimeline();
-            ensureCardAvailable(id);
             renderDetail();
           }
           return;
@@ -738,6 +737,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
