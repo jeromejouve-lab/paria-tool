@@ -35,9 +35,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   host.style.display = 'flex';
   host.style.flexDirection = 'column';
 
-  startAutoBackup();                  // démarre la boucle 5 min (idempotent)
-  hydrateOnEnter().then(()=>{         // hydrate depuis Git si besoin, puis rerender
-    try{ renderTimeline(); renderDetail(); }catch(e){}
+  try{ renderTimeline(); renderDetail(); }catch(e){}
   });
   // on laisse aussi le render initial juste après, pour affichage immédiat du local
   
@@ -726,6 +724,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
