@@ -32,14 +32,6 @@ function html(){
 
 function fmtTs(ts){ try{ return ts ? new Date(ts).toLocaleString() : ''; }catch{ return ''; } }
 
-function cardPrint(c){
-  const w = window.open('', '_blank');
-  w.document.write(cardToHTML(c));
-  w.document.close();
-  w.focus();
-  w.print(); // l’utilisateur choisit “Enregistrer en PDF” si besoin
-}
-
 export function mountCardsTab(host = document.getElementById('tab-cards')){
   // --- boot cards UI (sticky + zones) ---
   __cards_migrate_v2_once?.();
@@ -118,9 +110,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     host.appendChild(detail);
   }
   
-  // helpers locaux
-  function _dayKey(ts){ const d=new Date(ts); const m=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0'); return `${d.getFullYear()}-${m}-${dd}`; }
-  function fmt(ts){ try{ return ts? new Date(ts).toLocaleString() : ''; }catch{return '';} }
   // --- Overlay calendrier multi-jours par section ---
   let calOverlay=null;
   function ensureCalOverlay(){
@@ -182,9 +171,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     const b = readClientBlob();
     const selId = String(host.dataset.selectedCardId || '');
     const cards = (b.cards || []).slice().sort((a,b)=> (a.updated_ts<b.updated_ts)?1:-1);   
-    const worksets = (b.worksets||[]).slice().sort((a,b)=> a.created_ts<b.created_ts ? 1 : -1);    
-    const cardsHtml = cards.map(c=>` ... `).join(''); // <— garde ton template existant tel quel
-    
+    const worksets = (b.worksets||[]).slice().sort((a,b)=> a.created_ts<b.created_ts ? 1 : -1);        
     const items = [
       ...(b.worksets||[]).map(ws => ({
         kind:'ws',
@@ -338,17 +325,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     renderDetail(); // ouvre le détail
   });
 
-  host.addEventListener('click', (ev)=>{
-    const del = ev.target.closest('button[data-action="ws-delete"]');
-    if (!del) return;
-    const wid = String(del.getAttribute('data-wsid')||'');
-    const b = readClientBlob();
-    b.worksets = (b.worksets||[]).filter(x=>String(x.id)!==wid);
-    if (activeWsId===wid) activeWsId=null;
-    writeClientBlob(b);
-    renderTimeline();
-  });
-
   function renderDetail(){
     const detail = host.querySelector('#card-detail');
     const b = readClientBlob();
@@ -447,8 +423,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     `;
   }
 
-   
-  __cards_migrate_v2_once();
 
   // layout de base
   host.style.display='flex'; host.style.flexDirection='column';
@@ -818,6 +792,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
