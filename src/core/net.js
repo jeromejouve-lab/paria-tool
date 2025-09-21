@@ -136,7 +136,8 @@ export async function saveToGit(payload) {
 
   const [client, service, dateStr] = String(payload.workId).split('|');
   const pad = v => String(v).padStart(2,'0'); const t = new Date();
-  const stamp = `${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}_${pad(t.getHours())}-${pad(t.getMinutes())}-${pad(t.getSeconds())}`;
+  const ms = String(t.getMilliseconds()).padStart(3,'0');            // <— AJOUT
+  const stamp = `${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}_${pad(t.getHours())}-${pad(t.getMinutes())}-${pad(t.getSeconds())}-${ms}`; // <— MODIF (ajout -ms)
   const path  = `clients/${client}/${service}/${dateStr}/backup-${stamp}.json`;
 
   const jsonStr = JSON.stringify(payload, null, 2);
@@ -166,6 +167,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
