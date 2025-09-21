@@ -68,6 +68,7 @@ export function appendCardUpdate(cardId, sectionId, payload){
   b.journal = b.journal||[];
   b.journal.push({type:'card.section.appended', card_id:cardId, section_id:sectionId, update_id:id, ts:c.updated_ts});
   writeClientBlob(b);
+  maybeImmediateBackup();
   return id;
 }
 
@@ -171,6 +172,7 @@ export function createCard({title='',content='',tags=[]}={}){
   b.cards.push(card);
   writeClientBlob(b);
   logEvent('card/create',{kind:'card',id});
+  maybeImmediateBackup();
   return id;
 }
 
@@ -220,6 +222,7 @@ export function saveWorkset({ title='Sélection', card_ids=[] } = {}){
   b.worksets.push(ws);
   writeClientBlob(b);
   logEvent('workset/save', { kind:'workset', id }, { card_ids: ws.card_ids });
+  maybeImmediateBackup();
   return id;
 }
 export function listWorksets(){
@@ -427,12 +430,181 @@ function cardPrint(c){
 export function __cards_migrate_v2_once(){
   try{ migrateCards_v2(); }catch(e){ console.warn('[migrateCards_v2]', e); }
 }
+// ====================================================================
+// BACKUP AUTO (5 min) + HYDRATATION DEPUIS GIT + MERGE ADD-ONLY
+// ====================================================================
+
+// ---------- helpers stables ----------
+function __stableStringify(obj){
+  const seen = new WeakSet();
+  return JSON.stringify(obj, (k, v)=>{
+    if (v && typeof v==='object'){
+      if (seen.has(v)) return;
+      seen.add(v);
+      const o = Array.isArray(v) ? v.slice() : Object.fromEntries(Object.keys(v).sort().map(key=>[key,v[key]]));
+      return o;
+    }
+    return v;
+  });
+}
+function __hash(str){
+  // djb2 xor
+  let h = 5381;
+  for (let i=0;i<str.length;i++) h = ((h<<5)+h) ^ str.charCodeAt(i);
+  return (h>>>0).toString(16);
+}
+function __todayStr(){
+  const d=new Date(), pad=v=>String(v).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+export function getWorkIdForDate(isoDate){ // ex: "2025-09-21"
+  const b = readClientBlob();
+  const norm = s => String(s||'').replace(/\|/g,'-').trim() || 'default';
+  return `${norm(b.charter?.client)}|${norm(b.charter?.service)}|${isoDate}`;
+}
+export function getWorkIdForToday(){ return getWorkIdForDate(__todayStr()); }
+
+// ---------- mesure de remplissage local ----------
+export function computeLocalFill(){
+  const raw = __stableStringify(readClientBlob());
+  const bytes = new Blob([raw]).size;
+  const QUOTA = window.pariaLocalQuotaBytes || 8 * 1024 * 1024; // 8MB par défaut
+  const pct = Math.round((bytes/QUOTA)*100);
+  const band = (pct<45) ? 'green' : (pct<70 ? 'orange' : (pct<90 ? 'red' : 'over'));
+  return { bytes, quota:QUOTA, pct, band };
+}
+
+// ---------- backup auto (timer unique) ----------
+let __autoBackupTimer = null;
+export function startAutoBackup(intervalMs = 5*60*1000){ // 5 min
+  if (__autoBackupTimer) return;
+  __autoBackupTimer = setInterval(async ()=>{
+    try{
+      const b = readClientBlob();
+      b.meta = b.meta || {};
+      b.meta.backup = b.meta.backup || {};
+      const s = __stableStringify(b);
+      const h = __hash(s);
+      if (b.meta.backup.last_hash === h) return; // pas de changement, pas d’envoi
+      const { saveToGit } = await import('../core/net.js');
+      await saveToGit({ workId: getWorkIdForToday(), data: b });
+      b.meta.backup.last_hash = h;
+      b.meta.backup.last_push_ts = Date.now();
+      writeClientBlob(b);
+      // rotation 45/70/90 -> à brancher côté net.js si besoin (index Git)
+    }catch(e){ console.warn('[auto-backup]', e); }
+  }, intervalMs);
+}
+
+// ---------- backup immédiat si orange/rouge ----------
+export async function maybeImmediateBackup(){
+  try{
+    const f = computeLocalFill();
+    if (f.band==='orange' || f.band==='red' || f.band==='over'){
+      const b = readClientBlob();
+      const { saveToGit } = await import('../core/net.js');
+      await saveToGit({ workId: getWorkIdForToday(), data: b });
+      b.meta = b.meta || {};
+      b.meta.backup = b.meta.backup || {};
+      b.meta.backup.last_hash = __hash(__stableStringify(b));
+      b.meta.backup.last_push_ts = Date.now();
+      writeClientBlob(b);
+    }
+  }catch(e){ console.warn('[immediate-backup]', e); }
+}
+
+// ---------- merge add-only (n’ajoute que ce qui manque) ----------
+function __mergeAddOnly(remote){
+  const b = readClientBlob();
+  // cards
+  b.cards = b.cards || [];
+  const byId = new Map(b.cards.map(c=>[String(c.id), c]));
+  for (const rc of (remote.cards||[])){
+    const id = String(rc.id);
+    if (!byId.has(id)){
+      b.cards.push(rc);
+      byId.set(id, rc);
+    }else{
+      // si remote plus récent, tu peux décider de merger champs — ici on reste add-only strict
+    }
+  }
+  // worksets
+  b.worksets = b.worksets || [];
+  const byWs = new Map(b.worksets.map(w=>[String(w.id), w]));
+  for (const rw of (remote.worksets||[])){
+    const id = String(rw.id);
+    if (!byWs.has(id)) b.worksets.push(rw);
+  }
+  // journal (optionnel) — add-only
+  if (Array.isArray(remote.journal)){
+    b.journal = b.journal || [];
+    b.journal.push(...remote.journal);
+  }
+  writeClientBlob(b);
+}
+
+// ---------- pull Git (aujourd’hui -> hier) + merge ----------
+export async function hydrateOnEnter(){
+  const b = readClientBlob();
+  const today = __todayStr();
+  b.meta = b.meta || {};
+  const lastOpen = b.meta.last_open_date || '';
+  const hasLocal = Array.isArray(b.cards) && b.cards.length>0;
+
+  // on marque la date d’ouverture
+  b.meta.last_open_date = today;
+  writeClientBlob(b);
+
+  const need = (!hasLocal) || (lastOpen !== today);
+  if (!need) return false;
+
+  try{
+    const { loadLatestSnapshot } = await import('../core/net.js'); // à implémenter côté net.js si pas présent
+    // essai aujourd’hui
+    const snapToday = await loadLatestSnapshot({ workId: getWorkIdForToday() });
+    if (snapToday && snapToday.cards && snapToday.cards.length){
+      __mergeAddOnly(snapToday);
+      return true;
+    }
+    // fallback hier
+    const y = new Date(); y.setDate(y.getDate()-1);
+    const pad=v=>String(v).padStart(2,'0');
+    const yStr = `${y.getFullYear()}-${pad(y.getMonth()+1)}-${pad(y.getDate())}`;
+    const snapY = await loadLatestSnapshot({ workId: getWorkIdForDate(yStr) });
+    if (snapY && snapY.cards && snapY.cards.length){
+      __mergeAddOnly(snapY);
+      return true;
+    }
+  }catch(e){ console.warn('[hydrateOnEnter]', e); }
+  return false;
+}
+
+// ---------- hydratation ciblée: s’assurer qu’une card existe localement ----------
+export async function ensureCardAvailable(cardId){
+  const b = readClientBlob();
+  const id = String(cardId);
+  const has = (b.cards||[]).some(c=>String(c.id)===id);
+  if (has) return true;
+  try{
+    const { loadCardFromSnapshots } = await import('../core/net.js'); // à implémenter: cherche la card dans les derniers snapshots
+    const rc = await loadCardFromSnapshots({ id, prefer: getWorkIdForToday() });
+    if (rc){
+      b.cards = b.cards || [];
+      b.cards.push(rc);
+      writeClientBlob(b);
+      return true;
+    }
+  }catch(e){ console.warn('[ensureCardAvailable]', e); }
+  return false;
+}
+
 
 /* INDEX
 - Cards CRUD & AI flags, Charter ops, Scenario ops incl. promote
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
