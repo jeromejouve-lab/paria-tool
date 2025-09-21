@@ -22,14 +22,6 @@ function _dayKey(ts){
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-function html(){
-  const cards = listCards();
-  return `
-  <div id="cards-grid">
-    ${cards.length? cards.map(renderCard).join('') : `<div class="muted">— Aucune card.</div>`}
-  </div>`;
-}
-
 function fmtTs(ts){ try{ return ts ? new Date(ts).toLocaleString() : ''; }catch{ return ''; } }
 
 export function mountCardsTab(host = document.getElementById('tab-cards')){
@@ -169,9 +161,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
   function renderTimeline(){
     const b = readClientBlob();
-    const selId = String(host.dataset.selectedCardId || '');
-    const cards = (b.cards || []).slice().sort((a,b)=> (a.updated_ts<b.updated_ts)?1:-1);   
-    const worksets = (b.worksets||[]).slice().sort((a,b)=> a.created_ts<b.created_ts ? 1 : -1);        
     const items = [
       ...(b.worksets||[]).map(ws => ({
         kind:'ws',
@@ -737,6 +726,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
