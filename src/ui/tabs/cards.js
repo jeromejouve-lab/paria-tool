@@ -611,7 +611,32 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
             nc.updated_ts = Date.now();
             writeClientBlob(b);
           }
-  
+          // -- recopier le contenu des cards sélectionnées dans la nouvelle card --
+          // on duplique les updates par section ; chaque card src devient une section dédiée
+          {
+            const srcIds = ids.slice();
+            const b2 = readClientBlob();
+            for (const sid of srcIds){
+              const src = (b2.cards||[]).find(x=>String(x.id)===String(sid));
+              if (!src) continue;
+              // id de section unique dans la card consolidée
+              const secId = `c${src.id}`;
+              const secTitle = (src.title || `Card #${src.id}`);
+              for (const u of (src.updates||[])){
+                appendCardUpdate(String(newId), secId, {
+                  ts: u.ts,
+                  origin: u.origin,
+                  type: u.type,
+                  md: u.md,
+                  html: u.html,
+                  section_title: secTitle,                  // crée la section si absente
+                  meta: { ...(u.meta||{}), source_card: src.id, source_section: u.section_id, source_update: u.id }
+                });
+              }
+            }
+            touchCard(String(newId)); // met à jour updated_ts
+          }
+
           // montrer la nouvelle card (mini-card visible immédiatement)
           primaryId = String(newId);
           selectedIds = new Set();
@@ -677,19 +702,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       return;
     }
 
-    if (btn.dataset.action==='workset-save'){
-      const ids = [];
-      if (primaryId) ids.push(String(primaryId));
-      for (const x of (selectedIds||new Set())) if (String(x)!==String(primaryId)) ids.push(String(x));
-      if (!ids.length) { alert('Aucune card sélectionnée.'); return; }
-      const title = prompt('Nom de la sélection (workset) :', 'Sélection du jour');
-      if (title!=null){
-        const wid = saveWorkset({ title, card_ids: ids });
-
-      }
-      return;
-    }
-  
     // exports
     if (btn.dataset.action==='exp-md' || btn.dataset.action==='exp-html' || btn.dataset.action==='exp-print'){
       // 1) cartes concernées = primaire puis autres sélectionnées
@@ -799,6 +811,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
