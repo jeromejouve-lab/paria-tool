@@ -280,25 +280,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       return;
     }
 
-    // appliquer un workset (sélection virtuelle)
-    {
-      const wsTile = ev.target.closest('.card-mini[data-kind="workset"]');
-      if (wsTile){
-        const wid = String(wsTile.getAttribute('data-wsid')||'');
-        const b = readClientBlob();
-        const ws = (b.worksets||[]).find(x=>String(x.id)===wid);
-        if (ws && (ws.card_ids||[]).length){
-          // primaire = 1ère, le reste en sélection
-          primaryId = String(ws.card_ids[0]);
-          selectedIds = new Set(ws.card_ids.slice(1).map(String));
-          activeWsId = ws.id;
-          renderTimeline();
-          renderDetail();
-        }
-        return;
-      }
-    }
-
     // clic sur mini-card
     const btn = ev.target.closest('[data-card-id]');
     if (!btn) return;
@@ -423,43 +404,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     `;
   }
 
-
-  // layout de base
-  host.style.display='flex'; host.style.flexDirection='column';
-
-  if (bar){ bar.style.position='sticky'; bar.style.top='0'; bar.style.zIndex='2'; bar.style.background='var(--bg,#0f0f10)'; }
-  if (!timeline){ timeline=document.createElement('div'); timeline.id='cards-timeline'; timeline.style.cssText='display:flex;gap:8px;overflow:auto;padding:8px 4px;'; bar?.insertAdjacentElement('afterend', timeline); }
-  if (!detail){   detail  =document.createElement('div'); detail.id='card-detail'; detail.style.cssText='flex:1 1 auto; overflow:auto; padding:8px 4px 16px;'; bar?.parentNode?.appendChild(detail); }
-  if (!timeline) throw new Error('[Cards] #cards-timeline introuvable');
-  if (!detail)   throw new Error('[Cards] #card-detail introuvable');
-
-  // ---- Layout scrollable sous la barre d'actions ----
-  const root   = host;                              // conteneur de l'onglet Cards
-  const list   = root.querySelector('#cards-grid'); // conteneur des cards (on crée juste après si absent)
-  
-  root.style.display = 'flex';
-  root.style.flexDirection = 'column';
-  root.style.minHeight = 'calc(100vh - 80px)'; // ajuste si besoin
-  
-  if (bar){
-    bar.style.position = 'sticky';
-    bar.style.top = '0';
-    bar.style.zIndex = '2';
-    bar.style.background = 'var(--bg,#0f0f10)'; // pour masquer le contenu derrière
-    bar.style.paddingBottom = '8px';
-  }
-  
-  if (!list){
-    const grid = document.createElement('div');
-    grid.id = 'cards-grid';
-    root.appendChild(grid);
-  }
-  const grid = host.querySelector('#cards-grid') || host;
-  grid.style.flex = '1 1 auto';
-  grid.style.overflow = 'auto';
-
-  function fmt(ts){ try{ return ts? new Date(ts).toLocaleString() : ''; }catch{return '';} }
-
   // -- actions sur les petites cards (compact) --
 
   detail.addEventListener('change', (ev)=>{
@@ -539,6 +483,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       // 2) Appliquer un workset (clic sur tuile WS, hors boutons)
       {
         const wsTile = ev.target.closest('.card-mini[data-kind="workset"]');
+        activeWsId = ws.id;
         if (wsTile && !ev.target.closest('button')){
           const wid = String(wsTile.getAttribute('data-wsid')||'');
           const b = readClientBlob();
@@ -550,6 +495,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
             ws.last_used_ts = Date.now();
             writeClientBlob(b);
             renderTimeline();
+            ensureCardAvailable(id);
             renderDetail();
           }
           return;
