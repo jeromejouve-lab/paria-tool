@@ -36,7 +36,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   host.style.flexDirection = 'column';
 
   try{ renderTimeline(); renderDetail(); }catch(e){}
-  });
+  }
   // on laisse aussi le render initial juste après, pour affichage immédiat du local
   
   let bar = host.querySelector('.btns');
@@ -724,6 +724,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
