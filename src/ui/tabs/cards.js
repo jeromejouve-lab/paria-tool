@@ -3,11 +3,12 @@ import {
   listCards, toggleThink, softDeleteCard,
   addNote, addComment, addAItoCard, updateCard, saveWorkset, listWorksets
 } from '../../domain/reducers.js';
+
 import { askAI } from '../../core/ai.js';
 
 import {
   getCardView, setSectionFilters, listCardDays,
-  appendCardUpdate, touchCard, __cards_migrate_v2_once, createCard
+  appendCardUpdate, touchCard, __cards_migrate_v2_once, createCard, hydrateOnEnter, startAutoBackup
 } from "../../domain/reducers.js";
 
 import { readClientBlob, writeClientBlob } from "../../core/store.js";
@@ -49,6 +50,12 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
   host.style.display = 'flex';
   host.style.flexDirection = 'column';
+
+  startAutoBackup();                  // démarre la boucle 5 min (idempotent)
+  hydrateOnEnter().then(()=>{         // hydrate depuis Git si besoin, puis rerender
+    try{ renderTimeline(); renderDetail(); }catch(e){}
+  });
+  // on laisse aussi le render initial juste après, pour affichage immédiat du local
   
   let bar = host.querySelector('.btns');
   if (!bar) {
@@ -811,6 +818,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
