@@ -2,6 +2,7 @@
 import { readClientBlob, writeClientBlob } from '../core/store.js';
 import { logEvent } from './journal.js';
 import { bootstrapWorkspace } from '../core/net.js';
+import { buildWorkId } from '../core/settings.js';
 
 // ---- Cards v2: sections + updates (append-only) ----
 function _dayKey(ts){ const d=new Date(ts); return `${d.getFullYear()}-${(d.getMonth()+1+'').padStart(2,'0')}-${(d.getDate()+'').padStart(2,'0')}`; }
@@ -487,7 +488,7 @@ export function startAutoBackup(intervalMs = 5*60*1000){ // 5 min
       const h = __hash(s);
       if (b.meta.backup.last_hash === h) return; // pas de changement, pas d’envoi
       const { saveToGit } = await import('../core/net.js');
-      await saveToGit({ workId: getWorkIdForToday(), data: b });
+      await saveToGit({ workId: buildWorkId(), data: b });
       b.meta.backup.last_hash = h;
       b.meta.backup.last_push_ts = Date.now();
       writeClientBlob(b);
@@ -503,7 +504,7 @@ export async function maybeImmediateBackup(){
     if (f.band==='orange' || f.band==='red' || f.band==='over'){
       const b = readClientBlob();
       const { saveToGit } = await import('../core/net.js');
-      await saveToGit({ workId: getWorkIdForToday(), data: b });
+      await saveToGit({ workId: buildWorkId(), data: b });
       b.meta = b.meta || {};
       b.meta.backup = b.meta.backup || {};
       b.meta.backup.last_hash = __hash(__stableStringify(b));
@@ -604,6 +605,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
