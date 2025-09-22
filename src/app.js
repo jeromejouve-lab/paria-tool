@@ -61,6 +61,15 @@ export function boot(){
   const firstBtn = document.querySelector('[data-tab]');
   const first = TABS.includes(hash) ? hash : (firstBtn?.dataset?.tab && TABS.includes(firstBtn.dataset.tab) ? firstBtn.dataset.tab : 'settings');
   showTab(first);
+  
+  // switch auto via URL ?mode=projecteur|seance&session=...
+  try {
+    const q = new URLSearchParams(location.search);
+    const mode = q.get('mode'); const ses = q.get('session');
+    if (ses && mode === 'projecteur') showTab('projector');
+    if (ses && mode === 'seance')     showTab('projector'); // (temporaire tant que l’onglet Séance n’est pas séparé)
+  } catch {}
+
   import('../domain/reducers.js').then(m => { try{ m.startAutoBackup?.(); }catch{} });
 }
 
@@ -73,6 +82,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
