@@ -157,6 +157,60 @@ export async function saveToGit(payload) {
   return { ok: res.status===201 || res.status===200, status: res.status, data, path };
 }
 
+/** Session manifest (publish/load) */
+export async function publishSession({ workId, sessionId, data }) {
+  const s = settingsLoad() || {};
+  const owner  = (s.git_owner  || s.endpoints?.git?.owner  || '').trim();
+  const repo   = (s.git_repo   || s.endpoints?.git?.repo   || '').trim();
+  const branch = (s.git_branch || s.endpoints?.git?.branch || 'main').trim();
+  const token  = (s.git_token  || s.endpoints?.git?.token  || '').trim();
+  if (!owner || !repo || !token || !workId || !sessionId) return { ok:false, status:0, detail:'incomplete' };
+
+  const [client, service, dateStr] = String(workId).split('|');
+  const path  = `clients/${client}/${service}/${dateStr}/sessions/${sessionId}.json`;
+
+  const jsonStr   = JSON.stringify({ ...(data||{}), session_id: sessionId, work_id: workId }, null, 2);
+  const contentB64= btoa(unescape(encodeURIComponent(jsonStr)));
+
+  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+  const res = await fetch(api, {
+    method: 'PUT',
+    headers: {
+      'Accept': 'application/vnd.github+json',
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ message: `session ${sessionId} @ ${workId}`, content: contentB64, branch })
+  });
+  const dataRes = await res.json();
+  return { ok: res.status===201 || res.status===200, status: res.status, data: dataRes, path };
+}
+
+export async function loadSession({ workId, sessionId }) {
+  const s = settingsLoad() || {};
+  const owner  = (s.git_owner  || s.endpoints?.git?.owner  || '').trim();
+  const repo   = (s.git_repo   || s.endpoints?.git?.repo   || '').trim();
+  const token  = (s.git_token  || s.endpoints?.git?.token  || '').trim();
+  if (!owner || !repo || !token || !workId || !sessionId) return { ok:false, status:0, detail:'incomplete' };
+
+  const [client, service, dateStr] = String(workId).split('|');
+  const path = `clients/${client}/${service}/${dateStr}/sessions/${sessionId}.json`;
+
+  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=main`;
+  const res = await fetch(api, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/vnd.github+json',
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  if (res.status===404) return { ok:false, status:404 };
+  const json = await res.json();
+  const content = JSON.parse(decodeURIComponent(escape(atob(json.content || ''))));
+  return { ok:true, status: res.status, data: content, path };
+}
+
+
 /**
  * Compat: alias JSON (certain code appelait postJson).
  */
@@ -167,6 +221,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
