@@ -40,9 +40,9 @@ export function showTab(tab){
 }
 
 // init workspace (pull Git s’il faut) + lancer l’unique auto-backup
-import('./domain/reducers.js').then(({ hydrateOnEnter, startAutoBackup })=>{
-  hydrateOnEnter();          // merge du Git « aujourd’hui -> hier » si nécessaire
-  startAutoBackup(5*60*1000); // un seul timer global
+import('/paria-tool/src/domain/reducers.js').then(({ hydrateOnEnter, startAutoBackup })=>{
+  hydrateOnEnter();
+  startAutoBackup(5*60*1000);
 });
 
 export function boot(){
@@ -69,8 +69,6 @@ export function boot(){
     if (ses && mode === 'projecteur') showTab('projector');
     if (ses && mode === 'seance')     showTab('projector'); // (temporaire tant que l’onglet Séance n’est pas séparé)
   } catch {}
-
-  import('../domain/reducers.js').then(m => { try{ m.startAutoBackup?.(); }catch{} });
 }
 
 // auto-boot
@@ -82,6 +80,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
