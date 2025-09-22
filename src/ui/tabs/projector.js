@@ -1,48 +1,43 @@
-// src/ui/tabs/projector.js — REWRITE FULL (Cards en lecture seule)
-import { listCards, getSession, startSession, pauseSession, stopSession } from '../../domain/reducers.js';
+// src/ui/tabs/projector.js — clean rewrite (clone de la timeline Cards en read-only)
+import {
+  listCards, getSession, startSession, pauseSession, stopSession,
+  getCardView, setSectionFilters, listCardDays
+} from '../../domain/reducers.js';
+import { readClientBlob } from '../../core/store.js';
 
-const $  = (s, r=document)=>r.querySelector(s);
+const $ = (s,r=document)=>r.querySelector(s);
+const $$= (s,r=document)=>Array.from(r.querySelectorAll(s));
 
 // ---------- helpers ----------
-function tsToStr(t){
-  const d = new Date(typeof t==='number' ? t : Date.now());
-  const p = n=>String(n).padStart(2,'0');
-  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-function dayKey(t){
-  const d = new Date(typeof t==='number' ? t : Date.now());
-  const p = n=>String(n).padStart(2,'0');
-  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+function fmtTs(ts){ try{ return ts ? new Date(ts).toLocaleString() : ''; }catch{ return ''; } }
+function _dayKey(ts){
+  const d = new Date(ts);
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
 }
 function getLocalSel(){ try{ return localStorage.getItem('projector.sel'); }catch{return null;} }
 function setLocalSel(id){ try{ localStorage.setItem('projector.sel', String(id)); }catch{} }
 
 function safeCards(){
-  let cards = [];
-  try { cards = listCards() || []; } catch {}
-  return cards
-    .filter(c => !(c?.state?.deleted) && !c?.deleted)
-    .sort((a,b)=> (b.updated_ts||0)-(a.updated_ts||0));
+  let b; try{ b = readClientBlob(); }catch{ b = {}; }
+  const cards = (b.cards||[]).filter(c=>!(c.state?.deleted));
+  cards.sort((a,b)=> (b.updated_ts||0)-(a.updated_ts||0));
+  return { b, cards };
 }
 function currentCardId(){
   const sess = getSession() || {};
-  return sess.card_id || getLocalSel() || (safeCards()[0]?.id ?? null);
+  const { cards } = safeCards();
+  return sess.card_id || getLocalSel() || (cards[0]?.id ?? null);
 }
 
 // ---------- shell ----------
 function htmlShell(){
-  const sess  = getSession() || {};
-  const cards = safeCards();
-  const selId = currentCardId();
-
-  const opts = cards.map(c =>
-    `<option value="${c.id}" ${String(c.id)===String(selId)?'selected':''}>${(c.title||`#${c.id}`)}</option>`
-  ).join('');
-
+  const sess = getSession() || {};
   return `
   <div class="projector" style="padding:8px">
     <section class="block" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <div id="proj-toolbar" class="muted" style="display:flex;gap:8px;align-items:center">
+      <div class="muted" style="display:flex;gap:8px;align-items:center">
         <strong>Projecteur</strong>
         <span> • État: <span id="proj-state">${sess.status||'idle'}</span></span>
       </div>
@@ -54,68 +49,76 @@ function htmlShell(){
       </div>
     </section>
 
-    <section class="block">
-      <div id="proj-filters" class="cards-filters" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-        <label>Card :
-          <select id="proj-card">${opts}</select>
-        </label>
-        <div class="muted">Filtres</div>
-        <div id="chips-days" class="chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-        <label><input type="checkbox" name="t_analyse" checked> analyse</label>
-        <label><input type="checkbox" name="t_note"    checked> note</label>
-        <label><input type="checkbox" name="t_comment" checked> commentaire</label>
-        <label><input type="checkbox" name="t_client"  checked> client</label>
-      </div>
+    <!-- timeline identique Cards -->
+    <div id="cards-timeline" class="cards-timeline" style="display:flex;gap:8px;overflow:auto;padding:8px 4px;"></div>
+
+    <!-- filtres identiques (jours + types) -->
+    <section class="block" id="proj-filters" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:8px 4px">
+      <div class="muted">Filtres</div>
+      <div id="chips-days" class="chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <label><input type="checkbox" name="t_analyse" checked> analyse</label>
+      <label><input type="checkbox" name="t_note"    checked> note</label>
+      <label><input type="checkbox" name="t_comment" checked> commentaire</label>
+      <label><input type="checkbox" name="t_client"  checked> client</label>
     </section>
 
-    <!-- timeline identique à Cards (read-only) -->
-    <div id="proj-mini-tl" class="cards-timeline" style="margin-bottom:8px"></div>
-
-    <section id="proj-detail" class="block"></section>
+    <div id="card-detail" style="flex:1 1 auto; overflow:auto; padding:8px 4px 16px;"></div>
   </div>`;
 }
 
-// ---------- renders ----------
-function renderMiniTimeline(host){
-  const wrap = $('#proj-mini-tl', host); if (!wrap) return;
+// ---------- renders (clone Cards, sans actions d’édition) ----------
+let primaryId = null;
+
+function renderTimeline(host){
+  const wrap = $('#cards-timeline', host); if (!wrap) return;
+  const { b, cards } = safeCards();
   const sess = getSession() || {};
-  const activeId = String(sess.card_id || getLocalSel() || '');
-  const cards = safeCards();
+  const activeId = String(sess.card_id || getLocalSel() || primaryId || '');
+
+  function esc(s){ return String(s||'').replace(/</g,'&lt;'); }
 
   const html = cards.map(c=>{
-    const active = String(c.id)===activeId;
-    const title  = (c.title || `#${c.id}`).replace(/</g,'&lt;');
-    const ts     = tsToStr(c.updated_ts || c.created_ts || Date.now());
-    const think  = (c.state?.think) ? ' • 🤔' : '';
-    const scen   = (c.type==='scenario')
-      ? ' <span class="badge" title="Scénario" style="background:#444;padding:0 6px;border-radius:999px;margin-left:6px">🎬</span>'
+    const id    = String(c.id);
+    const isAct = String(activeId||'')===id;
+    const cls   = `card-mini ${isAct?'is-active':''}`;
+    const title = (
+      (c.title && c.title.trim())
+      || (b.charter?.title && b.charter.title.trim())
+      || (b.charter?.service ? ('Service: '+b.charter.service) : 'Sans titre')
+    ).replace(/</g,'&lt;');
+    const ts    = fmtTs(c.updated_ts || c.created_ts || Date.now());
+    const think = c.state?.think ? ' • 🤔' : '';
+    const halo  = c.state?.consolidated ? 'box-shadow:0 0 0 2px #ff8c00 inset;border-color:#ff8c00;' : '';
+    const scen  = (c.type==='scenario')
+      ? '<span class="badge" title="Scénario" style="background:#444;padding:0 6px;border-radius:999px;margin-left:6px">🎬</span>'
       : '';
-    return `<button class="card-mini ${active?'is-active':''}" data-cid="${c.id}" title="#${c.id} • ${title} • ${ts}">
-      <span class="mini-id">#${c.id}${think}${scen}</span>
-      <span class="mini-title">${title}</span>
-      <span class="mini-ts">${ts}</span>
-    </button>`;
-  }).join('') || `<div class="muted">Aucune card</div>`;
 
-  wrap.innerHTML = html;
-}
+    return `
+    <article class="${cls}" data-card-id="${id}"
+      title="${esc(title)}"
+      style="border-radius:12px;border:1px solid #2a2a2a;${halo}padding:6px 8px;min-width:220px;background:#141415">
+      <header style="display:flex;align-items:center;gap:6px;font-size:12px;opacity:.85">
+        <span>#${id}${think}</span>${scen}
+        <span class="mini-ts" style="margin-left:auto">${ts}</span>
+      </header>
+      <div class="mini-title" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">
+        ${title}
+      </div>
+    </article>`;
+  }).join('');
 
-function collectDaysForCard(card){
-  const upd = (card?.updates || []);
-  const days = new Set(upd.map(u=>dayKey(u.ts || card.updated_ts)));
-  return Array.from(days).sort().reverse();
+  wrap.innerHTML = html || '<em style="opacity:.6;padding:4px 0">Aucune card</em>';
 }
 
 function renderDayChips(host){
   const box = $('#chips-days', host); if (!box) return;
-  const cid = currentCardId();
-  const card = safeCards().find(c=>String(c.id)===String(cid));
-  const days = collectDaysForCard(card);
+  const cid = currentCardId(); if (!cid) { box.innerHTML=''; return; }
+  const days = listCardDays(String(cid)); // même API que Cards :contentReference[oaicite:0]{index=0}
 
   const key = `projector.filters.days.${cid}`;
   let sel = [];
   try { sel = JSON.parse(localStorage.getItem(key) || '[]'); } catch {}
-  if (!sel.length) sel = days.slice(0, 3); // par défaut : 3 derniers jours
+  if (!sel.length) sel = days.slice(0, 3);
 
   box.innerHTML = days.map(d=>{
     const on = sel.includes(d);
@@ -123,8 +126,7 @@ function renderDayChips(host){
   }).join('');
 
   box.onclick = (ev)=>{
-    const b = ev.target.closest('button[data-day]');
-    if (!b) return;
+    const b = ev.target.closest('button[data-day]'); if (!b) return;
     const d = b.dataset.day;
     const was = sel.includes(d);
     sel = was ? sel.filter(x=>x!==d) : [...sel, d];
@@ -143,109 +145,126 @@ function typeFilters(host){
     client:   $('input[name="t_client"]',  box)?.checked !== false,
   };
 }
-function filterByTypes(type, on){
-  if (type==='analyse')   return on.analyse;
-  if (type==='note')      return on.note;
-  if (type==='comment')   return on.comment;
-  if (type?.startsWith('client')) return on.client;
+function keepType(t,on){
+  if (t==='analyse') return on.analyse;
+  if (t==='note') return on.note;
+  if (t==='comment') return on.comment;
+  if (t?.startsWith('client')) return on.client;
   return true;
 }
 
 function renderDetail(host){
-  const box = $('#proj-detail', host); if (!box) return;
+  const detail = $('#card-detail', host); if (!detail) return;
   const cid = currentCardId();
-  const card = safeCards().find(c=>String(c.id)===String(cid));
-  if (!card){ box.innerHTML = `<div class="muted">Aucune card</div>`; return; }
+  const { b, cards } = safeCards();
+  const card = cards.find(x=>String(x.id)===String(cid));
+  if (!card){ detail.innerHTML = '<div style="opacity:.7">Aucune card sélectionnée</div>'; return; }
 
-  const sections = Array.isArray(card.sections) && card.sections.length
-    ? card.sections
-    : [{ id:'1', title:'Contenu' }];
+  const sections = Array.isArray(card.sections) && card.sections.length ? card.sections : [{id:'1', title:'Proposition'}];
 
   const on  = typeFilters(host);
   const key = `projector.filters.days.${cid}`;
   let daysSel = [];
   try { daysSel = JSON.parse(localStorage.getItem(key) || '[]'); } catch {}
 
-  const upd = (card.updates || []);
-  const bySection = {};
-  for (const u of upd){
-    const okType = filterByTypes(u.type, on);
-    const dk = dayKey(u.ts || card.updated_ts);
-    const okDay  = !daysSel.length || daysSel.includes(dk);
-    if (!okType || !okDay) continue;
-    const sid = String(u.section_id || '1');
-    bySection[sid] = bySection[sid] || {};
-    bySection[sid][dk] = bySection[sid][dk] || [];
-    bySection[sid][dk].push(u);
+  const viewBySec = new Map();
+
+  for (const sec of sections){
+    const f = (card.ui?.filters?.[sec.id]) || {days:daysSel, types:['analyse','note','comment','client_md','client_html']};
+    // priorité aux jours du panneau global; sinon ceux stockés dans la card
+    const filt = { days: (daysSel.length?daysSel:(f.days||[])), types: f.types };
+    const v = getCardView(String(card.id), { sectionId: sec.id, days: filt.days, types: filt.types }); // même API que Cards :contentReference[oaicite:1]{index=1}
+    // filtrage types (checkbox) côté Projecteur
+    v.groups.forEach(g=>{
+      g.items = g.items.filter(u=> keepType(u.type, on));
+    });
+    viewBySec.set(String(sec.id), v);
   }
 
-  const sectionHtml = sections.map(sec=>{
-    const days = Object.keys(bySection[String(sec.id)||'1']||{}).sort().reverse();
-    const items = days.map(d=>{
-      const arr = bySection[String(sec.id)||'1'][d] || [];
-      const lis = arr.map(u=>{
-        const t = tsToStr(u.ts || card.updated_ts);
-        const origin = u.origin || 'n/d';
-        const type   = u.type   || 'note';
-        const body   = (u.html ? u.html : (u.md||'')).replace(/\n/g,'<br>');
-        return `<li><span class="muted">${t} • ${origin} • ${type}</span><div class="body">${body||'—'}</div></li>`;
-      }).join('');
-      return `<div class="day-group"><div class="muted">${d}</div><ul class="updates">${lis}</ul></div>`;
-    }).join('') || `<div class="muted">Aucune mise à jour pour cette section.</div>`;
+  const chunks = [];
+  // header card
+  chunks.push(`
+    <div class="card-block" data-card="${card.id}"
+         style="border:1px solid #2a2a2a;border-radius:12px;margin:8px 0;background:#141415">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #2a2a2a">
+        <strong>#${card.id}</strong>${card.state?.think?'&nbsp;🤔':''}
+        <span style="margin-left:8px">${
+          (card.title || b.charter?.title || (b.charter?.service?('Service: '+b.charter.service):'Sans titre'))
+          .replace(/</g,'&lt;')
+        }</span>
+        <span style="margin-left:auto;opacity:.8;font-size:12px">${fmtTs(card.updated_ts||card.created_ts||Date.now())}</span>
+      </div>
+  `);
 
-    return `
-    <article class="card-section">
-      <header class="sticky"><h4>${sec.title||'Section'}</h4></header>
-      ${items}
-    </article>`;
-  }).join('');
+  for (const sec of sections){
+    const v = viewBySec.get(String(sec.id));
+    const days = v.groups.map(g=>g.day);
+    const chipsDays = days.map(d=>`<label class="chip">
+      <input type="checkbox" data-action="sec-day" data-card="${card.id}" data-sec="${sec.id}" value="${d}" ${(!daysSel.length || daysSel.includes(d))?'checked':''}> ${d}
+    </label>`).join('');
 
-  box.innerHTML = sectionHtml;
+    const groups = v.groups.map(g=>`
+      <section class="day-group" data-day="${g.day}" style="border:1px dashed #2a2a2a;border-radius:10px;padding:8px;margin:8px 0">
+        <div style="font-size:12px;opacity:.8;margin-bottom:6px">${g.day}</div>
+        ${g.items.map(u=>`
+          <article class="upd" data-upd="${u.id}" data-card="${card.id}" data-sec="${sec.id}"
+            style="border:1px solid #333;border-radius:8px;padding:8px;margin:6px 0;background:#181818">
+            <div class="upd-head" style="display:flex;gap:8px;align-items:center;font-size:12px;opacity:.9">
+              <span>${new Date(u.ts).toLocaleTimeString()}</span>
+              ${u.origin?`<span>• ${u.origin}</span>`:''}
+              ${u.type?`<span>• ${u.type}</span>`:''}
+              ${u.meta?.think?`<span>• 🤔</span>`:''}
+            </div>
+            <div class="upd-body">
+              <pre style="white-space:pre-wrap;margin:6px 0 0 0">${(u.md||u.html||'').replace(/</g,'&lt;')}</pre>
+              ${u.meta?.prompt?`<details style="margin-top:6px"><summary>Prompt</summary><pre style="white-space:pre-wrap">${(u.meta.prompt||'').replace(/</g,'&lt;')}</pre></details>`:''}
+            </div>
+          </article>
+        `).join('')}
+      </section>
+    `).join('') || '<div style="opacity:.6;padding:6px 0">Aucun élément pour ce filtre.</div>';
+
+    chunks.push(`
+      <div class="section" data-sec="${sec.id}" style="padding:10px">
+        <header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <h4 style="margin:0">${(sec.title||('Section '+sec.id)).replace(/</g,'&lt;')}</h4>
+          <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+            ${chipsDays}
+          </div>
+        </header>
+        ${groups}
+      </div>
+    `);
+  }
+  chunks.push(`</div>`); // fin card-block
+
+  detail.innerHTML = chunks.join('');
 }
 
 // ---------- public mount ----------
 export function mount(host=document.getElementById('tab-projector')){
   if (!host) return;
+  primaryId = null;
   host.innerHTML = htmlShell();
 
-  // renders init
-  renderMiniTimeline(host);
+  renderTimeline(host);
   renderDayChips(host);
   renderDetail(host);
 
-  host.addEventListener('change', async (ev)=>{
-    // select card
-    if (ev.target && ev.target.id==='proj-card'){
-      const id = ev.target.value;
-      const sess = getSession() || {};
-      if ((sess.status||'idle')==='running'){
-        await startSession(id);   // publish
-      } else {
-        setLocalSel(id);          // preview
-      }
-      $('#proj-state', host).textContent = (getSession()?.status||'idle');
-      renderMiniTimeline(host);
-      renderDayChips(host);
-      renderDetail(host);
-    }
-    // type filters
-    if (ev.target && /^t_(analyse|note|comment|client)$/.test(ev.target.name||'')){
-      renderDetail(host);
-    }
-  });
-
+  // interactions
   host.addEventListener('click', async (ev)=>{
-    const m = ev.target.closest('#proj-mini-tl [data-cid]');
+    const m = ev.target.closest('#cards-timeline [data-card-id]');
     if (m){
-      const id = m.dataset.cid;
+      const id = String(m.getAttribute('data-card-id'));
       const sess = getSession() || {};
       if ((sess.status||'idle')==='running'){
-        await startSession(id);   // publish
+        await startSession(id); // publish
       } else {
-        setLocalSel(id);          // preview
+        setLocalSel(id);        // preview local
       }
+      primaryId = id;
       $('#proj-state', host).textContent = (getSession()?.status||'idle');
-      renderMiniTimeline(host);
+      renderTimeline(host);
       renderDayChips(host);
       renderDetail(host);
       return;
@@ -274,7 +293,6 @@ export function mount(host=document.getElementById('tab-projector')){
       try {
         let sess = getSession() || {};
         let sid  = sess.session_id;
-        // si pas démarré → démarrer sur la card courante pour avoir une session
         if ((sess.status||'idle')==='idle'){
           const id = currentCardId();
           if (id) await startSession(id);
@@ -288,6 +306,19 @@ export function mount(host=document.getElementById('tab-projector')){
         alert('Lien copié.');
       } catch {}
       return;
+    }
+  });
+
+  // filtres types
+  host.addEventListener('change', (ev)=>{
+    const t = ev.target;
+    if (!t) return;
+    if (/^t_(analyse|note|comment|client)$/.test(t.name||'')){
+      renderDetail(host);
+    }
+    if (t.dataset?.action==='sec-day'){
+      // bascule locale par section (stockée globalement par card dans Projecteur)
+      renderDetail(host);
     }
   });
 }
