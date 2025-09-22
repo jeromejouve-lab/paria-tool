@@ -247,80 +247,86 @@ export function mount(host=document.getElementById('tab-projector')){
   primaryId = null;
   host.innerHTML = htmlShell();
 
-  renderTimeline(host);
-  renderDayChips(host);
-  renderDetail(host);
+  if (host.dataset.projBound === '1') {
+    // déjà câblé → on ne redéclare pas les handlers
+  } else {
+    host.dataset.projBound = '1';
+    // (la suite: renderTimeline, renderDayChips, renderDetail et addEventListener...)
+    renderTimeline(host);
+    renderDayChips(host);
+    renderDetail(host);
 
-  // interactions
-  host.addEventListener('click', async (ev)=>{
-    const m = ev.target.closest('#cards-timeline [data-card-id]');
-    if (m){
-      const id = String(m.getAttribute('data-card-id'));
-      const sess = getSession() || {};
-      if ((sess.status||'idle')==='running'){
-        await startSession(id); // publish
-      } else {
-        setLocalSel(id);        // preview local
+    document.addEventListener('visibilitychange', ()=>{
+      if (document.visibilityState === 'visible'){
+        renderTimeline(host);
+        renderDetail(host);
       }
-      primaryId = id;
-      $('#proj-state', host).textContent = (getSession()?.status||'idle');
-      renderTimeline(host);
-      renderDayChips(host);
-      renderDetail(host);
-      return;
-    }
+    });
 
-    const b = ev.target.closest('[data-action]');
-    if (!b) return;
-
-    if (b.dataset.action==='session-start'){
-      const id = currentCardId();
-      if (id) await startSession(id);
-      $('#proj-state', host).textContent = (getSession()?.status||'idle');
-      return;
-    }
-    if (b.dataset.action==='session-pause'){
-      await pauseSession();
-      $('#proj-state', host).textContent = (getSession()?.status||'idle');
-      return;
-    }
-    if (b.dataset.action==='session-stop'){
-      await stopSession();
-      $('#proj-state', host).textContent = (getSession()?.status||'idle');
-      return;
-    }
-    if (b.dataset.action==='session-copy'){
-      try {
-        let sess = getSession() || {};
-        let sid  = sess.session_id;
-        if ((sess.status||'idle')==='idle'){
+    // interactions
+    host.addEventListener('click', async (ev)=>{
+      const m = ev.target.closest('#cards-timeline [data-card-id]');
+      if (m){
+        const id = String(m.getAttribute('data-card-id'));
+        // Toujours preview local (aucun publish Git depuis Projecteur)
+        setLocalSel(id);
+        primaryId = id;
+        // On n'actualise l'état affiché, mais on ne touche pas à la session distante ici
+        $('#proj-state', host).textContent = (getSession()?.status||'idle');
+        renderTimeline(host);
+        renderDayChips(host);
+        renderDetail(host);
+        return;
+      }
+  
+      const b = ev.target.closest('[data-action]');
+      if (!b) return;
+  
+      if (b.dataset.action==='session-start'){
+        const id = currentCardId();
+        if (id) await startSession(id);
+        $('#proj-state', host).textContent = (getSession()?.status||'idle');
+        return;
+      }
+      if (b.dataset.action==='session-pause'){
+        await pauseSession();
+        $('#proj-state', host).textContent = (getSession()?.status||'idle');
+        return;
+      }
+      if (b.dataset.action==='session-stop'){
+        await stopSession();
+        $('#proj-state', host).textContent = (getSession()?.status||'idle');
+        return;
+      }
+      
+      if (b.dataset.action==='session-copy'){
+        try {
           const id = currentCardId();
-          if (id) await startSession(id);
-          sess = getSession() || {};
-          sid  = sess.session_id;
-        }
-        const u = new URL(location.href);
-        u.searchParams.set('mode','projecteur');
-        if (sid) u.searchParams.set('session', sid);
-        await navigator.clipboard.writeText(u.toString());
-        alert('Lien copié.');
-      } catch {}
-      return;
-    }
-  });
+          const u = new URL(location.href);
+          u.searchParams.set('mode','projecteur');
+          if (id) u.searchParams.set('card', String(id)); // pas de session, seulement la card
+          await navigator.clipboard.writeText(u.toString());
+          alert('Lien copié.');
+        } catch {}
+        return;
+      }
 
-  // filtres types
-  host.addEventListener('change', (ev)=>{
-    const t = ev.target;
-    if (!t) return;
-    if (/^t_(analyse|note|comment|client)$/.test(t.name||'')){
-      renderDetail(host);
-    }
-    if (t.dataset?.action==='sec-day'){
-      // bascule locale par section (stockée globalement par card dans Projecteur)
-      renderDetail(host);
-    }
-  });
+    });
+  
+    // filtres types
+    host.addEventListener('change', (ev)=>{
+      const t = ev.target;
+      if (!t) return;
+      if (/^t_(analyse|note|comment|client)$/.test(t.name||'')){
+        renderDetail(host);
+      }
+      if (t.dataset?.action==='sec-day'){
+        // bascule locale par section (stockée globalement par card dans Projecteur)
+        renderDetail(host);
+      }
+    });
+  }
 }
 
 export default { mount };
+
