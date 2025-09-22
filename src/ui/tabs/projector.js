@@ -95,16 +95,22 @@ function fmtTs(s){ return (s||'').replace(/^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}
 
 function renderMiniTimeline(host){
   const wrap = host.querySelector('#proj-mini-tl'); if (!wrap) return;
-  const sess = getSession?.() || {};
+  const sess = (typeof getSession==='function' ? getSession() : {}) || {};
   const cid  = String(sess.card_id||'');
-  const cards = (listCards?.() || []).filter(c => !c.deleted);
+
+  // même source/structure que cards (v2)
+  let list = [];
+  try { list = (listCards?.() || []); } catch {}
+  const cards = list.filter(c => !(c.state?.deleted));
 
   const html = cards.map(c=>{
     const active = String(c.id)===cid;
-    const title  = (c.title||`#${c.id}`);
-    const ts     = fmtTs(c.updated||c.created||'');
+    const title  = (c.title || `#${c.id}`).replace(/</g,'&lt;');
+    const ts     = new Date(c.updated_ts || c.created_ts || Date.now()).toLocaleString();
+    const think  = c.state?.think ? ' • 🤔' : '';
+    const scen   = (c.type==='scenario') ? ' <span class="badge" title="Scénario" style="background:#444;padding:0 6px;border-radius:999px;margin-left:6px">🎬</span>' : '';
     return `<button class="card-mini ${active?'is-active':''}" data-cid="${c.id}" title="#${c.id} • ${title} • ${ts}">
-      <span class="mini-id">#${c.id}</span>
+      <span class="mini-id">#${c.id}${think}${scen}</span>
       <span class="mini-title">${title}</span>
       <span class="mini-ts">${ts}</span>
     </button>`;
@@ -128,6 +134,7 @@ function html(){
         <button data-action="session-start">Démarrer</button>
         <button data-action="session-pause">Pause</button>
         <button data-action="session-stop">Stop</button>
+        <button data-action="session-copy">Copier le lien</button>
       </div>
       <div class="muted">État: ${session.status||'idle'}</div>
     </section>
@@ -192,6 +199,22 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
     if (b.dataset.action==='session-start'){ startSession(cid); showOverlay(host,'running'); }
     if (b.dataset.action==='session-pause'){ pauseSession();   showOverlay(host,'paused');  }
     if (b.dataset.action==='session-stop') { stopSession();    showOverlay(host,'stopped'); }
+    if (b.dataset.action==='session-copy'){
+      try {
+        const sess = (typeof getSession==='function' ? getSession() : {}) || {};
+        const sid  = sess.session_id || (crypto?.randomUUID?.() || ('s'+Date.now()));
+        // si pas démarré, on démarre sur la card sélectionnée
+        const sel = $('#proj-card', host); const cid = sel?.value || '';
+        if ((sess.status||'idle')==='idle' && cid) await startSession(cid);
+    
+        const u = new URL(location.href);
+        u.searchParams.set('mode','projecteur');
+        u.searchParams.set('session', sid);
+        await navigator.clipboard.writeText(u.toString());
+        alert('Lien copié.');
+      } catch {}
+      return;
+    }
 
     mountProjectorTab(host);
   });
@@ -216,6 +239,7 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
 
 export const mount = mountProjectorTab;
 export default { mount };
+
 
 
 
