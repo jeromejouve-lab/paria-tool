@@ -172,7 +172,7 @@ export async function publishSession({ workId, sessionId, data }) {
   const jsonStr   = JSON.stringify({ ...(data||{}), session_id: sessionId, work_id: workId }, null, 2);
   const contentB64= btoa(unescape(encodeURIComponent(jsonStr)));
 
-  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
   const res = await fetch(api, {
     method: 'PUT',
     headers: {
@@ -196,7 +196,7 @@ export async function loadSession({ workId, sessionId }) {
   const [client, service, dateStr] = String(workId).split('|');
   const path = `clients/${client}/${service}/${dateStr}/sessions/${sessionId}.json`;
 
-  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=main`;
+  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=main`;
   const res = await fetch(api, {
     method: 'GET',
     headers: {
@@ -219,7 +219,7 @@ async function __ghListDir(path){
   const token  = (s.git_token  || s.endpoints?.git?.token  || '').trim();
   if (!owner || !repo || !token) return { ok:false, status:0, entries:[] };
 
-  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=main`;
+  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=main`;
   const res = await fetch(api, { headers:{
     'Accept':'application/vnd.github+json',
     'Authorization':`Bearer ${token}`
@@ -236,7 +236,7 @@ async function __ghLoadJsonFile(path){
   const token  = (s.git_token  || s.endpoints?.git?.token  || '').trim();
   if (!owner || !repo || !token) return null;
 
-  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=main`;
+  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=main`;
   const res = await fetch(api, { headers:{
     'Accept':'application/vnd.github+json',
     'Authorization':`Bearer ${token}`
@@ -332,6 +332,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
