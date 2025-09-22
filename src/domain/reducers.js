@@ -358,52 +358,63 @@ export function promoteScenario(id, {targetCardId=null}={}){
 // --- Session/Projecteur (sur card active)
 export function getSession(){ return readClientBlob().meta?.session || {status:'idle'}; }
 export function setSession(patch){ const b=readClientBlob(); b.meta=b.meta||{}; b.meta.session={ ...(b.meta.session||{}), ...patch, updated_ts:Date.now() }; writeClientBlob(b); return b.meta.session; }
+
 export async function startSession(cardId){
-  const sess = setSession({ status:'running', card_id:cardId, started_ts:Date.now(), session_id:(crypto?.randomUUID?.()||('s'+Date.now())) });
+  const sess = setSession({
+    status: 'running',
+    card_id: cardId,
+    session_id: (readClientBlob()?.meta?.session?.session_id) || (crypto?.randomUUID?.() || ('s'+Date.now())),
+    started_ts: readClientBlob()?.meta?.session?.started_ts || Date.now(),
+    updated_ts: Date.now()
+  });
   try {
-    const { publishSession } = await import('../core/net.js');
-    const { buildWorkId }    = await import('../core/settings.js');
-    await publishSession({ workId: buildWorkId(), sessionId: sess.session_id, data: sess });
-  } catch(e){ console.warn('[session/publish start]', e); }
+    const { saveToGit }   = await import('../core/net.js');
+    const { buildWorkId } = await import('../core/settings.js');
+    await saveToGit({ workId: buildWorkId(), data: readClientBlob() });
+  } catch(e){ console.warn('[session/save start]', e); }
   return sess;
 }
+
 export async function pauseSession(){
-  const sess = setSession({ status:'paused' });
-  try {
-    const { publishSession } = await import('../core/net.js');
-    const { buildWorkId }    = await import('../core/settings.js');
-    await publishSession({ workId: buildWorkId(), sessionId: sess.session_id, data: sess });
-  } catch(e){ console.warn('[session/publish pause]', e); }
+  const sess = setSession({ status:'paused', updated_ts: Date.now() });
+  try{
+    const { saveToGit }   = await import('../core/net.js');
+    const { buildWorkId } = await import('../core/settings.js');
+    await saveToGit({ workId: buildWorkId(), data: readClientBlob() });
+  }catch(e){ console.warn('[session/save pause]', e); }
   return sess;
 }
+
 export async function stopSession(){
-  const sess = setSession({ status:'stopped', stopped_ts:Date.now() });
-  try {
-    const { publishSession } = await import('../core/net.js');
-    const { buildWorkId }    = await import('../core/settings.js');
-    await publishSession({ workId: buildWorkId(), sessionId: sess.session_id, data: sess });
-  } catch(e){ console.warn('[session/publish stop]', e); }
+  const sess = setSession({ status:'stopped', stopped_ts: Date.now(), updated_ts: Date.now() });
+  try{
+    const { saveToGit }   = await import('../core/net.js');
+    const { buildWorkId } = await import('../core/settings.js');
+    await saveToGit({ workId: buildWorkId(), data: readClientBlob() });
+  }catch(e){ console.warn('[session/save stop]', e); }
   return sess;
 }
 
 export async function updateSessionState(patch){
   const sess = setSession({ ...(patch||{}), updated_ts: Date.now() });
-  try {
-    const { publishSession } = await import('../core/net.js');
-    const { buildWorkId }    = await import('../core/settings.js');
-    await publishSession({ workId: buildWorkId(), sessionId: sess.session_id, data: sess });
-  } catch(e){ console.warn('[session/publish update]', e); }
+  try{
+    const { saveToGit }   = await import('../core/net.js');
+    const { buildWorkId } = await import('../core/settings.js');
+    await saveToGit({ workId: buildWorkId(), data: readClientBlob() });
+  }catch(e){ console.warn('[session/save update]', e); }
   return sess;
 }
+
 export async function endSession(){
-  const sess = setSession({ status:'ended', ended_ts:Date.now() });
-  try {
-    const { publishSession } = await import('../core/net.js');
-    const { buildWorkId }    = await import('../core/settings.js');
-    await publishSession({ workId: buildWorkId(), sessionId: sess.session_id, data: sess });
-  } catch(e){ console.warn('[session/publish end]', e); }
+  const sess = setSession({ status:'ended', ended_ts: Date.now(), updated_ts: Date.now() });
+  try{
+    const { saveToGit }   = await import('../core/net.js');
+    const { buildWorkId } = await import('../core/settings.js');
+    await saveToGit({ workId: buildWorkId(), data: readClientBlob() });
+  }catch(e){ console.warn('[session/save end]', e); }
   return sess;
 }
+
 
 export async function addSessionComment({author='moi',text=''}){
   const b = readClientBlob();
@@ -659,6 +670,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
