@@ -13,7 +13,6 @@ const $=(s,r=document)=>r.querySelector(s);
 const POLL_MS = 2500;
 let __projPoll = null;
 
-const $ = (s,r=document)=>r.querySelector(s);
 function qparam(k){ try{ return new URLSearchParams(location.search).get(k); }catch{ return null; } }
 
 function ensureOverlay(host){
@@ -163,4 +162,5 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
 
 export const mount = mountProjectorTab;
 export default { mount };
+
 
