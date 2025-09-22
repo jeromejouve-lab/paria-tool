@@ -6,6 +6,7 @@ import * as Scenarios from './ui/tabs/scenarios.js';
 import * as Projector from './ui/tabs/projector.js';
 import * as Journal   from './ui/tabs/journal.js';
 import './core/compat-exports.js';
+import * as Seances   from './ui/tabs/seances.js';
 
 
 const mounts = {
@@ -15,6 +16,7 @@ const mounts = {
   scenarios: Scenarios.mount,
   projector: Projector.mount,
   journal  : Journal.mount,
+  seances  : Seances.mount,
 };
 
 const TABS = Object.keys(mounts);
@@ -67,7 +69,7 @@ export function boot(){
     const q = new URLSearchParams(location.search);
     const mode = q.get('mode'); const ses = q.get('session');
     if (ses && mode === 'projecteur') showTab('projector');
-    if (ses && mode === 'seance')     showTab('projector'); // (temporaire tant que l’onglet Séance n’est pas séparé)
+    if (ses && mode === 'seance')     showTab('seances'); // (temporaire tant que l’onglet Séance n’est pas séparé)
   } catch {}
 }
 
@@ -80,6 +82,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
