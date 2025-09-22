@@ -5,6 +5,7 @@ import {
 } from '../../domain/reducers.js';
 
 import { loadSession, loadCardFromSnapshots } from '../../core/net.js';  // <-- polling Git
+import { loadLatestSnapshot } from '../../core/net.js';
 import { buildWorkId } from '../../core/settings.js';                     // <-- workId courant
 
 const $=(s,r=document)=>r.querySelector(s);
@@ -37,49 +38,56 @@ function showOverlay(host, status){
   ov.style.display = (status && status!=='running') ? 'flex' : 'none';
 }
 
-async function renderFromManifest(host, manifest){
-  // 1) état (overlay)
-  showOverlay(host, manifest?.status||'idle');
+async function renderFromSnapshot(host, session, blob){
+  // overlay
+  showOverlay(host, session?.status||'idle');
 
-  // 2) contenu card (si dispo localement, sinon fallback snapshot Git)
-  const cid = manifest?.card_id;
+  // choisir la card à afficher
+  const cid = session?.card_id || session?.selection?.primary_id;
   if (!cid) return;
+
+  // local d'abord
   let localList = [];
   try { localList = listCards?.() || []; } catch {}
-  let card = localList.find(c => String(c.id) === String(cid));
+  let card = localList.find(c => String(c.id)===String(cid));
+
+  // sinon depuis le backup (blob)
   if (!card) {
-    try { card = await loadCardFromSnapshots({ id: cid, prefer: buildWorkId() }); } catch {}
+    const set = blob?.cards || blob?.items || [];
+    card = (set||[]).find(c => String(c.id)===String(cid));
   }
 
   const box = host.querySelector('.projector .content');
   if (box){
-    const html = (card?.content||'—').replace(/\n/g,'<br>');
+    // à adapter si tu as un rendu markdown; ici simple fallback
+    const html = (card?.content || '—').replace(/\n/g,'<br>');
     box.innerHTML = html;
   }
 }
 
 function startPolling(host){
-  const sessionId = qparam('session');     // ?mode=projecteur&session=...
-  if (!sessionId) return;
   const wid = buildWorkId();
+  const sid = qparam('session'); // ?mode=projecteur&session=...
   if (__projPoll) clearInterval(__projPoll);
-  
-  // premier rendu immédiat (sans attendre le premier tick)
-  (async ()=>{
-    try{
-      const r = await loadSession({ workId: wid, sessionId });
-      if (r?.ok && r?.data) await renderFromManifest(host, r.data);
-    }catch{}
-  })();
 
-  __projPoll = setInterval(async ()=>{
+  const tick = async ()=>{
     try{
-      const r = await loadSession({ workId: wid, sessionId });
-      if (r?.ok && r?.data){
-        await renderFromManifest(host, r.data);
+      const blob = await loadLatestSnapshot({ workId: wid });
+      if (!blob) return;
+      const session = blob?.meta?.session;
+      if (!session) { showOverlay(host, 'ended'); return; }
+      if (sid && session.session_id && String(session.session_id)!==String(sid)) {
+        // une autre session est active → overlay
+        showOverlay(host, 'ended'); 
+        return;
       }
-    }catch(e){ /* silencieux */ }
-  }, POLL_MS);
+      await renderFromSnapshot(host, session, blob);
+    }catch{}
+  };
+
+  // premier rendu immédiat
+  tick();
+  __projPoll = setInterval(tick, POLL_MS);
 }
 
 function html(){
@@ -172,6 +180,7 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
 
 export const mount = mountProjectorTab;
 export default { mount };
+
 
 
 
