@@ -124,11 +124,12 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
   // Démarrage auto en mode viewer si ?session=... présent (remote)
   try { startPolling(host); } catch {}
   // Dès le 1er render, si une session locale existe avec statut != running, afficher l’overlay
-  try {
-    const { getSession } = await import('../../domain/reducers.js');
-    const sess = getSession?.() || {};
-    showOverlay(host, sess.status||'idle');
-  } catch {}
+  import('../../domain/reducers.js')
+    .then(({ getSession }) => {
+      const sess = (typeof getSession === 'function' ? getSession() : {}) || {};
+      showOverlay(host, sess.status || 'idle');
+    })
+    .catch(() => {});
 
   host.addEventListener('click', (ev)=>{
     const b = ev.target.closest('[data-action]');
@@ -162,5 +163,6 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
 
 export const mount = mountProjectorTab;
 export default { mount };
+
 
 
