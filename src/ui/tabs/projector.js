@@ -248,6 +248,10 @@ export function mount(host=document.getElementById('tab-projector')){
 
   // (1) structure UI
   host.innerHTML = htmlShell();
+  
+  // safety: pointer-events explicites sur la timeline
+  const tl = host.querySelector('#cards-timeline');
+  if (tl) { tl.style.pointerEvents = 'auto'; }
 
   // (2) always render UI (même si déjà câblé)
   renderTimeline(host);
@@ -256,6 +260,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
   // (3) bind handlers une seule fois
   if (host.dataset.projBound === '1') return;
+  
   host.dataset.projBound = '1';
 
   document.addEventListener('visibilitychange', ()=>{
@@ -268,7 +273,7 @@ export function mount(host=document.getElementById('tab-projector')){
   // interactions
   host.addEventListener('click', async (ev)=>{
     // clic mini-card : preview local (aucun publish Git depuis Projecteur)
-    const m = ev.target.closest('[data-card-id]');
+    const m = ev.target.closest('#cards-timeline [data-card-id]');
     if (m){
       const id = String(m.getAttribute('data-card-id'));
       setLocalSel(id);
@@ -286,19 +291,22 @@ export function mount(host=document.getElementById('tab-projector')){
     if (b.dataset.action==='session-start'){
       const id = currentCardId();
       if (id) await startSession(id);
-      $('#proj-state', host).textContent = (getSession()?.status||'idle');
+      $('#proj-state', host).textContent = 'running';
       return;
     }
+
     if (b.dataset.action==='session-pause'){
       await pauseSession();
-      $('#proj-state', host).textContent = (getSession()?.status||'idle');
+      $('#proj-state', host).textContent = 'paused';
       return;
     }
-    if (b.dataset.action==='session-stop'){
-      await stopSession();
-      $('#proj-state', host).textContent = (getSession()?.status||'idle');
+
+    if (b.dataset.action==='session-pause'){
+      await pauseSession();
+      $('#proj-state', host).textContent = 'paused';
       return;
     }
+
     if (b.dataset.action==='session-copy'){
       try {
         const id = currentCardId();
@@ -327,5 +335,6 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
