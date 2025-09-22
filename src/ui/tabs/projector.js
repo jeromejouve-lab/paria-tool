@@ -1,10 +1,9 @@
-// src/ui/tabs/projector.js — REWRITE FULL
+// src/ui/tabs/projector.js — REWRITE FULL (Cards en lecture seule)
 import { listCards, getSession, startSession, pauseSession, stopSession } from '../../domain/reducers.js';
 
 const $  = (s, r=document)=>r.querySelector(s);
-const $$ = (s, r=document)=>Array.from(r.querySelectorAll(s));
 
-/* -------------------- helpers -------------------- */
+// ---------- helpers ----------
 function tsToStr(t){
   const d = new Date(typeof t==='number' ? t : Date.now());
   const p = n=>String(n).padStart(2,'0');
@@ -13,7 +12,7 @@ function tsToStr(t){
 function dayKey(t){
   const d = new Date(typeof t==='number' ? t : Date.now());
   const p = n=>String(n).padStart(2,'0');
-  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; // YYYY-MM-DD
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 }
 function getLocalSel(){ try{ return localStorage.getItem('projector.sel'); }catch{return null;} }
 function setLocalSel(id){ try{ localStorage.setItem('projector.sel', String(id)); }catch{} }
@@ -21,7 +20,6 @@ function setLocalSel(id){ try{ localStorage.setItem('projector.sel', String(id))
 function safeCards(){
   let cards = [];
   try { cards = listCards() || []; } catch {}
-  // garder uniquement non supprimées et trier par updated_ts desc
   return cards
     .filter(c => !(c?.state?.deleted) && !c?.deleted)
     .sort((a,b)=> (b.updated_ts||0)-(a.updated_ts||0));
@@ -31,15 +29,15 @@ function currentCardId(){
   return sess.card_id || getLocalSel() || (safeCards()[0]?.id ?? null);
 }
 
-/* -------------------- UI shell -------------------- */
+// ---------- shell ----------
 function htmlShell(){
   const sess  = getSession() || {};
   const cards = safeCards();
   const selId = currentCardId();
 
-  const opts = cards.map(c=>(
+  const opts = cards.map(c =>
     `<option value="${c.id}" ${String(c.id)===String(selId)?'selected':''}>${(c.title||`#${c.id}`)}</option>`
-  )).join('');
+  ).join('');
 
   return `
   <div class="projector" style="padding:8px">
@@ -49,10 +47,10 @@ function htmlShell(){
         <span> • État: <span id="proj-state">${sess.status||'idle'}</span></span>
       </div>
       <div style="margin-left:auto;display:flex;gap:6px">
-        <button title="Démarrer"     data-action="session-start">▶️</button>
-        <button title="Pause"        data-action="session-pause">⏸️</button>
-        <button title="Stop"         data-action="session-stop">⏹️</button>
-        <button title="Copier le lien" data-action="session-copy">🔗</button>
+        <button title="Démarrer"        data-action="session-start">▶️</button>
+        <button title="Pause"           data-action="session-pause">⏸️</button>
+        <button title="Stop"            data-action="session-stop">⏹️</button>
+        <button title="Copier le lien"  data-action="session-copy">🔗</button>
       </div>
     </section>
 
@@ -77,7 +75,7 @@ function htmlShell(){
   </div>`;
 }
 
-/* -------------------- renderers -------------------- */
+// ---------- renders ----------
 function renderMiniTimeline(host){
   const wrap = $('#proj-mini-tl', host); if (!wrap) return;
   const sess = getSession() || {};
@@ -89,7 +87,9 @@ function renderMiniTimeline(host){
     const title  = (c.title || `#${c.id}`).replace(/</g,'&lt;');
     const ts     = tsToStr(c.updated_ts || c.created_ts || Date.now());
     const think  = (c.state?.think) ? ' • 🤔' : '';
-    const scen   = (c.type==='scenario') ? ' <span class="badge" title="Scénario" style="background:#444;padding:0 6px;border-radius:999px;margin-left:6px">🎬</span>' : '';
+    const scen   = (c.type==='scenario')
+      ? ' <span class="badge" title="Scénario" style="background:#444;padding:0 6px;border-radius:999px;margin-left:6px">🎬</span>'
+      : '';
     return `<button class="card-mini ${active?'is-active':''}" data-cid="${c.id}" title="#${c.id} • ${title} • ${ts}">
       <span class="mini-id">#${c.id}${think}${scen}</span>
       <span class="mini-title">${title}</span>
@@ -103,7 +103,7 @@ function renderMiniTimeline(host){
 function collectDaysForCard(card){
   const upd = (card?.updates || []);
   const days = new Set(upd.map(u=>dayKey(u.ts || card.updated_ts)));
-  return Array.from(days).sort().reverse(); // récents d'abord
+  return Array.from(days).sort().reverse();
 }
 
 function renderDayChips(host){
@@ -112,18 +112,16 @@ function renderDayChips(host){
   const card = safeCards().find(c=>String(c.id)===String(cid));
   const days = collectDaysForCard(card);
 
-  // state local : jours cochés en localStorage (clé par card)
   const key = `projector.filters.days.${cid}`;
   let sel = [];
   try { sel = JSON.parse(localStorage.getItem(key) || '[]'); } catch {}
-  if (!sel.length) sel = days.slice(0, 3); // default: 3 derniers jours
+  if (!sel.length) sel = days.slice(0, 3); // par défaut : 3 derniers jours
 
   box.innerHTML = days.map(d=>{
     const on = sel.includes(d);
     return `<button class="chip ${on?'on':''}" data-day="${d}">${d}</button>`;
   }).join('');
 
-  // bind
   box.onclick = (ev)=>{
     const b = ev.target.closest('button[data-day]');
     if (!b) return;
@@ -159,12 +157,10 @@ function renderDetail(host){
   const card = safeCards().find(c=>String(c.id)===String(cid));
   if (!card){ box.innerHTML = `<div class="muted">Aucune card</div>`; return; }
 
-  // sections
   const sections = Array.isArray(card.sections) && card.sections.length
     ? card.sections
     : [{ id:'1', title:'Contenu' }];
 
-  // updates groupées par section -> jour
   const on  = typeFilters(host);
   const key = `projector.filters.days.${cid}`;
   let daysSel = [];
@@ -207,12 +203,12 @@ function renderDetail(host){
   box.innerHTML = sectionHtml;
 }
 
-/* -------------------- public mount -------------------- */
-export function mountProjectorTab(host=document.getElementById('tab-projector')){
+// ---------- public mount ----------
+export function mount(host=document.getElementById('tab-projector')){
   if (!host) return;
   host.innerHTML = htmlShell();
 
-  // initial renders
+  // renders init
   renderMiniTimeline(host);
   renderDayChips(host);
   renderDetail(host);
@@ -225,10 +221,9 @@ export function mountProjectorTab(host=document.getElementById('tab-projector'))
       if ((sess.status||'idle')==='running'){
         await startSession(id);   // publish
       } else {
-        setLocalSel(id);          // preview local
+        setLocalSel(id);          // preview
       }
       $('#proj-state', host).textContent = (getSession()?.status||'idle');
-      // refresh UI
       renderMiniTimeline(host);
       renderDayChips(host);
       renderDetail(host);
@@ -247,7 +242,7 @@ export function mountProjectorTab(host=document.getElementById('tab-projector'))
       if ((sess.status||'idle')==='running'){
         await startSession(id);   // publish
       } else {
-        setLocalSel(id);          // preview local
+        setLocalSel(id);          // preview
       }
       $('#proj-state', host).textContent = (getSession()?.status||'idle');
       renderMiniTimeline(host);
@@ -279,7 +274,7 @@ export function mountProjectorTab(host=document.getElementById('tab-projector'))
       try {
         let sess = getSession() || {};
         let sid  = sess.session_id;
-        // si pas démarré → démarrer sur la card courante
+        // si pas démarré → démarrer sur la card courante pour avoir une session
         if ((sess.status||'idle')==='idle'){
           const id = currentCardId();
           if (id) await startSession(id);
@@ -296,3 +291,5 @@ export function mountProjectorTab(host=document.getElementById('tab-projector'))
     }
   });
 }
+
+export default { mount };
