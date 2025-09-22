@@ -147,6 +147,43 @@ export function writeClientProfile(client, data){
 }
 
 // --- Cards (v2: cards + updates) — remplace le bloc items
+
+export function duplicateCardForScenario(originId){
+  const b = readClientBlob();
+  const src = (b.cards||[]).find(c=>String(c.id)===String(originId));
+  if (!src) return null;
+
+  b.cards = b.cards || [];
+  b.seq   = b.seq   || {};
+  b.seq.cards_id = b.seq.cards_id || 0;
+
+  const id = (++b.seq.cards_id);
+
+  const chain = Array.isArray(src?.meta?.origin_chain) ? [...src.meta.origin_chain] : [];
+  const origin_chain = [ Number(src.id), ...chain ]; // ex: [34,3]
+
+  const titleBase = (src.title || `Card ${src.id}`).trim();
+  const t = new Date();
+  const pad = v=>String(v).padStart(2,'0');
+  const stamp = `${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())} ${pad(t.getHours())}:${pad(t.getMinutes())}`;
+
+  const card = JSON.parse(JSON.stringify({
+    ...src,
+    id,
+    type: 'scenario',
+    meta: { ...(src.meta||{}), origin_card_id: src.id, origin_chain },
+    title: `${titleBase} — Scénario (${stamp})`,
+    state: { ...(src.state||{}), deleted:false }, // la copie est active
+    created_ts: Date.now(),
+    updated_ts: Date.now()
+  }));
+
+  b.cards.push(card);
+  writeClientBlob(b);
+  logEvent('scenario/duplicate',{kind:'card', id, origin: src.id},{ origin_chain });
+  return id;
+}
+
 export function listCards(){
   return (readClientBlob().cards||[]);
 }
@@ -670,6 +707,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
