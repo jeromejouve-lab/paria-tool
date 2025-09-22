@@ -181,7 +181,7 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
     })
     .catch(() => {});
 
-  host.addEventListener('click', (ev)=>{
+  host.addEventListener('click', async (ev)=>{
     const b = ev.target.closest('[data-action]');
     if (!b) return;
     const sel = $('#proj-card', host);
@@ -201,12 +201,18 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
     if (b.dataset.action==='session-stop') { stopSession();    showOverlay(host,'stopped'); }
     if (b.dataset.action==='session-copy'){
       try {
-        const sess = (typeof getSession==='function' ? getSession() : {}) || {};
-        const sid  = sess.session_id || (crypto?.randomUUID?.() || ('s'+Date.now()));
-        // si pas démarré, on démarre sur la card sélectionnée
-        const sel = $('#proj-card', host); const cid = sel?.value || '';
-        if ((sess.status||'idle')==='idle' && cid) await startSession(cid);
+        let sess = (typeof getSession==='function' ? getSession() : {}) || {};
+        const sel = $('#proj-card', host);
+        const cid = sel?.value || '';
     
+        // si pas démarré, on démarre sur la card sélectionnée
+        if ((sess.status||'idle')==='idle' && cid) {
+          await startSession(cid);
+          // re-lire la session pour récupérer le vrai session_id
+          sess = (typeof getSession==='function' ? getSession() : {}) || {};
+        }
+    
+        const sid = sess.session_id || (crypto?.randomUUID?.() || ('s'+Date.now()));
         const u = new URL(location.href);
         u.searchParams.set('mode','projecteur');
         u.searchParams.set('session', sid);
@@ -239,6 +245,7 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
 
 export const mount = mountProjectorTab;
 export default { mount };
+
 
 
 
