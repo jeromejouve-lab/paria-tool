@@ -44,13 +44,13 @@ async function renderFromManifest(host, manifest){
   // 2) contenu card (si dispo localement, sinon fallback snapshot Git)
   const cid = manifest?.card_id;
   if (!cid) return;
-  const cards = (await import('../../domain/reducers.js')).then(m=>m.listCards?.()).catch(()=>[]);
   let localList = [];
-  try { localList = (await cards) || []; } catch {}
-  let card = localList.find(c=>String(c.id)===String(cid));
+  try { localList = listCards?.() || []; } catch {}
+  let card = localList.find(c => String(c.id) === String(cid));
   if (!card) {
     try { card = await loadCardFromSnapshots({ id: cid, prefer: buildWorkId() }); } catch {}
   }
+
   const box = host.querySelector('.projector .content');
   if (box){
     const html = (card?.content||'—').replace(/\n/g,'<br>');
@@ -63,6 +63,15 @@ function startPolling(host){
   if (!sessionId) return;
   const wid = buildWorkId();
   if (__projPoll) clearInterval(__projPoll);
+  
+  // premier rendu immédiat (sans attendre le premier tick)
+  (async ()=>{
+    try{
+      const r = await loadSession({ workId: wid, sessionId });
+      if (r?.ok && r?.data) await renderFromManifest(host, r.data);
+    }catch{}
+  })();
+
   __projPoll = setInterval(async ()=>{
     try{
       const r = await loadSession({ workId: wid, sessionId });
@@ -163,6 +172,7 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
 
 export const mount = mountProjectorTab;
 export default { mount };
+
 
 
 
