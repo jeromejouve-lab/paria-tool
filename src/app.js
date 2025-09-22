@@ -48,6 +48,35 @@ import('/paria-tool/src/domain/reducers.js').then(({ hydrateOnEnter, startAutoBa
 });
 
 export function boot(){
+  // --- VIEWER-ONLY (Projecteur) — doit s'exécuter AVANT tout showTab / bind ---
+  {
+    const params = new URLSearchParams(location.search);
+    const mode   = params.get('mode');
+    const cardQ  = params.get('card');
+  
+    if (mode === 'projecteur') {
+      if (cardQ) { try { localStorage.setItem('projector.sel', String(cardQ)); } catch {} }
+      document.documentElement.classList.add('viewer-only');
+      let st = document.getElementById('viewer-only-css');
+      if (!st) {
+        st = document.createElement('style');
+        st.id = 'viewer-only-css';
+        st.textContent = `
+          .viewer-only [data-tab] { display:none !important; }
+          .viewer-only #tabs, .viewer-only .tabs, .viewer-only nav, .viewer-only .topbar { display:none !important; }
+          .viewer-only body { overflow:hidden; }
+        `;
+        document.head.appendChild(st);
+      }
+      // masquer tout de suite d'éventuels boutons déjà présents
+      document.querySelectorAll('[data-tab]').forEach(btn => { btn.style.display = 'none'; });
+      // afficher UNIQUEMENT le projecteur et sortir
+      showTab('projector');
+      return;
+    }
+  }
+  // ---------------------------------------------------------------------------
+
   // délégation de clic sur toute la page (boutons, liens, etc. portant data-tab)
   document.addEventListener('click', (ev)=>{
     const el = ev.target.closest('[data-tab]');
@@ -55,41 +84,6 @@ export function boot(){
     const tab = el.dataset.tab;
     if (!TABS.includes(tab)) return;
     ev.preventDefault();
-    
-    // --- VIEWER-ONLY (Projecteur) ----------------------------------------------
-    const params = new URLSearchParams(location.search);
-    const mode   = params.get('mode');
-    const cardQ  = params.get('card'); // id de card passé dans l’URL (copié depuis "Copier le lien")
-    
-    if (mode === 'projecteur') {
-      // 1) Sélection locale forcée (aucun Git)
-      if (cardQ) { try { localStorage.setItem('projector.sel', String(cardQ)); } catch {} }
-    
-      // 2) Marqueur d’état + CSS pour masquer TOUT le ruban d’onglets / nav
-      document.documentElement.classList.add('viewer-only');
-      let st = document.getElementById('viewer-only-css');
-      if (!st) {
-        st = document.createElement('style');
-        st.id = 'viewer-only-css';
-        st.textContent = `
-          /* masque toute la barre d’onglets / nav, quel que soit le markup */
-          .viewer-only [data-tab] { display:none !important; }
-          .viewer-only #tabs, .viewer-only .tabs, .viewer-only nav, .viewer-only .topbar { display:none !important; }
-          /* optionnel : plein écran plus sobre */
-          .viewer-only body { overflow:hidden; }
-        `;
-        document.head.appendChild(st);
-      }
-    
-      // 3) Si des boutons d’onglets existent déjà dans le DOM, les masquer immédiatement
-      document.querySelectorAll('[data-tab]').forEach(btn => { btn.style.display = 'none'; });
-    
-      // 4) Afficher uniquement le Projecteur et sortir
-      showTab('projector');
-      return;
-    }
-    // --------------------------------------------------------------------------
-
     showTab(tab);
   });
 
@@ -117,6 +111,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
