@@ -4,7 +4,75 @@ import {
   addSessionComment, addSessionAnnotation, listCards
 } from '../../domain/reducers.js';
 
+import { loadSession, loadCardFromSnapshots } from '../../core/net.js';  // <-- polling Git
+import { buildWorkId } from '../../core/settings.js';                     // <-- workId courant
+
 const $=(s,r=document)=>r.querySelector(s);
+
+// --- Projecteur: overlay d'état + polling Git ---
+const POLL_MS = 2500;
+let __projPoll = null;
+
+const $ = (s,r=document)=>r.querySelector(s);
+function qparam(k){ try{ return new URLSearchParams(location.search).get(k); }catch{ return null; } }
+
+function ensureOverlay(host){
+  let ov = host.querySelector('#proj-overlay');
+  if (!ov){
+    ov = document.createElement('div');
+    ov.id = 'proj-overlay';
+    ov.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:10';
+    ov.innerHTML = `<div style="background:#111;border:1px solid #333;padding:16px 20px;border-radius:12px;min-width:260px;text-align:center">
+      <div id="proj-state" style="font-weight:600;margin-bottom:8px">—</div>
+      <div id="proj-meta"  class="muted" style="font-size:12px">Session distante</div>
+    </div>`;
+    host.style.position = host.style.position || 'relative';
+    host.appendChild(ov);
+  }
+  return ov;
+}
+function showOverlay(host, status){
+  const ov = ensureOverlay(host);
+  const st = ov.querySelector('#proj-state');
+  st.textContent = (status==='paused'?'Séance en pause': status==='stopped'?'Séance stoppée': status==='ended'?'Séance terminée':'—');
+  ov.style.display = (status && status!=='running') ? 'flex' : 'none';
+}
+
+async function renderFromManifest(host, manifest){
+  // 1) état (overlay)
+  showOverlay(host, manifest?.status||'idle');
+
+  // 2) contenu card (si dispo localement, sinon fallback snapshot Git)
+  const cid = manifest?.card_id;
+  if (!cid) return;
+  const cards = (await import('../../domain/reducers.js')).then(m=>m.listCards?.()).catch(()=>[]);
+  let localList = [];
+  try { localList = (await cards) || []; } catch {}
+  let card = localList.find(c=>String(c.id)===String(cid));
+  if (!card) {
+    try { card = await loadCardFromSnapshots({ id: cid, prefer: buildWorkId() }); } catch {}
+  }
+  const box = host.querySelector('.projector .content');
+  if (box){
+    const html = (card?.content||'—').replace(/\n/g,'<br>');
+    box.innerHTML = html;
+  }
+}
+
+function startPolling(host){
+  const sessionId = qparam('session');     // ?mode=projecteur&session=...
+  if (!sessionId) return;
+  const wid = buildWorkId();
+  if (__projPoll) clearInterval(__projPoll);
+  __projPoll = setInterval(async ()=>{
+    try{
+      const r = await loadSession({ workId: wid, sessionId });
+      if (r?.ok && r?.data){
+        await renderFromManifest(host, r.data);
+      }
+    }catch(e){ /* silencieux */ }
+  }, POLL_MS);
+}
 
 function html(){
   const session = getSession();
@@ -54,14 +122,24 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
   if (!host) return;
   host.innerHTML = html();
 
+  // Démarrage auto en mode viewer si ?session=... présent (remote)
+  try { startPolling(host); } catch {}
+  // Dès le 1er render, si une session locale existe avec statut != running, afficher l’overlay
+  try {
+    const { getSession } = await import('../../domain/reducers.js');
+    const sess = getSession?.() || {};
+    showOverlay(host, sess.status||'idle');
+  } catch {}
+
   host.addEventListener('click', (ev)=>{
     const b = ev.target.closest('[data-action]');
     if (!b) return;
     const sel = $('#proj-card', host);
     const cid = sel?.value || '';
-    if (b.dataset.action==='session-start') startSession(cid);
-    if (b.dataset.action==='session-pause') pauseSession();
-    if (b.dataset.action==='session-stop')  stopSession();
+    if (b.dataset.action==='session-start'){ startSession(cid); showOverlay(host,'running'); }
+    if (b.dataset.action==='session-pause'){ pauseSession();   showOverlay(host,'paused');  }
+    if (b.dataset.action==='session-stop') { stopSession();    showOverlay(host,'stopped'); }
+
     mountProjectorTab(host);
   });
 
@@ -85,3 +163,4 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
 
 export const mount = mountProjectorTab;
 export default { mount };
+
