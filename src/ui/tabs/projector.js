@@ -63,6 +63,7 @@ async function renderFromSnapshot(host, session, blob){
     const html = (card?.content || '—').replace(/\n/g,'<br>');
     box.innerHTML = html;
   }
+  renderMiniTimeline(host);
 }
 
 function startPolling(host){
@@ -88,6 +89,28 @@ function startPolling(host){
   // premier rendu immédiat
   tick();
   __projPoll = setInterval(tick, POLL_MS);
+}
+
+function fmtTs(s){ return (s||'').replace(/^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}).*$/,'$1 $2'); }
+
+function renderMiniTimeline(host){
+  const wrap = host.querySelector('#proj-mini-tl'); if (!wrap) return;
+  const sess = getSession?.() || {};
+  const cid  = String(sess.card_id||'');
+  const cards = (listCards?.() || []).filter(c => !c.deleted);
+
+  const html = cards.map(c=>{
+    const active = String(c.id)===cid;
+    const title  = (c.title||`#${c.id}`);
+    const ts     = fmtTs(c.updated||c.created||'');
+    return `<button class="card-mini ${active?'is-active':''}" data-cid="${c.id}" title="#${c.id} • ${title} • ${ts}">
+      <span class="mini-id">#${c.id}</span>
+      <span class="mini-title">${title}</span>
+      <span class="mini-ts">${ts}</span>
+    </button>`;
+  }).join('') || `<div class="muted">Aucune card</div>`;
+
+  wrap.innerHTML = html;
 }
 
 function html(){
@@ -137,6 +160,9 @@ function html(){
 export function mountProjectorTab(host = document.getElementById('tab-projector')){
   if (!host) return;
   host.innerHTML = html();
+  // Mini timeline (en-tête)
+  host.querySelector('.projector')?.insertAdjacentHTML('afterbegin', '<div id="proj-mini-tl" class="cards-timeline"></div>');
+  renderMiniTimeline(host);
 
   // Démarrage auto en mode viewer si ?session=... présent (remote)
   try { startPolling(host); } catch {}
@@ -153,6 +179,16 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
     if (!b) return;
     const sel = $('#proj-card', host);
     const cid = sel?.value || '';
+    const m = ev.target.closest('#proj-mini-tl [data-cid]');
+    if (m){
+      const id = m.dataset.cid;
+      // on réutilise ta mécanique existante : startSession(...) positionne la card + persiste
+      startSession(id);
+      renderMiniTimeline(host);
+      mountProjectorTab(host);
+      return;
+    }
+
     if (b.dataset.action==='session-start'){ startSession(cid); showOverlay(host,'running'); }
     if (b.dataset.action==='session-pause'){ pauseSession();   showOverlay(host,'paused');  }
     if (b.dataset.action==='session-stop') { stopSession();    showOverlay(host,'stopped'); }
@@ -180,6 +216,7 @@ export function mountProjectorTab(host = document.getElementById('tab-projector'
 
 export const mount = mountProjectorTab;
 export default { mount };
+
 
 
 
