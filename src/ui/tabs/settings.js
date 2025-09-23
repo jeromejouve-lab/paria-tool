@@ -524,7 +524,8 @@ function bindWorkId(root){
         if (btnProp) { const t = btnProp.textContent; btnProp.textContent = `❌ ${r.status}`; setTimeout(()=>btnProp.textContent=t, 1200); }
         btnApplySel && (btnApplySel.disabled = true);
         __picked = null;
-        console.warn('[Proposer][Git] HTTP', r.status, url3);
+        console.warn('[Proposer][Git] HTTP', r.status, listUrl);
+
         return;
       }
   
@@ -649,31 +650,17 @@ function bindWorkId(root){
 
     const stamp = mkStamp();
     const path  = `clients/${client}/${service}/${dateStr}/${kind}-${stamp}.json`;
+        
+    const putUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
     
-    //const url   = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
-    // remplace tout usage de url/url2 par ça :
-    const segs = (...xs)=> xs.map(s=>encodeURIComponent(String(s))).join('/');
-    const url3 = (o,r,b,...ps)=> `https://api.github.com/repos/${o}/${r}/contents/${segs(...ps)}?ref=${encodeURIComponent(b)}`;
-    const listUrl = url3(owner, repo, branch, 'clients', client, service, dateStr);
-
-    const payload = (kind === 'snapshot')
-      ? { local: collectParia(), meta:{ reason:'manual:snapshot', at:new Date().toISOString() } }
-      : { local: collectParia(), meta:{ reason:'manual:backup',   at:new Date().toISOString() } };
-
-    const body = {
-      message: `${kind} ${client}|${service}|${dateStr} ${stamp}`,
-      content: btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2)))),
-      branch
-    };
-
-    const r = await fetch(listUrl, {
+    const r = await fetch(putUrl, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/vnd.github+json',
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body)   // body contient déjà { branch }
     });
 
     if (r.status !== 201 && r.status !== 200) {
@@ -731,8 +718,6 @@ function bindActions(root){
     settingsSave(patch);
     const dateStr = $('#work-date', root)?.value || new Date().toISOString().slice(0,10);
     const S = settingsLoad();                          // relis ce que tu viens de sauver
-    const wNow = $('#workid-now', root);
-    if (wNow) wNow.textContent = `WorkID actuel : ${(S.client||'').trim()}|${(S.service||'').trim()}|${dateStr}`;
 
     autoTests(root);
     // refresh workid preview après save
@@ -769,6 +754,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
