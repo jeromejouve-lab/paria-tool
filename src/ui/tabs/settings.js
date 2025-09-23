@@ -332,20 +332,18 @@ function bindWorkId(root){
       let candidatePath = __picked?.path; // si une sélection a été faite dans la liste
       if (!candidatePath){
         const base = `clients/${client}/${service}/${dateStr}`;
-        const url2 = `https://api.github.com/repos/${owner}/${repo}/contents/${candidatePath.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;
-
-        console.log('GET', url);
-        const r = await fetch(url, {
+        const urlList = `https://api.github.com/repos/${owner}/${repo}/contents/${base.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;       
+        console.log('GET', urlList);
+        const r = await fetch(urlList, {
           headers: {
             'Accept': 'application/vnd.github+json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           }
         });
         
-        const arr = (r.status===200 ? await r.json() : []);
+        const arr = (r.status === 200 ? await r.json() : []);
         const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{1,3})?\.json$/;
         const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{1,3})?\.json$/;
-  
         const items = Array.isArray(arr) ? arr
           .filter(x => x?.type==='file' && (SNAP.test(x.name) || BACK.test(x.name)))
           .map(x => {
@@ -367,9 +365,9 @@ function bindWorkId(root){
       }
   
       // 2) Charger le JSON depuis Git
-      const url2 = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(candidatePath)}?ref=${encodeURIComponent(branch)}`;
-      console.log('GET', url2);
-      const r2 = await fetch(url2, {
+      const urlFile = `https://api.github.com/repos/${owner}/${repo}/contents/${candidatePath.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;
+      console.log('GET', urlFile);
+      const r2 = await fetch(urlFile, {
         headers: {
           'Accept': 'application/vnd.github+json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -827,6 +825,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
