@@ -762,42 +762,40 @@ function bindActions(root){
   const btnDiag = $('#btn-diag', root);
   if (btnDiag) btnDiag.onclick = ()=> autoTests(root);
 
-  const btnSave = $('#btn-save-conf', root);
-  if (btnSave) btnSave.onclick = ()=>{
-    // 1) Lire les champs visibles
-    const conf = {
-      client:   document.querySelector('#client')?.value?.trim() || '',
-      service:  document.querySelector('#service')?.value?.trim() || '',
-      endpoints: {
-        proxy: {
-          url:    document.querySelector('#proxy-url')?.value?.trim()    || '',
-          secret: document.querySelector('#proxy-secret')?.value?.trim() || ''
-        },
-        git: {
-          url:   document.querySelector('#git-url')?.value?.trim()   || '',
-          owner: document.querySelector('#git-owner')?.value?.trim() || '',
-          repo:  document.querySelector('#git-repo')?.value?.trim()  || '',
-          token: document.querySelector('#git-token')?.value?.trim() || ''
-        }
+// ----- dans bindActions(root) -----
+const btnSave = $('#btn-save-conf', root);
+if (btnSave) btnSave.onclick = ()=>{
+  const conf = {
+    client:   $('#client',  root)?.value?.trim() || '',
+    service:  $('#service', root)?.value?.trim() || '',
+    endpoints: {
+      proxy: {
+        url:    $('#proxy-url',    root)?.value?.trim() || '',
+        secret: $('#proxy-secret', root)?.value?.trim() || ''
       },
-      // champs “à plat” utilisés ailleurs dans le code
-      git_owner:  document.querySelector('#git-owner') ?.value?.trim() || '',
-      git_repo:   document.querySelector('#git-repo')  ?.value?.trim() || '',
-      git_branch: document.querySelector('#git-branch')?.value?.trim() || 'main',
-      git_token:  document.querySelector('#git-token') ?.value?.trim() || ''
-    };
-  
-    // 2) Écrire *explicitement* la conf dans localStorage
-    localStorage.setItem('paria.settings', JSON.stringify(conf));
-    console.log('[CONF] saved → paria.settings', conf);
-  
-    // 3) Relancer diag + rafraîchir le WorkID affiché
-    autoTests(root);
-    const wNow = $('#workid-now', root);
-    if (wNow && typeof buildWorkId === 'function') {
-      wNow.textContent = `WorkID actuel : ${buildWorkId()}`;
-    }
+      git: {
+        url:   $('#git-url',   root)?.value?.trim() || '',
+        owner: $('#git-owner', root)?.value?.trim() || '',
+        repo:  $('#git-repo',  root)?.value?.trim() || '',
+        token: $('#git-token', root)?.value?.trim() || ''
+      }
+    },
+    // champs "plats" lus ailleurs (net.js)
+    git_owner:  $('#git-owner',  root)?.value?.trim() || '',
+    git_repo:   $('#git-repo',   root)?.value?.trim() || '',
+    git_branch: $('#git-branch', root)?.value?.trim() || 'main',
+    git_token:  $('#git-token',  root)?.value?.trim() || ''
   };
+
+  localStorage.setItem('paria.settings', JSON.stringify(conf));
+  console.log('[CONF] saved → paria.settings', conf);
+  autoTests(root);
+  const wNow = $('#workid-now', root);
+  if (wNow && typeof buildWorkId === 'function') {
+    wNow.textContent = `WorkID actuel : ${buildWorkId()}`;
+  }
+};
+
 
 
   // relance diag après saisie (debounce)
@@ -829,6 +827,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
