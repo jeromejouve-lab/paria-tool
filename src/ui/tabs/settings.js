@@ -341,8 +341,8 @@ function bindWorkId(root){
         });
         
         const arr = (r.status===200 ? await r.json() : []);
-        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
-        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
+        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{1,3})?\.json$/;
+        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{1,3})?\.json$/;
   
         const items = Array.isArray(arr) ? arr
           .filter(x => x?.type==='file' && (SNAP.test(x.name) || BACK.test(x.name)))
@@ -359,6 +359,11 @@ function bindWorkId(root){
           const hhmm = timeStr.replace(':','-');
           const after = items.find(o => o.at >= `${dateStr}_${hhmm}-00`);
           candidatePath = (after || items[items.length-1]).path;
+          const atIso = timeStr ? `${dateStr}T${timeStr}:00` : null;
+          // tri DESC déjà fait…
+          if (atIso) {
+            items = items.filter(x => Date.parse(x.at) >= Date.parse(atIso));
+          }
         } else {
           candidatePath = items[items.length-1].path;
         }
@@ -380,7 +385,7 @@ function bindWorkId(root){
   
       // 3) Appliquer (replace namespace paria.*) + backup
       // priorité au format des backups Git: { workId, data: { ...blob... } }
-     const content = snap?.data || snap?.local || snap?.content?.local || snap?.content || snap || {};
+      const content = snap?.data || snap?.local || snap?.content?.local || snap?.content || snap || {};
       if (!content || typeof content !== 'object') throw new Error('empty');
   
       const keys = Object.keys(localStorage).filter(k=>k.startsWith('paria') && k!=='paria.__backup__');
@@ -550,8 +555,8 @@ function bindWorkId(root){
       let items = [];
       if (r.status === 200){
         const arr = await r.json();
-        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
-        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
+        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{1,3})?\.json$/;
+        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{1,3})?\.json$/;
   
         items = Array.isArray(arr) ? arr
           .filter(x => x?.type === 'file' && (SNAP.test(x.name) || BACK.test(x.name)))
@@ -778,6 +783,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
