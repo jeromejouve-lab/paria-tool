@@ -303,7 +303,6 @@ function bindWorkId(root){
 
    // Restaurer = route=load via proxy (GET), avec work_id + when
   const btnRestore = $('#btn-restore', root);
-  
   // === RESTAURER (one-click) — GIT ONLY (écrase tout handler précédent) ===
   if (btnRestore) btnRestore.onclick = async ()=>{ 
     console.group('[RESTORE][git] one-click');
@@ -332,18 +331,19 @@ function bindWorkId(root){
       let candidatePath = __picked?.path; // si une sélection a été faite dans la liste
       if (!candidatePath){
         const base = `clients/${client}/${service}/${dateStr}`;
-        const urlList = `https://api.github.com/repos/${owner}/${repo}/contents/${base.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;       
-        console.log('GET', urlList);
-        const r = await fetch(urlList, {
+        const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
+        console.log('GET', url);
+        const r = await fetch(url, {
           headers: {
             'Accept': 'application/vnd.github+json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           }
         });
         
-        const arr = (r.status === 200 ? await r.json() : []);
-        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{1,3})?\.json$/;
-        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{1,3})?\.json$/;
+        const arr = (r.status===200 ? await r.json() : []);
+        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
+        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
+  
         const items = Array.isArray(arr) ? arr
           .filter(x => x?.type==='file' && (SNAP.test(x.name) || BACK.test(x.name)))
           .map(x => {
@@ -365,9 +365,9 @@ function bindWorkId(root){
       }
   
       // 2) Charger le JSON depuis Git
-      const urlFile = `https://api.github.com/repos/${owner}/${repo}/contents/${candidatePath.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;
-      console.log('GET', urlFile);
-      const r2 = await fetch(urlFile, {
+      const url2 = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(candidatePath)}?ref=${encodeURIComponent(branch)}`;
+      console.log('GET', url2);
+      const r2 = await fetch(url2, {
         headers: {
           'Accept': 'application/vnd.github+json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -379,44 +379,24 @@ function bindWorkId(root){
       let snap=null; try { snap = JSON.parse(raw); } catch { throw new Error('bad_json'); }
   
       // 3) Appliquer (replace namespace paria.*) + backup
-      // priorité au format des backups Git: { workId, data: { .blob. } }
-      const content = snap?.data || snap?.local || snap?.content?.local || snap?.content || snap || {};
+      const content = snap?.local || snap?.content?.local || snap?.content || snap || {};
       if (!content || typeof content !== 'object') throw new Error('empty');
-      
-      // ——— sauvegarde sécurité (sans settings)
-      const PROTECT = new Set(['paria.settings', 'paria.__backup__']);
-      const keys = Object.keys(localStorage).filter(k => k.startsWith('paria') && !PROTECT.has(k));
-      const bak  = keys.reduce((a,k)=> (a[k] = localStorage.getItem(k), a), {});
+  
+      const keys = Object.keys(localStorage).filter(k=>k.startsWith('paria') && k!=='paria.__backup__');
+      const bak = keys.reduce((a,k)=>(a[k]=localStorage.getItem(k),a),{});
       localStorage.setItem('paria.__backup__', JSON.stringify({ stamp:new Date().toISOString(), bak }));
-      
-      // ——— clear sélectif (on garde paria.settings)
-      for (const k of keys) localStorage.removeItem(k);
-      
-      // ——— si "blob" (cards/charter/meta...) on l’écrit en tant que paria.blob
-      const looksLikeBlob = !!(content.cards || content.charter || content.meta || content.seq);
-      if (looksLikeBlob) {
-        localStorage.setItem('paria.blob', JSON.stringify(content));
-        // fan-out optionnel pour compat: exposer aussi les clés unitaires (hors settings)
-        const fanout = ['cards','charter','worksets','scenarios','items','journal','meta','seq'];
-        for (const k of fanout) if (k in content) {
-          localStorage.setItem(`paria.${k}`, JSON.stringify(content[k]));
-        }
-      } else {
-        // sinon contenu déjà namespacé: on réécrit tout SAUF paria.settings
-        const entries = Object.entries(content).filter(([k]) => {
-          const key = k.startsWith('paria') ? k : `paria.${k}`;
-          return !PROTECT.has(key);
-        });
-        for (const [k,v] of entries) {
-          const key = k.startsWith('paria') ? k : `paria.${k}`;
-          localStorage.setItem(key, typeof v === 'string' ? v : JSON.stringify(v));
-        }
+  
+      for (const k of Object.keys(localStorage)){
+        if (k.startsWith('paria') && !k.endsWith('.__backup__')) localStorage.removeItem(k);
       }
-      
-      if (statusEl) statusEl.textContent = '✅ restauré (Git only, réglages préservés)';
+      for (const [k,v] of Object.entries(content)){
+        const key = k.startsWith('paria') ? k : `paria.${k}`;
+        localStorage.setItem(key, typeof v==='string' ? v : JSON.stringify(v));
+      }
+  
+      if (statusEl) statusEl.textContent = '✅ restauré (Git one-click)';
       try { await bootstrapWorkspace(); } catch {}
-      setTimeout(() => location.reload(), 120);
-
+      setTimeout(()=> location.reload(), 120);
     }catch(e){
       console.error('[RESTORE][git] one-click error', e);
       const statusEl = $('#restore-status', root);
@@ -547,8 +527,7 @@ function bindWorkId(root){
       }
   
       const base = `clients/${client}/${service}/${dateStr}`;
-      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${base.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;
-
+      const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
       console.log('GET', url);
   
       const r = await fetch(url, {
@@ -570,8 +549,8 @@ function bindWorkId(root){
       let items = [];
       if (r.status === 200){
         const arr = await r.json();
-        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{1,3})?\.json$/;
-        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{1,3})?\.json$/;
+        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
+        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
   
         items = Array.isArray(arr) ? arr
           .filter(x => x?.type === 'file' && (SNAP.test(x.name) || BACK.test(x.name)))
@@ -584,12 +563,6 @@ function bindWorkId(root){
   
       // tri DESC (plus récent en haut)
       items.sort((a,b)=> Date.parse(b.at) - Date.parse(a.at));
-      
-      // filtre par heure si saisie (affichage ≥ HH:MM)
-      if (timeStr) {
-        const atIso = `${dateStr}T${timeStr}:00`;
-        items = items.filter(x => Date.parse(x.at) >= Date.parse(atIso));
-      }
   
       if (!items.length){
         listEl.innerHTML = `<div class="muted">Aucun snapshot/backup pour ${dateStr}.</div>`;
@@ -694,7 +667,7 @@ function bindWorkId(root){
 
     const stamp = mkStamp();
     const path  = `clients/${client}/${service}/${dateStr}/${kind}-${stamp}.json`;
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
+    const url   = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
 
     const payload = (kind === 'snapshot')
       ? { local: collectParia(), meta:{ reason:'manual:snapshot', at:new Date().toISOString() } }
@@ -760,41 +733,20 @@ function bindActions(root){
   const btnDiag = $('#btn-diag', root);
   if (btnDiag) btnDiag.onclick = ()=> autoTests(root);
 
-// ----- dans bindActions(root) -----
-const btnSave = $('#btn-save-conf', root);
-if (btnSave) btnSave.onclick = ()=>{
-  const conf = {
-    client:   $('#client',  root)?.value?.trim() || '',
-    service:  $('#service', root)?.value?.trim() || '',
-    endpoints: {
-      proxy: {
-        url:    $('#proxy-url',    root)?.value?.trim() || '',
-        secret: $('#proxy-secret', root)?.value?.trim() || ''
-      },
-      git: {
-        url:   $('#git-url',   root)?.value?.trim() || '',
-        owner: $('#git-owner', root)?.value?.trim() || '',
-        repo:  $('#git-repo',  root)?.value?.trim() || '',
-        token: $('#git-token', root)?.value?.trim() || ''
-      }
-    },
-    // champs "plats" lus ailleurs (net.js)
-    git_owner:  $('#git-owner',  root)?.value?.trim() || '',
-    git_repo:   $('#git-repo',   root)?.value?.trim() || '',
-    git_branch: $('#git-branch', root)?.value?.trim() || 'main',
-    git_token:  $('#git-token',  root)?.value?.trim() || ''
+  const btnSave = $('#btn-save-conf', root);
+  if (btnSave) btnSave.onclick = ()=>{
+    const patch = readForm(root);
+    patch.git_owner  = $('#git-owner',  root)?.value?.trim() || '';
+    patch.git_repo   = $('#git-repo',   root)?.value?.trim() || '';
+    patch.git_branch = $('#git-branch', root)?.value?.trim() || 'main';
+    patch.git_token  = $('#git-token',  root)?.value?.trim() || '';
+
+    settingsSave(patch);
+    autoTests(root);
+    // refresh workid preview après save
+    const wNow = $('#workid-now', root);
+    if (wNow && typeof buildWorkId === 'function') wNow.textContent = `WorkID actuel : ${buildWorkId()}`;
   };
-
-  localStorage.setItem('paria.settings', JSON.stringify(conf));
-  console.log('[CONF] saved → paria.settings', conf);
-  autoTests(root);
-  const wNow = $('#workid-now', root);
-  if (wNow && typeof buildWorkId === 'function') {
-    wNow.textContent = `WorkID actuel : ${buildWorkId()}`;
-  }
-};
-
-
 
   // relance diag après saisie (debounce)
   ['#client','#service','#proxy-url','#proxy-secret','#git-url','#git-owner','#git-repo','#git-token']
@@ -825,15 +777,5 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
-
-
-
-
-
-
-
-
-
-
 
 
