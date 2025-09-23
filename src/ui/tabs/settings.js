@@ -654,6 +654,7 @@ function bindWorkId(root){
     // remplace tout usage de url/url2 par ça :
     const segs = (...xs)=> xs.map(s=>encodeURIComponent(String(s))).join('/');
     const url3 = (o,r,b,...ps)=> `https://api.github.com/repos/${o}/${r}/contents/${segs(...ps)}?ref=${encodeURIComponent(b)}`;
+    const listUrl = url3(owner, repo, branch, 'clients', client, service, dateStr);
 
     const payload = (kind === 'snapshot')
       ? { local: collectParia(), meta:{ reason:'manual:snapshot', at:new Date().toISOString() } }
@@ -665,7 +666,7 @@ function bindWorkId(root){
       branch
     };
 
-    const r = await fetch(url3, {
+    const r = await fetch(listUrl, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -678,7 +679,7 @@ function bindWorkId(root){
     if (r.status !== 201 && r.status !== 200) {
       const t = btn?.textContent;
       if (btn) { btn.textContent = `❌ ${r.status}`; setTimeout(()=>btn.textContent=t, 1200); }
-      console.warn('[', kind, '][Git] HTTP', r.status, url3, await r.text().catch(()=>'')); 
+      console.warn('[', kind, '][Git] HTTP', r.status, listUrl, await r.text().catch(()=>'')); 
       return { ok:false, status:r.status };
     }
 
@@ -768,6 +769,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
