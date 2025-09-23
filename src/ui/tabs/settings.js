@@ -696,7 +696,7 @@ function bindWorkId(root){
 
     const stamp = mkStamp();
     const path  = `clients/${client}/${service}/${dateStr}/${kind}-${stamp}.json`;
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${base.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
 
     const payload = (kind === 'snapshot')
       ? { local: collectParia(), meta:{ reason:'manual:snapshot', at:new Date().toISOString() } }
@@ -764,18 +764,41 @@ function bindActions(root){
 
   const btnSave = $('#btn-save-conf', root);
   if (btnSave) btnSave.onclick = ()=>{
-    const patch = readForm(root);
-    patch.git_owner  = $('#git-owner',  root)?.value?.trim() || '';
-    patch.git_repo   = $('#git-repo',   root)?.value?.trim() || '';
-    patch.git_branch = $('#git-branch', root)?.value?.trim() || 'main';
-    patch.git_token  = $('#git-token',  root)?.value?.trim() || '';
-
-    settingsSave(patch);
+    // 1) Lire les champs visibles
+    const conf = {
+      client:   document.querySelector('#client')?.value?.trim() || '',
+      service:  document.querySelector('#service')?.value?.trim() || '',
+      endpoints: {
+        proxy: {
+          url:    document.querySelector('#proxy-url')?.value?.trim()    || '',
+          secret: document.querySelector('#proxy-secret')?.value?.trim() || ''
+        },
+        git: {
+          url:   document.querySelector('#git-url')?.value?.trim()   || '',
+          owner: document.querySelector('#git-owner')?.value?.trim() || '',
+          repo:  document.querySelector('#git-repo')?.value?.trim()  || '',
+          token: document.querySelector('#git-token')?.value?.trim() || ''
+        }
+      },
+      // champs “à plat” utilisés ailleurs dans le code
+      git_owner:  document.querySelector('#git-owner') ?.value?.trim() || '',
+      git_repo:   document.querySelector('#git-repo')  ?.value?.trim() || '',
+      git_branch: document.querySelector('#git-branch')?.value?.trim() || 'main',
+      git_token:  document.querySelector('#git-token') ?.value?.trim() || ''
+    };
+  
+    // 2) Écrire *explicitement* la conf dans localStorage
+    localStorage.setItem('paria.settings', JSON.stringify(conf));
+    console.log('[CONF] saved → paria.settings', conf);
+  
+    // 3) Relancer diag + rafraîchir le WorkID affiché
     autoTests(root);
-    // refresh workid preview après save
     const wNow = $('#workid-now', root);
-    if (wNow && typeof buildWorkId === 'function') wNow.textContent = `WorkID actuel : ${buildWorkId()}`;
+    if (wNow && typeof buildWorkId === 'function') {
+      wNow.textContent = `WorkID actuel : ${buildWorkId()}`;
+    }
   };
+
 
   // relance diag après saisie (debounce)
   ['#client','#service','#proxy-url','#proxy-secret','#git-url','#git-owner','#git-repo','#git-token']
@@ -806,6 +829,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
