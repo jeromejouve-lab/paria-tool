@@ -379,7 +379,8 @@ function bindWorkId(root){
       let snap=null; try { snap = JSON.parse(raw); } catch { throw new Error('bad_json'); }
   
       // 3) Appliquer (replace namespace paria.*) + backup
-      const content = snap?.local || snap?.content?.local || snap?.content || snap || {};
+      // priorité au format des backups Git: { workId, data: { ...blob... } }
+     const content = snap?.data || snap?.local || snap?.content?.local || snap?.content || snap || {};
       if (!content || typeof content !== 'object') throw new Error('empty');
   
       const keys = Object.keys(localStorage).filter(k=>k.startsWith('paria') && k!=='paria.__backup__');
@@ -777,5 +778,6 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
