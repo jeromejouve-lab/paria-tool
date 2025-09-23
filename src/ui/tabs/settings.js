@@ -303,6 +303,7 @@ function bindWorkId(root){
 
    // Restaurer = route=load via proxy (GET), avec work_id + when
   const btnRestore = $('#btn-restore', root);
+  
   // === RESTAURER (one-click) — GIT ONLY (écrase tout handler précédent) ===
   if (btnRestore) btnRestore.onclick = async ()=>{ 
     console.group('[RESTORE][git] one-click');
@@ -384,25 +385,44 @@ function bindWorkId(root){
       let snap=null; try { snap = JSON.parse(raw); } catch { throw new Error('bad_json'); }
   
       // 3) Appliquer (replace namespace paria.*) + backup
-      // priorité au format des backups Git: { workId, data: { ...blob... } }
+      // priorité au format des backups Git: { workId, data: { .blob. } }
       const content = snap?.data || snap?.local || snap?.content?.local || snap?.content || snap || {};
       if (!content || typeof content !== 'object') throw new Error('empty');
-  
-      const keys = Object.keys(localStorage).filter(k=>k.startsWith('paria') && k!=='paria.__backup__');
-      const bak = keys.reduce((a,k)=>(a[k]=localStorage.getItem(k),a),{});
+      
+      // ——— sauvegarde sécurité (sans settings)
+      const PROTECT = new Set(['paria.settings', 'paria.__backup__']);
+      const keys = Object.keys(localStorage).filter(k => k.startsWith('paria') && !PROTECT.has(k));
+      const bak  = keys.reduce((a,k)=> (a[k] = localStorage.getItem(k), a), {});
       localStorage.setItem('paria.__backup__', JSON.stringify({ stamp:new Date().toISOString(), bak }));
-  
-      for (const k of Object.keys(localStorage)){
-        if (k.startsWith('paria') && !k.endsWith('.__backup__')) localStorage.removeItem(k);
+      
+      // ——— clear sélectif (on garde paria.settings)
+      for (const k of keys) localStorage.removeItem(k);
+      
+      // ——— si "blob" (cards/charter/meta...) on l’écrit en tant que paria.blob
+      const looksLikeBlob = !!(content.cards || content.charter || content.meta || content.seq);
+      if (looksLikeBlob) {
+        localStorage.setItem('paria.blob', JSON.stringify(content));
+        // fan-out optionnel pour compat: exposer aussi les clés unitaires (hors settings)
+        const fanout = ['cards','charter','worksets','scenarios','items','journal','meta','seq'];
+        for (const k of fanout) if (k in content) {
+          localStorage.setItem(`paria.${k}`, JSON.stringify(content[k]));
+        }
+      } else {
+        // sinon contenu déjà namespacé: on réécrit tout SAUF paria.settings
+        const entries = Object.entries(content).filter(([k]) => {
+          const key = k.startsWith('paria') ? k : `paria.${k}`;
+          return !PROTECT.has(key);
+        });
+        for (const [k,v] of entries) {
+          const key = k.startsWith('paria') ? k : `paria.${k}`;
+          localStorage.setItem(key, typeof v === 'string' ? v : JSON.stringify(v));
+        }
       }
-      for (const [k,v] of Object.entries(content)){
-        const key = k.startsWith('paria') ? k : `paria.${k}`;
-        localStorage.setItem(key, typeof v==='string' ? v : JSON.stringify(v));
-      }
-  
-      if (statusEl) statusEl.textContent = '✅ restauré (Git one-click)';
+      
+      if (statusEl) statusEl.textContent = '✅ restauré (Git only, réglages préservés)';
       try { await bootstrapWorkspace(); } catch {}
-      setTimeout(()=> location.reload(), 120);
+      setTimeout(() => location.reload(), 120);
+
     }catch(e){
       console.error('[RESTORE][git] one-click error', e);
       const statusEl = $('#restore-status', root);
@@ -789,6 +809,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
