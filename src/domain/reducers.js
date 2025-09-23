@@ -8,6 +8,96 @@ import { buildWorkId } from '../core/settings.js';
 function _dayKey(ts){ const d=new Date(ts); return `${d.getFullYear()}-${(d.getMonth()+1+'').padStart(2,'0')}-${(d.getDate()+'').padStart(2,'0')}`; }
 function _ensureSeq(b,key){ b.seq=b.seq||{}; b.seq[key]=(b.seq[key]||0)+1; return b.seq[key]; }
 
+// --- reducers.js ---
+export const buildWorkId = (S, dateStr)=>
+  `${(S.client||'').trim()}|${(S.service||'').trim()}|${dateStr}`;
+
+export function backupFlushLocal() {
+  const S = JSON.parse(localStorage.getItem('paria.settings')||'{}');
+  const date = document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10);
+  const workId = buildWorkId(S, date);
+
+  const qs = s=>document.querySelector(s);
+  const csv = s=>(s||'').split(',').map(x=>x.trim()).filter(Boolean);
+  const charter = {
+    title: qs('#charter-title')?.value?.trim()||'',
+    content: qs('#charter-content')?.value||'',
+    tags: csv(qs('#charter-tags')?.value),
+    updated_ts: Date.now()
+  };
+  const cards = JSON.parse(localStorage.getItem('paria.cards')||'[]');
+  const now = Date.now(); const index={};
+  for (const c of cards){ const st=c.state||{};
+    index[c.id] = { id:c.id, title:c.title||'', state:{active:!!st.active,paused:!!st.paused,deleted:!!st.deleted},
+      updated_ts:c.updated_ts||now, last_open_ts:st.last_open_ts||now, parent_id:c.parent_id||null };
+  }
+  const profile = {
+    name: qs('#client-name')?.value?.trim()||'',
+    headcount: Number(qs('#client-headcount')?.value)||null,
+    languages: csv(qs('#client-languages')?.value),
+    tone: qs('#client-tone')?.value?.trim()||'',
+    desc: qs('#client-desc')?.value||'',
+    goals: csv(qs('#client-goals')?.value),
+    challenges: csv(qs('#client-challenges')?.value),
+    constraints: csv(qs('#client-constraints')?.value)
+  };
+  localStorage.setItem(`paria.client.${S.client}.profile`, JSON.stringify(profile));
+
+  const tabs = JSON.parse(localStorage.getItem('paria.tabs')||'null') || { cards:'on', seance:'off', projector:'off' };
+  const blob = { workId, profile, charter, cards, index, tabs, meta:{schema:'v1', snapshot_at:new Date().toISOString()} };
+  localStorage.setItem('paria.blob', JSON.stringify(blob));
+  return blob;
+}
+
+export async function backupPushGit() {
+  const S = JSON.parse(localStorage.getItem('paria.settings')||'{}');
+  const {git_owner:o,git_repo:r,git_branch:b='main',git_token:t,client:c,service:s} = S;
+  if (!o||!r||!t||!c||!s) throw new Error('conf git incomplète');
+  const blob = JSON.parse(localStorage.getItem('paria.blob')||'{}');
+  const DATE = blob.workId?.split('|')[2] || new Date().toISOString().slice(0,10);
+  const pad2=n=>String(n).padStart(2,'0'), pad3=n=>String(n).padStart(3,'0');
+  const d=new Date(); const stamp=`${DATE}_${pad2(d.getHours())}-${pad2(d.getMinutes())}-${pad2(d.getSeconds())}-${pad3(d.getMilliseconds())}`;
+  const path = ['clients', c, s, DATE, `backup-${stamp}.json`];
+  const url  = ghContentsUrl(o,r,b, ...path);
+  const enc = s=>{const u=new TextEncoder().encode(s);let bin='';for(let i=0;i<u.length;i++)bin+=String.fromCharCode(u[i]);return btoa(bin);};
+  const payload = { workId: blob.workId, data:{ profile:blob.profile, charter:blob.charter, cards:blob.cards, index:blob.index, tabs:blob.tabs } };
+  const res = await fetch(url.replace(/\?ref=.*/,''), { // PUT n'a pas besoin de ?ref
+    method:'PUT',
+    headers:{...ghHeaders(t),'Content-Type':'application/json'},
+    body: JSON.stringify({ message:`backup ${blob.workId}`, content: enc(JSON.stringify(payload,null,2)), branch:b })
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return { path: path.join('/'), stamp };
+}
+
+export async function backupsList(dateStr, timeHHmm='') {
+  const S = JSON.parse(localStorage.getItem('paria.settings')||'{}');
+  const {git_owner:o,git_repo:r,git_branch:b='main',git_token:t,client:c,service:s} = S;
+  const listUrl = ghContentsUrl(o,r,b,'clients',c,s,dateStr);
+  const r1 = await fetch(listUrl, { headers: ghHeaders(t) });
+  if (!r1.ok) throw new Error(`Git ${r1.status}`);
+  const items = (await r1.json()).filter(x=>x.type==='file');
+  const re=/^(backup|snapshot)-(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})(?:-(\d{3}))?\.json$/;
+  let out = items.filter(x=>re.test(x.name)).map(x=>{
+    const m=x.name.match(re); const hh=+m[3], mm=+m[4];
+    return { name:x.name, path:x.path, hh, mm, url: ghContentsUrl(o,r,b, ...x.path.split('/')) };
+  }).sort((a,b)=> (a.name<b.name?1:-1));
+  if (/^\d{2}:\d{2}$/.test(timeHHmm)) { const [H,M]=timeHHmm.split(':').map(Number); out = out.filter(i=> i.hh>H || (i.hh===H && i.mm>=M)); }
+  return out;
+}
+
+export async function restoreFromGit(fileUrl) {
+  const S = JSON.parse(localStorage.getItem('paria.settings')||'{}');
+  const t = S.git_token; const dec = b64=>{const bin=atob((b64||'').replace(/\n/g,''));const u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);return new TextDecoder().decode(u8);};
+  const r = await fetch(fileUrl, { headers: ghHeaders(t) });
+  if (!r.ok) throw new Error(`Git ${r.status}`);
+  const meta = await r.json(); const snap = JSON.parse(dec(meta.content||''));
+  const blob = { workId:snap.workId, ...snap.data, meta:{...snap.meta, restored_at:new Date().toISOString()} };
+  localStorage.setItem('paria.blob', JSON.stringify(blob));
+  // on garde paria.settings intact
+  return blob;
+}
+
 export function migrateCards_v2(){
   const b = readClientBlob();
   if (!Array.isArray(b.cards)) return;
@@ -605,6 +695,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
