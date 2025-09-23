@@ -21,6 +21,8 @@ const mounts = {
 
 const TABS = Object.keys(mounts);
 
+const mountedTabs = new Set();
+
 export function showTab(tab){
   if (!TABS.includes(tab)) return;
   // afficher/masquer les sections
@@ -28,9 +30,13 @@ export function showTab(tab){
     const sec = document.getElementById(`tab-${id}`);
     if (sec) sec.style.display = (id === tab ? '' : 'none');
   }
-  // appeler le mount de l’onglet
+  // appeler le mount de l’onglet (une seule fois)
   const fn = mounts[tab];
-  if (typeof fn === 'function') { try { fn(); } catch (e) { console.error('mount error:', tab, e); } }
+  if (typeof fn === 'function' && !mountedTabs.has(tab)) {
+    try { fn(); mountedTabs.add(tab); } 
+    catch (e) { console.error('mount error:', tab, e); }
+  }
+
   // marquer l’onglet actif sur la nav si tu as des classes .active
   document.querySelectorAll('header nav [data-tab]').forEach(b=>{
     const on = (b.dataset.tab === tab);
@@ -111,6 +117,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
