@@ -331,9 +331,14 @@ function bindWorkId(root){
       let candidatePath = __picked?.path; // si une sélection a été faite dans la liste
       if (!candidatePath){
         const base = `clients/${client}/${service}/${dateStr}`;
-        const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
-        console.log('GET', url);
-        const r = await fetch(url, {
+        
+        //const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
+        // remplace tout usage de url/url2 par ça :
+        const segs = (...xs)=> xs.map(s=>encodeURIComponent(String(s))).join('/');
+        const url3 = (o,r,b,...ps)=> `https://api.github.com/repos/${o}/${r}/contents/${segs(...ps)}?ref=${encodeURIComponent(b)}`;
+
+        console.log('GET', url3);
+        const r = await fetch(url3, {
           headers: {
             'Accept': 'application/vnd.github+json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -365,9 +370,14 @@ function bindWorkId(root){
       }
   
       // 2) Charger le JSON depuis Git
-      const url2 = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(candidatePath)}?ref=${encodeURIComponent(branch)}`;
-      console.log('GET', url2);
-      const r2 = await fetch(url2, {
+      
+      //const url2 = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(candidatePath)}?ref=${encodeURIComponent(branch)}`;
+      // remplace tout usage de url/url2 par ça :
+      const segs = (...xs)=> xs.map(s=>encodeURIComponent(String(s))).join('/');
+      const url3 = (o,r,b,...ps)=> `https://api.github.com/repos/${o}/${r}/contents/${segs(...ps)}?ref=${encodeURIComponent(b)}`;
+
+      console.log('GET', url3);
+      const r2 = await fetch(url3, {
         headers: {
           'Accept': 'application/vnd.github+json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -527,10 +537,15 @@ function bindWorkId(root){
       }
   
       const base = `clients/${client}/${service}/${dateStr}`;
-      const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
-      console.log('GET', url);
+      
+      //const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
+      // remplace tout usage de url/url2 par ça :
+      const segs = (...xs)=> xs.map(s=>encodeURIComponent(String(s))).join('/');
+      const url3 = (o,r,b,...ps)=> `https://api.github.com/repos/${o}/${r}/contents/${segs(...ps)}?ref=${encodeURIComponent(b)}`;
+
+      console.log('GET', url3);
   
-      const r = await fetch(url, {
+      const r = await fetch(url3, {
         headers: {
           'Accept': 'application/vnd.github+json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -542,7 +557,7 @@ function bindWorkId(root){
         if (btnProp) { const t = btnProp.textContent; btnProp.textContent = `❌ ${r.status}`; setTimeout(()=>btnProp.textContent=t, 1200); }
         btnApplySel && (btnApplySel.disabled = true);
         __picked = null;
-        console.warn('[Proposer][Git] HTTP', r.status, url);
+        console.warn('[Proposer][Git] HTTP', r.status, url3);
         return;
       }
   
@@ -667,7 +682,11 @@ function bindWorkId(root){
 
     const stamp = mkStamp();
     const path  = `clients/${client}/${service}/${dateStr}/${kind}-${stamp}.json`;
-    const url   = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+    
+    //const url   = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+    // remplace tout usage de url/url2 par ça :
+    const segs = (...xs)=> xs.map(s=>encodeURIComponent(String(s))).join('/');
+    const url3 = (o,r,b,...ps)=> `https://api.github.com/repos/${o}/${r}/contents/${segs(...ps)}?ref=${encodeURIComponent(b)}`;
 
     const payload = (kind === 'snapshot')
       ? { local: collectParia(), meta:{ reason:'manual:snapshot', at:new Date().toISOString() } }
@@ -679,7 +698,7 @@ function bindWorkId(root){
       branch
     };
 
-    const r = await fetch(url, {
+    const r = await fetch(url3, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -692,7 +711,7 @@ function bindWorkId(root){
     if (r.status !== 201 && r.status !== 200) {
       const t = btn?.textContent;
       if (btn) { btn.textContent = `❌ ${r.status}`; setTimeout(()=>btn.textContent=t, 1200); }
-      console.warn('[', kind, '][Git] HTTP', r.status, url, await r.text().catch(()=>'')); 
+      console.warn('[', kind, '][Git] HTTP', r.status, url3, await r.text().catch(()=>'')); 
       return { ok:false, status:r.status };
     }
 
@@ -742,6 +761,11 @@ function bindActions(root){
     patch.git_token  = $('#git-token',  root)?.value?.trim() || '';
 
     settingsSave(patch);
+    const dateStr = $('#work-date', root)?.value || new Date().toISOString().slice(0,10);
+    const S = settingsLoad();                          // relis ce que tu viens de sauver
+    const wNow = $('#workid-now', root);
+    if (wNow) wNow.textContent = `WorkID actuel : ${(S.client||'').trim()}|${(S.service||'').trim()}|${dateStr}`;
+
     autoTests(root);
     // refresh workid preview après save
     const wNow = $('#workid-now', root);
@@ -777,5 +801,6 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
