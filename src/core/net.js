@@ -2,6 +2,16 @@
 
 import { settingsLoad } from './settings.js';
 
+// --- net.js ---
+export const ghHeaders = (token)=>({
+  'Accept':'application/vnd.github+json',
+  ...(token?{Authorization:`Bearer ${token}`}:{})
+});
+export const ghPath = (...xs)=> xs.map(s=>encodeURIComponent(String(s))).join('/');
+export const ghContentsUrl = (owner,repo,branch,...segs)=>
+  `https://api.github.com/repos/${owner}/${repo}/contents/${ghPath(...segs)}?ref=${encodeURIComponent(branch)}`;
+// ↑ = "url3" unique. Supprimer les anciennes variables url/url2 dans le code.
+
 // GAS settings
 export function getGAS() {
   const s = settingsLoad() || {};
@@ -221,6 +231,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
