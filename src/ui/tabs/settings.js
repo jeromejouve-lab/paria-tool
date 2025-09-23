@@ -360,11 +360,6 @@ function bindWorkId(root){
           const hhmm = timeStr.replace(':','-');
           const after = items.find(o => o.at >= `${dateStr}_${hhmm}-00`);
           candidatePath = (after || items[items.length-1]).path;
-          const atIso = timeStr ? `${dateStr}T${timeStr}:00` : null;
-          // tri DESC déjà fait…
-          if (atIso) {
-            items = items.filter(x => Date.parse(x.at) >= Date.parse(atIso));
-          }
         } else {
           candidatePath = items[items.length-1].path;
         }
@@ -553,7 +548,8 @@ function bindWorkId(root){
       }
   
       const base = `clients/${client}/${service}/${dateStr}`;
-      const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${candidatePath.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;
+
       console.log('GET', url);
   
       const r = await fetch(url, {
@@ -699,7 +695,7 @@ function bindWorkId(root){
 
     const stamp = mkStamp();
     const path  = `clients/${client}/${service}/${dateStr}/${kind}-${stamp}.json`;
-    const url   = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${candidatePath.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;
 
     const payload = (kind === 'snapshot')
       ? { local: collectParia(), meta:{ reason:'manual:snapshot', at:new Date().toISOString() } }
@@ -809,6 +805,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
