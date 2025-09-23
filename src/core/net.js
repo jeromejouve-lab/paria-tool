@@ -142,7 +142,7 @@ export async function saveToGit(payload) {
 
   const jsonStr = JSON.stringify(payload, null, 2);
   const contentB64 = btoa(unescape(encodeURIComponent(jsonStr)));
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
 
   const res = await fetch(url, {
     method: 'PUT',
@@ -172,7 +172,7 @@ export async function publishSession({ workId, sessionId, data }) {
   const jsonStr   = JSON.stringify({ ...(data||{}), session_id: sessionId, work_id: workId }, null, 2);
   const contentB64= btoa(unescape(encodeURIComponent(jsonStr)));
 
-  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
+  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
   const res = await fetch(api, {
     method: 'PUT',
     headers: {
@@ -196,7 +196,7 @@ export async function loadSession({ workId, sessionId }) {
   const [client, service, dateStr] = String(workId).split('|');
   const path = `clients/${client}/${service}/${dateStr}/sessions/${sessionId}.json`;
 
-  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=main`;
+  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=main`;
   const res = await fetch(api, {
     method: 'GET',
     headers: {
@@ -210,117 +210,6 @@ export async function loadSession({ workId, sessionId }) {
   return { ok:true, status: res.status, data: content, path };
 }
 
-// ---------- SNAPSHOTS: lecture du dernier backup + recherche d'une card ----------
-async function __ghListDir(path){
-  // Liste le contenu d'un dossier via GitHub Contents API
-  const s = settingsLoad() || {};
-  const owner  = (s.git_owner  || s.endpoints?.git?.owner  || '').trim();
-  const repo   = (s.git_repo   || s.endpoints?.git?.repo   || '').trim();
-  const token  = (s.git_token  || s.endpoints?.git?.token  || '').trim();
-  if (!owner || !repo || !token) return { ok:false, status:0, entries:[] };
-
-  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=main`;
-  const res = await fetch(api, { headers:{
-    'Accept':'application/vnd.github+json',
-    'Authorization':`Bearer ${token}`
-  }});
-  if (res.status===404) return { ok:false, status:404, entries:[] };
-  const data = await res.json();
-  return { ok:true, status:res.status, entries:Array.isArray(data)?data:[] };
-}
-
-async function __ghLoadJsonFile(path){
-  const s = settingsLoad() || {};
-  const owner  = (s.git_owner  || s.endpoints?.git?.owner  || '').trim();
-  const repo   = (s.git_repo   || s.endpoints?.git?.repo   || '').trim();
-  const token  = (s.git_token  || s.endpoints?.git?.token  || '').trim();
-  if (!owner || !repo || !token) return null;
-
-  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=main`;
-  const res = await fetch(api, { headers:{
-    'Accept':'application/vnd.github+json',
-    'Authorization':`Bearer ${token}`
-  }});
-  if (!res.ok) return null;
-  const j = await res.json();
-  try {
-    const txt = decodeURIComponent(escape(atob(j.content||'')));
-    return JSON.parse(txt);
-  } catch { return null; }
-}
-
-/**
- * Retourne le dernier snapshot (backup-*.json ou snapshot-*.json) pour un workId donné.
- * Forme de retour alignée avec reducers.hydrateOnEnter : si le JSON contient {data:{...}}, on renvoie data ; sinon on renvoie l'objet lui-même.
- */
-export async function loadLatestSnapshot({ workId } = {}){
-  if (!workId) return null;
-  const [client, service, dateStr] = String(workId).split('|');
-  const base = `clients/${client}/${service}/${dateStr}`;
-
-  // lister le dossier du jour
-  const list = await __ghListDir(base);
-  if (!list.ok) return null;
-
-  // ne garder que backups/snapshots JSON
-  const files = list.entries
-    .filter(e => e.type==='file' && /\.json$/i.test(e.name))
-    .filter(e => /^backup-|^snapshot-/i.test(e.name))
-    .map(e => e.name)
-    .sort()        // noms triables lexicographiquement car timés
-    .reverse();    // dernier d'abord
-
-  for (const name of files){
-    const path = `${base}/${name}`;
-    const obj = await __ghLoadJsonFile(path);
-    if (!obj) continue;
-    const payload = (obj && obj.data) ? obj.data : obj; // nos backups stockent {workId, data:{...}}
-    if (payload && (payload.cards || payload.items || payload.charter)) return payload;
-  }
-  return null;
-}
-
-/**
- * Recherche une card par id en parcourant les derniers snapshots.
- * prefer : workId prioritaire (ex: aujourd'hui). On tente aussi J-1, J-2, J-3 si besoin.
- */
-export async function loadCardFromSnapshots({ id, prefer } = {}){
-  if (!id) return null;
-
-  // construit une petite liste de workIds à tester : prefer puis J-1..J-3
-  const widList = [];
-  if (prefer) widList.push(prefer);
-  const mk = (d)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const now = new Date();
-  for (let i=0;i<3;i++){ const dd=new Date(now); dd.setDate(dd.getDate()-(i+1)); widList.push(`${(settingsLoad()?.client||'default')}|${(settingsLoad()?.service||'default')}|${mk(dd)}`); }
-
-  // pour chaque workId → lister, prendre 5 fichiers max, chercher la card
-  for (const wid of widList){
-    const [client, service, dateStr] = String(wid).split('|');
-    const base = `clients/${client}/${service}/${dateStr}`;
-    const list = await __ghListDir(base);
-    if (!list.ok) continue;
-
-    const files = list.entries
-      .filter(e => e.type==='file' && /\.json$/i.test(e.name))
-      .filter(e => /^backup-|^snapshot-/i.test(e.name))
-      .map(e => e.name)
-      .sort()
-      .reverse()
-      .slice(0, 5); // borné
-
-    for (const name of files){
-      const path = `${base}/${name}`;
-      const obj = await __ghLoadJsonFile(path);
-      if (!obj) continue;
-      const payload = (obj && obj.data) ? obj.data : obj;
-      const set = (payload.cards || payload.items || []);
-      const found = (set||[]).find(c => String(c.id)===String(id));
-      if (found) return found;
-    }
-  }
-  return null;
-}
 
 /**
  * Compat: alias JSON (certain code appelait postJson).
@@ -332,9 +221,6 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
-
-
-
 
 
 

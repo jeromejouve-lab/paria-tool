@@ -147,43 +147,6 @@ export function writeClientProfile(client, data){
 }
 
 // --- Cards (v2: cards + updates) — remplace le bloc items
-
-export function duplicateCardForScenario(originId){
-  const b = readClientBlob();
-  const src = (b.cards||[]).find(c=>String(c.id)===String(originId));
-  if (!src) return null;
-
-  b.cards = b.cards || [];
-  b.seq   = b.seq   || {};
-  b.seq.cards_id = b.seq.cards_id || 0;
-
-  const id = (++b.seq.cards_id);
-
-  const chain = Array.isArray(src?.meta?.origin_chain) ? [...src.meta.origin_chain] : [];
-  const origin_chain = [ Number(src.id), ...chain ]; // ex: [34,3]
-
-  const titleBase = (src.title || `Card ${src.id}`).trim();
-  const t = new Date();
-  const pad = v=>String(v).padStart(2,'0');
-  const stamp = `${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())} ${pad(t.getHours())}:${pad(t.getMinutes())}`;
-
-  const card = JSON.parse(JSON.stringify({
-    ...src,
-    id,
-    type: 'scenario',
-    meta: { ...(src.meta||{}), origin_card_id: src.id, origin_chain },
-    title: `${titleBase} — Scénario (${stamp})`,
-    state: { ...(src.state||{}), deleted:false }, // la copie est active
-    created_ts: Date.now(),
-    updated_ts: Date.now()
-  }));
-
-  b.cards.push(card);
-  writeClientBlob(b);
-  logEvent('scenario/duplicate',{kind:'card', id, origin: src.id},{ origin_chain });
-  return id;
-}
-
 export function listCards(){
   return (readClientBlob().cards||[]);
 }
@@ -395,91 +358,26 @@ export function promoteScenario(id, {targetCardId=null}={}){
 // --- Session/Projecteur (sur card active)
 export function getSession(){ return readClientBlob().meta?.session || {status:'idle'}; }
 export function setSession(patch){ const b=readClientBlob(); b.meta=b.meta||{}; b.meta.session={ ...(b.meta.session||{}), ...patch, updated_ts:Date.now() }; writeClientBlob(b); return b.meta.session; }
-
-export async function startSession(cardId){
-  const sess = setSession({
-    status: 'running',
-    card_id: cardId,
-    session_id: (readClientBlob()?.meta?.session?.session_id) || (crypto?.randomUUID?.() || ('s'+Date.now())),
-    started_ts: readClientBlob()?.meta?.session?.started_ts || Date.now(),
-    updated_ts: Date.now()
-  });
-  try {
-    const { saveToGit }   = await import('../core/net.js');
-    const { buildWorkId } = await import('../core/settings.js');
-    await saveToGit({ workId: buildWorkId(), data: readClientBlob() });
-  } catch(e){ console.warn('[session/save start]', e); }
-  return sess;
-}
-
-export async function pauseSession(){
-  const sess = setSession({ status:'paused', updated_ts: Date.now() });
-  try{
-    const { saveToGit }   = await import('../core/net.js');
-    const { buildWorkId } = await import('../core/settings.js');
-    await saveToGit({ workId: buildWorkId(), data: readClientBlob() });
-  }catch(e){ console.warn('[session/save pause]', e); }
-  return sess;
-}
-
-export async function stopSession(){
-  const sess = setSession({ status:'stopped', stopped_ts: Date.now(), updated_ts: Date.now() });
-  try{
-    const { saveToGit }   = await import('../core/net.js');
-    const { buildWorkId } = await import('../core/settings.js');
-    await saveToGit({ workId: buildWorkId(), data: readClientBlob() });
-  }catch(e){ console.warn('[session/save stop]', e); }
-  return sess;
-}
-
-export async function updateSessionState(patch){
-  const sess = setSession({ ...(patch||{}), updated_ts: Date.now() });
-  try{
-    const { saveToGit }   = await import('../core/net.js');
-    const { buildWorkId } = await import('../core/settings.js');
-    await saveToGit({ workId: buildWorkId(), data: readClientBlob() });
-  }catch(e){ console.warn('[session/save update]', e); }
-  return sess;
-}
-
-export async function endSession(){
-  const sess = setSession({ status:'ended', ended_ts: Date.now(), updated_ts: Date.now() });
-  try{
-    const { saveToGit }   = await import('../core/net.js');
-    const { buildWorkId } = await import('../core/settings.js');
-    await saveToGit({ workId: buildWorkId(), data: readClientBlob() });
-  }catch(e){ console.warn('[session/save end]', e); }
-  return sess;
-}
-
-
-export async function addSessionComment({author='moi',text=''}){
+export function startSession(cardId){ return setSession({ status:'running', card_id:cardId, started_ts:Date.now() }); }
+export function pauseSession(){ return setSession({ status:'paused' }); }
+export function stopSession(){ return setSession({ status:'stopped', stopped_ts:Date.now() }); }
+export function addSessionComment({author='moi',text=''}){
   const b = readClientBlob();
   const sid = b.meta?.session?.card_id;
   if (!sid) return false;
   ensureSection(sid,'1','Proposition 1');
-  appendCardUpdate(sid,'1',{ origin:'seance', type:'comment', md:text, author });
+  appendCardUpdate(sid,'1',{ origin:'projecteur', type:'comment', md:text, meta:{author} });
   touchCard(sid);
-  try {
-    const { saveToGit } = await import('../core/net.js');
-    const { buildWorkId } = await import('../core/settings.js');
-    await saveToGit({ workId: buildWorkId(), data: readClientBlob() });
-  } catch(e){ console.warn('[session/saveToGit comment]', e); }
   return true;
 }
 
-export async function addSessionAnnotation({author='moi',text=''}){
+export function addSessionAnnotation({author='moi',text=''}){
   const b = readClientBlob();
   const sid = b.meta?.session?.card_id;
   if (!sid) return false;
   ensureSection(sid,'1','Proposition 1');
-  appendCardUpdate(sid,'1',{ origin:'seance', type:'note', md:text, author, visibility:'public' });
+  appendCardUpdate(sid,'1',{ origin:'projecteur', type:'note', md:text, meta:{author} });
   touchCard(sid);
-  try {
-    const { saveToGit } = await import('../core/net.js');
-    const { buildWorkId } = await import('../core/settings.js');
-    await saveToGit({ workId: buildWorkId(), data: readClientBlob() });
-  } catch(e){ console.warn('[session/saveToGit note]', e); }
   return true;
 }
 
@@ -707,9 +605,6 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
-
-
-
 
 
 
