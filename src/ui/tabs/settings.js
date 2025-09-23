@@ -332,7 +332,7 @@ function bindWorkId(root){
       let candidatePath = __picked?.path; // si une sélection a été faite dans la liste
       if (!candidatePath){
         const base = `clients/${client}/${service}/${dateStr}`;
-        const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${base.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;
+        const url2 = `https://api.github.com/repos/${owner}/${repo}/contents/${candidatePath.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;
 
         console.log('GET', url);
         const r = await fetch(url, {
@@ -829,6 +829,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
