@@ -4,7 +4,7 @@ import { settingsLoad, settingsSave, updateLocalUsageBadge, buildWorkId } from '
 import { bootstrapWorkspace, ghContentsUrl, ghHeaders } from '../../core/net.js';
 
 
-const $ = (s, r=document) => r.querySelector(s);
+const $ = (s, r=document) => r.querySelector(s); 
 
 function markErr(root, sel, on){
   const el = root.querySelector(sel);
@@ -769,6 +769,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
