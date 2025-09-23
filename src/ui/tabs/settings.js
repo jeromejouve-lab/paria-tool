@@ -569,6 +569,12 @@ function bindWorkId(root){
   
       // tri DESC (plus récent en haut)
       items.sort((a,b)=> Date.parse(b.at) - Date.parse(a.at));
+      
+      // filtre par heure si saisie (affichage ≥ HH:MM)
+      if (timeStr) {
+        const atIso = `${dateStr}T${timeStr}:00`;
+        items = items.filter(x => Date.parse(x.at) >= Date.parse(atIso));
+      }
   
       if (!items.length){
         listEl.innerHTML = `<div class="muted">Aucun snapshot/backup pour ${dateStr}.</div>`;
@@ -783,6 +789,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
