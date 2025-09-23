@@ -7,6 +7,26 @@ import * as Projector from './ui/tabs/projector.js';
 import * as Journal   from './ui/tabs/journal.js';
 import './core/compat-exports.js';
 
+// --- app.js ---
+import { backupFlushLocal, backupPushGit } from './core/reducers.js';
+import { backupsList, restoreFromGit } from './core/reducers.js';
+
+async function initOnBoot(){
+  const blob = JSON.parse(localStorage.getItem('paria.blob')||'null');
+  if (!blob || !blob.workId) {
+    const S = JSON.parse(localStorage.getItem('paria.settings')||'{}');
+    const date = document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10);
+    const list = await backupsList(date); // propose dernière
+    if (list.length) await restoreFromGit(list[0].url);
+  }
+  // ici: hydrate UI depuis paria.blob (charter/profile/cards)
+}
+initOnBoot();
+
+let autobakTimer = setInterval(async ()=>{
+  backupFlushLocal();
+  try { await backupPushGit(); console.log('⏱ autobackup ok'); } catch(e){ console.warn('autobackup fail', e.message); }
+}, 5*60*1000); // 5mn
 
 const mounts = {
   settings : Settings.mount,
@@ -73,6 +93,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
