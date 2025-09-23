@@ -1,7 +1,8 @@
 // src/ui/tabs/settings.js — injection au mount, diag sur CHAMPS, WorkID + Restore
 
 import { settingsLoad, settingsSave, updateLocalUsageBadge, buildWorkId } from '../../core/settings.js';
-import { bootstrapWorkspace } from '../../core/net.js';
+import { bootstrapWorkspace, ghContentsUrl, ghHeaders } from '../../core/net.js';
+
 
 const $ = (s, r=document) => r.querySelector(s);
 
@@ -330,21 +331,8 @@ function bindWorkId(root){
       // 1) Choisir le snapshot/backup candidat
       let candidatePath = __picked?.path; // si une sélection a été faite dans la liste
       if (!candidatePath){
-        const base = `clients/${client}/${service}/${dateStr}`;
-        
-        //const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
-        // remplace tout usage de url/url2 par ça :
-        const segs = (...xs)=> xs.map(s=>encodeURIComponent(String(s))).join('/');
-        const url3 = (o,r,b,...ps)=> `https://api.github.com/repos/${o}/${r}/contents/${segs(...ps)}?ref=${encodeURIComponent(b)}`;
-
-        console.log('GET', url3);
-        const r = await fetch(url3, {
-          headers: {
-            'Accept': 'application/vnd.github+json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          }
-        });
-        
+        const listUrl = ghContentsUrl(owner, repo, branch, 'clients', client, service, dateStr);
+        const r = await fetch(listUrl, { headers: ghHeaders(token) });
         const arr = (r.status===200 ? await r.json() : []);
         const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
         const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
@@ -371,18 +359,9 @@ function bindWorkId(root){
   
       // 2) Charger le JSON depuis Git
       
-      //const url2 = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(candidatePath)}?ref=${encodeURIComponent(branch)}`;
-      // remplace tout usage de url/url2 par ça :
-      const segs = (...xs)=> xs.map(s=>encodeURIComponent(String(s))).join('/');
-      const url3 = (o,r,b,...ps)=> `https://api.github.com/repos/${o}/${r}/contents/${segs(...ps)}?ref=${encodeURIComponent(b)}`;
+      const fileUrl = ghContentsUrl(owner, repo, branch, ...candidatePath.split('/'));
+      const r2 = await fetch(fileUrl, { headers: ghHeaders(token) });
 
-      console.log('GET', url3);
-      const r2 = await fetch(url3, {
-        headers: {
-          'Accept': 'application/vnd.github+json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
-      });
       if (r2.status !== 200) throw new Error('not_found');
       const meta = await r2.json();
       const raw  = atob((meta.content||'').replace(/\n/g,''));
@@ -536,21 +515,9 @@ function bindWorkId(root){
         return;
       }
   
-      const base = `clients/${client}/${service}/${dateStr}`;
-      
-      //const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(base)}?ref=${encodeURIComponent(branch)}`;
-      // remplace tout usage de url/url2 par ça :
-      const segs = (...xs)=> xs.map(s=>encodeURIComponent(String(s))).join('/');
-      const url3 = (o,r,b,...ps)=> `https://api.github.com/repos/${o}/${r}/contents/${segs(...ps)}?ref=${encodeURIComponent(b)}`;
-
-      console.log('GET', url3);
-  
-      const r = await fetch(url3, {
-        headers: {
-          'Accept': 'application/vnd.github+json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
-      });
+      // LISTE DU JOUR DEMANDÉ (GitHub Contents)
+      const listUrl = ghContentsUrl(owner, repo, branch, 'clients', client, service, dateStr);
+      const r = await fetch(listUrl, { headers: ghHeaders(token) });
 
       if (r.status !== 200) {
         listEl.innerHTML = `<div class="muted">❌ Git ${r.status} — vérifie repo/token/droits</div>`;
@@ -801,6 +768,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
