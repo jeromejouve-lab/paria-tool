@@ -334,8 +334,8 @@ function bindWorkId(root){
         const listUrl = ghContentsUrl(owner, repo, branch, 'clients', client, service, dateStr);
         const r = await fetch(listUrl, { headers: ghHeaders(token) });
         const arr = (r.status===200 ? await r.json() : []);
-        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
-        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
+        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{3})?\.json$/;
+        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{3})?\.json$/;
   
         const items = Array.isArray(arr) ? arr
           .filter(x => x?.type==='file' && (SNAP.test(x.name) || BACK.test(x.name)))
@@ -345,9 +345,16 @@ function bindWorkId(root){
           }) : [];
   
         if (!items.length) throw new Error('no_snapshots_for_day');
+
+        // Filtre ≥ HH:MM si saisi
+        if (timeStr && /^\d{2}:\d{2}$/.test(timeStr)) {
+          const atIso = `${dateStr}T${timeStr}:00`;
+          items = items.filter(o => Date.parse(o.at) >= Date.parse(atIso));
+        }
   
         // tri ASC pour appliquer la règle ≥ HH:MM ; sinon dernier du jour
         items.sort((a,b)=> a.at.localeCompare(b.at));
+
         if (timeStr){
           const hhmm = timeStr.replace(':','-');
           const after = items.find(o => o.at >= `${dateStr}_${hhmm}-00`);
@@ -532,8 +539,8 @@ function bindWorkId(root){
       let items = [];
       if (r.status === 200){
         const arr = await r.json();
-        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
-        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json$/;
+        const SNAP = /^snapshot-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{3})?\.json$/;
+        const BACK = /^backup-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-\d{3})?\.json$/;
   
         items = Array.isArray(arr) ? arr
           .filter(x => x?.type === 'file' && (SNAP.test(x.name) || BACK.test(x.name)))
@@ -543,7 +550,13 @@ function bindWorkId(root){
             return { at, source:'git', path:x.path, name:x.name };
           }) : [];
       }
-  
+      
+      // Filtre ≥ HH:MM si saisi
+      if (timeStr && /^\d{2}:\d{2}$/.test(timeStr)) {
+        const atIso = `${dateStr}T${timeStr}:00`;
+        items = items.filter(o => Date.parse(o.at) >= Date.parse(atIso));
+      }
+
       // tri DESC (plus récent en haut)
       items.sort((a,b)=> Date.parse(b.at) - Date.parse(a.at));
   
@@ -751,6 +764,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
