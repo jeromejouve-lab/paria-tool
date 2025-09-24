@@ -720,9 +720,6 @@ function bindActions(root){
     const S = settingsLoad();                          // relis ce que tu viens de sauver
 
     autoTests(root);
-    // refresh workid preview après save
-    const wNow = $('#workid-now', root);
-    if (wNow && typeof buildWorkId === 'function') wNow.textContent = `WorkID actuel : ${buildWorkId()}`;
   };
 
   // relance diag après saisie (debounce)
@@ -754,6 +751,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
