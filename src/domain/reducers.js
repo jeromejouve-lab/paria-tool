@@ -14,6 +14,68 @@ function _ensureSeq(b,key){ b.seq=b.seq||{}; b.seq[key]=(b.seq[key]||0)+1; retur
 //  `${(S.client||'').trim()}|${(S.service||'').trim()}|${dateStr}`;
 
 // === ENTRIES (séances/projecteur modifiable) ================================
+export const SCHEMA_VERSION = 1;
+
+function uid() { return 'u:' + Date.now() + ':' + Math.random().toString(36).slice(2,6); }
+function asStrId(x){ return String(x); }
+function asNumId(x){ const n = Number(x); return Number.isFinite(n) ? n : 0; }
+
+export function normalizeBlob(b0 = {}) {
+  const b = {...b0};
+  b.meta = { ...(b.meta||{}), schema: SCHEMA_VERSION };
+
+  // profile
+  const pf = b.profile ||= {};
+  pf.languages  = Array.isArray(pf.languages)  ? pf.languages  : [];
+  pf.goals      = Array.isArray(pf.goals)      ? pf.goals      : [];
+  pf.challenges = Array.isArray(pf.challenges) ? pf.challenges : [];
+  pf.constraints= Array.isArray(pf.constraints)? pf.constraints: [];
+
+  // charter
+  const ch = b.charter ||= { title:'', content:'', tags:[] };
+  ch.tags = Array.isArray(ch.tags) ? ch.tags : [];
+
+  // cards
+  b.cards = Array.isArray(b.cards) ? b.cards : [];
+  for (const c of b.cards) {
+    c.id = asNumId(c.id);
+    c.kind = c.kind==='mini' ? 'mini' : 'base';
+    if (c.parent_id!=null) c.parent_id = asNumId(c.parent_id);
+    if (Array.isArray(c.source_ids)) c.source_ids = c.source_ids.map(asNumId);
+    c.sections = Array.isArray(c.sections) ? c.sections.map(s=>({ id:asStrId(s.id), title:String(s.title||'') })) : [];
+    c.updates  = Array.isArray(c.updates)  ? c.updates  : [];
+    for (const u of c.updates) {
+      u.id = u.id ? String(u.id) : uid();
+      u.section_id = asStrId(u.section_id ?? '1');
+      u.type = (['client_md','note','ai_md'].includes(u.type)?u.type:'client_md');
+      u.origin = (['moi','client','ia'].includes(u.origin)?u.origin:'client');
+      u.md = String(u.md||'');
+      u.meta = { ...(u.meta||{}), created_ts: u.meta?.created_ts || Date.now() };
+      u.ai = u.ai || { status:'idle' };
+    }
+  }
+
+  // index
+  const idx = b.index ||= {};
+  for (const c of b.cards) {
+    idx[c.id] ||= { active:true, paused:false, deleted:false };
+  }
+
+  // tabs
+  const tb = b.tabs ||= {};
+  tb.cards = 'on';
+  tb.seance = (['on','pause','off'].includes(tb.seance)?tb.seance:'on');
+  tb.projector = (['on','pause','off'].includes(tb.projector)?tb.projector:'on');
+
+  return b;
+}
+
+export function validateBlob(b = {}) {
+  if (!b.workId || typeof b.workId!=='string') throw new Error('blob.workId invalide');
+  if (!Array.isArray(b.cards)) throw new Error('blob.cards invalide');
+  // (on peut en rajouter si tu veux, mais restons léger)
+  return true;
+}
 
 export function addSectionEntry(cardId, sectionId, { text='', origin='client', author='client' } = {}) {
   // on stocke le commentaire du client comme "client_md" (déjà supporté par getCardView par défaut)
@@ -741,6 +803,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
