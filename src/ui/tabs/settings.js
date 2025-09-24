@@ -373,11 +373,11 @@ function bindWorkId(root){
       const meta = await r2.json();
       const raw  = atob((meta.content||'').replace(/\n/g,''));
       let snap=null; try { snap = JSON.parse(raw); } catch { throw new Error('bad_json'); }
-  
-      // 3) Appliquer (replace namespace paria.*) + backup
-      const content = snap?.local || snap?.content?.local || snap?.content || snap || {};
+ 
+      // 3) Appliquer (uniquement les données attendues)
+      const content = snap?.data || {};
       if (!content || typeof content !== 'object') throw new Error('empty');
-  
+        
       const keys = Object.keys(localStorage).filter(k=>k.startsWith('paria') && k!=='paria.__backup__');
       const bak = keys.reduce((a,k)=>(a[k]=localStorage.getItem(k),a),{});
       // garder la conf et le backup interne
@@ -394,12 +394,7 @@ function bindWorkId(root){
       // écrire UNIQUEMENT les données restaurées
       const blob = { workId: snap.workId, ...snap.data, meta: { ...snap.meta, restored_at: new Date().toISOString() } };
       localStorage.setItem('paria.blob', JSON.stringify(blob));
-
-      for (const [k,v] of Object.entries(content)){
-        const key = k.startsWith('paria') ? k : `paria.${k}`;
-        localStorage.setItem(key, typeof v==='string' ? v : JSON.stringify(v));
-      }
-  
+ 
       if (statusEl) statusEl.textContent = '✅ restauré (Git one-click)';
       try { await bootstrapWorkspace(); } catch {}
       setTimeout(()=> location.reload(), 120);
@@ -795,6 +790,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
