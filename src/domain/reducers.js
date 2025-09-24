@@ -13,6 +13,51 @@ function _ensureSeq(b,key){ b.seq=b.seq||{}; b.seq[key]=(b.seq[key]||0)+1; retur
 //export const buildWorkId = (S, dateStr)=>
 //  `${(S.client||'').trim()}|${(S.service||'').trim()}|${dateStr}`;
 
+// === ENTRIES (séances/projecteur modifiable) ================================
+
+export function addSectionEntry(cardId, sectionId, { text='', origin='client', author='client' } = {}) {
+  // on stocke le commentaire du client comme "client_md" (déjà supporté par getCardView par défaut)
+  const id = appendCardUpdate(cardId, sectionId, {
+    origin, type: 'client_md', md: String(text||''),
+    meta: { author, created_ts: Date.now() }
+  });
+  touchCard(cardId);
+  return id; // update_id
+}
+
+export function hideEntry(cardId, updateId, hidden = true) {
+  const b = readClientBlob();
+  const c = (b.cards||[]).find(x => String(x.id) === String(cardId));
+  if (!c) return false;
+  const u = (c.updates||[]).find(x => String(x.id) === String(updateId));
+  if (!u) return false;
+  u.meta = { ...(u.meta||{}), hidden: !!hidden, updated_ts: Date.now() };
+  c.updated_ts = Date.now();
+  writeClientBlob(b);
+  logEvent('entry/hide', { kind:'update', card_id:cardId, update_id:updateId }, { hidden: !!hidden });
+  maybeImmediateBackup?.();
+  return true;
+}
+
+// Petite façade pour IA sur une entrée (l’UI appellera cette fonction)
+export async function aiAnalyzeEntry({ cardId, updateId, sectionId } = {}) {
+  const b = readClientBlob();
+  const c = (b.cards||[]).find(x => String(x.id) === String(cardId));
+  if (!c) throw new Error('card not found');
+  const u = (c.updates||[]).find(x => String(x.id) === String(updateId));
+  if (!u) throw new Error('entry not found');
+  const charter = b.charter || {};
+  // on prépare un “résumé” d’IA identique à addAItoCard (déjà supporté)
+  const prompt = {
+    mode: 'paria',
+    subject: { kind: 'card' },
+    context: { charter, tab: 'cards' },
+    payload: { text: u.md || '', sectionId: sectionId || u.section_id }
+  };
+  // ⚠️ on ne dépend pas ici de askAI (core/ai) pour éviter les cycles; l’UI s’en chargera.
+  return { ok: true, prompt };
+}
+
 export function backupFlushLocal() {
   const S = JSON.parse(localStorage.getItem('paria.settings')||'{}');
   const date = document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10);
@@ -696,6 +741,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
