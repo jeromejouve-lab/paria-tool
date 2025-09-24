@@ -170,7 +170,7 @@ function renderDetail(host){
   const viewBySec = new Map();
 
   for (const sec of sections){
-    const f = (card.ui?.filters?.[sec.id]) || {days:daysSel, types:['analyse','note','comment','client_md','client_html']};
+    const f = (card.ui?.filters?.[sec.id]) || { days:daysSel, types:['analyse','ai_md','note','comment','client_md','client_html'] };
     // priorité aux jours du panneau global; sinon ceux stockés dans la card
     const filt = { days: (daysSel.length?daysSel:(f.days||[])), types: f.types };
     const v = getCardView(String(card.id), { sectionId: sec.id, days: filt.days, types: filt.types }); // même API que Cards :contentReference[oaicite:1]{index=1}
@@ -327,5 +327,6 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
