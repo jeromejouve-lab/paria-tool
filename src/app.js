@@ -81,7 +81,7 @@ export function boot(){
   const firstBtn = document.querySelector('[data-tab]');
   const first = TABS.includes(hash) ? hash : (firstBtn?.dataset?.tab && TABS.includes(firstBtn.dataset.tab) ? firstBtn.dataset.tab : 'settings');
   showTab(first);
-  import('../domain/reducers.js').then(m => { try{ m.startAutoBackup?.(); }catch{} });
+  import('./domain/reducers.js').then(m => { try{ m.startAutoBackup?.(); }catch{} });
 }
 
 // auto-boot
@@ -93,6 +93,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
