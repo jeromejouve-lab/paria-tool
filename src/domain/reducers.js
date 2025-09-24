@@ -83,9 +83,14 @@ function normalizeBlob(b){
       if (t==='comment') t='client_md';
       if (t==='ai') t='ai_md';
       if (!ALLOWED_UPDATE_TYPES.has(t)) t='client_md';
-      uu.type = t;
-
-      uu.md = normStr(uu.md ?? uu.text ?? '');  // legacy text→md
+      const tRaw = String(uu.type || 'note');
+      const tMap = (tRaw === 'comment') ? 'client_md'
+           : (tRaw === 'analyse') ? 'ai_md'
+           : (ALLOWED_UPDATE_TYPES.has(tRaw) ? tRaw : 'note');
+      uu.type = tMap;
+      uu.md   = (typeof uu.md   === 'string') ? uu.md   : (typeof uu.text === 'string' ? uu.text : null);
+      uu.html = (typeof uu.html === 'string') ? uu.html : null;
+      uu.section_id = String(uu.section_id ?? uu.section ?? '1');
       uu.origin = (['ia','moi','client','charter','projecteur'].includes(uu.origin)) ? uu.origin : 'client';
       uu.meta = {
         author: normStr(uu.meta?.author),
@@ -874,6 +879,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
