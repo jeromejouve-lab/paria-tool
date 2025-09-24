@@ -389,6 +389,46 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     `;
   }
 
+
+  // -- composer par section (sous le header de section) --
+  function attachSectionComposer(sectionRoot, { cardId, sectionId }) {
+    let box = sectionRoot.querySelector('.composer');
+    attachSectionComposer(sectionRoot, { cardId: card.id, sectionId: section.id });
+
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'composer';
+      box.style.cssText = 'display:flex;gap:6px;margin:8px 0;';
+      box.innerHTML = `
+        <textarea class="composer-text" rows="2" style="flex:1"></textarea>
+        <button class="composer-add">+ </button>
+        <button class="composer-ai">IA</button>
+      `;
+      sectionRoot.appendChild(box);
+    }
+    const ta = box.querySelector('.composer-text');
+    box.querySelector('.composer-add').onclick = () => {
+      const txt = (ta.value||'').trim();
+      if (!txt) return;
+      addSectionEntry(cardId, sectionId, { text: txt, author:'client' });
+      ta.value = '';
+      // rerender local (le code existant de render est déjà appelé après append)
+    };
+    box.querySelector('.composer-ai').onclick = async () => {
+      const txt = (ta.value||'').trim();
+      if (!txt) return;
+      const prep = await aiAnalyzeEntry({ cardId, updateId: addSectionEntry(cardId, sectionId, { text: txt, author:'client' }), sectionId });
+      // demander l’IA avec le contexte charter + commentaire
+      const resp = await askAI({ route:'ai', work_id: buildWorkId?.(), task: { mode:'paria', subject:{kind:'card'}, payload:{ text: txt, sectionId }, context:{ charter:getCharter?.(), tab:'cards' } } });
+      if (resp?.status==='ok' && Array.isArray(resp.results)) {
+        addAItoCard(cardId, resp.results);
+      }
+      ta.value='';
+    };
+  }
+
+
+  
   // -- actions sur les petites cards (compact) --
 
   detail.addEventListener('change', (ev)=>{
@@ -722,6 +762,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
