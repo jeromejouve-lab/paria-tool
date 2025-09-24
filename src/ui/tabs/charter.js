@@ -567,6 +567,11 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
           prompt: p.prompt || _promptUsed
         }));
         applyAIResults({kind:'charter'}, _stamped, {mode:'append'});
+        // 👇 forcer la persistance + re-render
+        saveCharter({ ai: (getCharter().ai || []).concat(_stamped), last_prompt: lastPrompt });
+        const box = document.querySelector('#charter-proposals-box');
+        if (box) box.innerHTML = renderProposals(getCharter());
+
 
         $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
         $('#charter-proposals-box', host).querySelectorAll('.actions [data-action="prop-preview"]').forEach(el=>el.remove());
@@ -776,6 +781,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
