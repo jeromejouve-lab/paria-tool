@@ -567,7 +567,7 @@ export function pushSelectedCharterToCards(){
   // --- source sélection : prioriser paria.charter (même source que l'UI) ---
   const chLocal = (()=>{ try{ return JSON.parse(localStorage.getItem('paria.charter')||'{}'); }catch{ return {}; } })();
   const chBlob  = b.charter || {};
-  const chSrc   = (Array.isArray(chLocal.ai) && chLocal.ai.length>=0) ? chLocal : chBlob;
+  const chSrc   = (Array.isArray(chLocal.ai) && chLocal.ai.length > 0) ? chLocal : chBlob;
 
   // sélection effective
   const sel = (chSrc.ai||[]).filter(p => p?.state?.selected && !p?.state?.deleted);
@@ -896,6 +896,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
