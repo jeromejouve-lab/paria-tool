@@ -26,7 +26,7 @@ initOnBoot();
 let autobakTimer = setInterval(async ()=>{
   backupFlushLocal();
   try { await backupPushGit(); console.log('⏱ autobackup ok'); } catch(e){ console.warn('autobackup fail', e.message); }
-}, 5*60*1000); // 5mn
+}, 60*60*1000); // 5mn
 
 const mounts = {
   settings : Settings.mount,
@@ -93,6 +93,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
