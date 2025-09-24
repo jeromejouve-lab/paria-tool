@@ -37,7 +37,7 @@ export function backupFlushLocal() {
     headcount: Number(qs('#client-headcount')?.value)||null,
     languages: csv(qs('#client-languages')?.value),
     tone: qs('#client-tone')?.value?.trim()||'',
-    desc: qs('#client-desc')?.value||'',
+    description: qs('#client-desc')?.value||'',
     goals: csv(qs('#client-goals')?.value),
     challenges: csv(qs('#client-challenges')?.value),
     constraints: csv(qs('#client-constraints')?.value)
@@ -696,6 +696,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
