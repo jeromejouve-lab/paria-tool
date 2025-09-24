@@ -1,7 +1,7 @@
 // PARIA-V2-CLEAN v1.0.0 | ui/tabs/cards.js (injection)
 import {
   listCards, toggleThink, softDeleteCard,
-  addNote, addComment, addAItoCard, updateCard, saveWorkset, listWorksets
+  addNote, addComment, addAItoCard, updateCard, saveWorkset, listWorksets, addSectionEntry, hideEntry, aiAnalyzeEntry
 } from '../../domain/reducers.js';
 
 import { askAI } from '../../core/ai.js';
@@ -772,6 +772,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
