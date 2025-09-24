@@ -442,7 +442,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       const sec = cb.dataset.sec;
       const b = readClientBlob();
       const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
-      const f = (card.ui?.filters?.[sec]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
+      const f = (card.ui?.filters?.[sec]) || { days:[], types:['analyse','ai_md','note','comment','client_md','client_html'] };
       const set = new Set(f.days||[]);
       cb.checked ? set.add(cb.value) : set.delete(cb.value);
       setSectionFilters(cardId, sec, {days:[...set], types:f.types});
@@ -454,7 +454,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       const sec = cb.dataset.sec;
       const b = readClientBlob();
       const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
-      const f = (card.ui?.filters?.[sec]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
+      const f = (card.ui?.filters?.[sec]) || { days:[], types:['analyse','ai_md','note','comment','client_md','client_html'] };
       const set = new Set(f.types||[]);
       cb.checked ? set.add(cb.value) : set.delete(cb.value);
       setSectionFilters(cardId, sec, {days:f.days, types:[...set]});
@@ -765,6 +765,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
