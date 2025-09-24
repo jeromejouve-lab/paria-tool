@@ -665,7 +665,28 @@ function bindWorkId(root){
     const path  = `clients/${client}/${service}/${dateStr}/${kind}-${stamp}.json`;
         
     const putUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+   
+    const enc = s => {
+      const b = new TextEncoder().encode(s);
+      let bin = ''; for (let i=0;i<b.length;i++) bin += String.fromCharCode(b[i]);
+      return btoa(bin);
+    };
     
+    // on pousse de préférence le blob (données), sinon fallback "local" (sans settings)
+    const blob   = JSON.parse(localStorage.getItem('paria.blob')||'{}');
+    const workId = blob?.workId || `${client}|${service}|${dateStr}`;
+    const payload = blob?.workId
+      ? { workId, data: { profile: blob.profile, charter: blob.charter, cards: blob.cards, index: blob.index, tabs: blob.tabs } }
+      : { workId, data: { local: Object.fromEntries(Object.keys(localStorage)
+            .filter(k=>k.startsWith('paria.') && k!=='paria.__backup__' && k!=='paria.settings')
+            .map(k=>[k, (()=>{ try{return JSON.parse(localStorage.getItem(k));}catch{return localStorage.getItem(k);} })() ])) } };
+    
+    const body = {
+      message: `${kind} ${workId}`,
+      content: enc(JSON.stringify(payload, null, 2)),
+      branch
+    };
+
     const r = await fetch(putUrl, {
       method: 'PUT',
       headers: {
@@ -679,7 +700,7 @@ function bindWorkId(root){
     if (r.status !== 201 && r.status !== 200) {
       const t = btn?.textContent;
       if (btn) { btn.textContent = `❌ ${r.status}`; setTimeout(()=>btn.textContent=t, 1200); }
-      console.warn('[', kind, '][Git] HTTP', r.status, listUrl, await r.text().catch(()=>'')); 
+      console.warn('[', kind, '][Git] HTTP', r.status, putUrl, await r.text().catch(()=>'')); 
       return { ok:false, status:r.status };
     }
 
@@ -764,6 +785,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
