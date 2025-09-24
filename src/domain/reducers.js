@@ -4,12 +4,6 @@ import { logEvent } from './journal.js';
 import { bootstrapWorkspace } from '../core/net.js';
 import { buildWorkId } from '../core/settings.js';
 import { ghContentsUrl, ghHeaders } from '../core/net.js';
-import {
-  listCards, toggleThink, softDeleteCard,
-  addNote, addComment, addAItoCard, updateCard, saveWorkset, listWorksets,
-  // +++
-  addSectionEntry, hideEntry, aiAnalyzeEntry
-} from '../../domain/reducers.js';
 
 // ---- Cards v2: sections + updates (append-only) ----
 function _dayKey(ts){ const d=new Date(ts); return `${d.getFullYear()}-${(d.getMonth()+1+'').padStart(2,'0')}-${(d.getDate()+'').padStart(2,'0')}`; }
@@ -747,6 +741,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
