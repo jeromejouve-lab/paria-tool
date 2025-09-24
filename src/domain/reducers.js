@@ -55,6 +55,20 @@ function normalizeBlob(b){
     title: normStr(ch.title),
     content: normStr(ch.content),
     tags: normArr(ch.tags).map(String),
+  
+    // 👇 AJOUT : on conserve et on normalise les propositions IA
+    ai: Array.isArray(ch.ai) ? ch.ai.map(p => ({
+      id:       String(p && p.id != null ? p.id : ''),
+      ts:       Number(p && p.ts) || Date.now(),
+      title:    String(p && p.title    ? p.title    : ''),
+      content:  String(p && p.content  ? p.content  : ''),
+      prompt:   typeof (p && p.prompt) === 'string' ? p.prompt : '',
+      state: {
+        selected: !!(p && p.state && p.state.selected),
+        deleted:  !!(p && p.state && p.state.deleted)
+      }
+    })) : [],
+  
     state: { deleted: normBool(ch.state?.deleted) },
     updated_ts: normNum(ch.updated_ts)
   };
@@ -882,6 +896,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
