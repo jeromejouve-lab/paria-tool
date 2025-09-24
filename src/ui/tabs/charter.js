@@ -567,7 +567,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
           ts: Date.now(),
           prompt: p.prompt || _promptUsed
         }));
-        applyAIResults({kind:'charter'}, _stamped, {mode:'append'});
+        
         // 👇 forcer la persistance + re-render
         saveCharter({ ai: (getCharter().ai || []).concat(_stamped), last_prompt: lastPrompt });
         const box = document.querySelector('#charter-proposals-box');
@@ -782,6 +782,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
