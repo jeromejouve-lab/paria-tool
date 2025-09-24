@@ -79,10 +79,6 @@ function normalizeBlob(b){
       uu.id = +uu.id||0;
       uu.section_id = normStr(uu.section_id||'1');
       // type normalisé
-      let t = normStr(uu.type).toLowerCase();
-      if (t==='comment') t='client_md';
-      if (t==='ai') t='ai_md';
-      if (!ALLOWED_UPDATE_TYPES.has(t)) t='client_md';
       const tRaw = String(uu.type || 'note');
       const tMap = (tRaw === 'comment') ? 'client_md'
            : (tRaw === 'analyse') ? 'ai_md'
@@ -202,25 +198,19 @@ export async function aiAnalyzeEntry({ cardId, updateId, sectionId } = {}) {
 }
 
 export function backupFlushLocal() {
-  const S = JSON.parse(localStorage.getItem('paria.settings')||'{}');
-  const date = document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10);
-  const workId = buildWorkId(S, date);
-
-  const qs = s=>document.querySelector(s);
+  const S   = JSON.parse(localStorage.getItem('paria.settings')||'{}');
+  const qs  = s=>document.querySelector(s);
   const csv = s=>(s||'').split(',').map(x=>x.trim()).filter(Boolean);
-  const charter = {
-    title: qs('#charter-title')?.value?.trim()||'',
-    content: qs('#charter-content')?.value||'',
-    tags: csv(qs('#charter-tags')?.value),
-    updated_ts: Date.now()
-  };
-  const cards = JSON.parse(localStorage.getItem('paria.cards')||'[]');
-  const now = Date.now(); const index={};
-  for (const c of cards){ const st=c.state||{};
-    index[c.id] = { id:c.id, title:c.title||'', state:{active:!!st.active,paused:!!st.paused,deleted:!!st.deleted},
-      updated_ts:c.updated_ts||now, last_open_ts:st.last_open_ts||now, parent_id:c.parent_id||null };
-  }
-  const profile = {
+
+  // 1) lire le blob existant (déjà normalisé)
+  const b = readClientBlob();
+
+  // 2) workId (calé sur buildWorkId)
+  const date = qs('#work-date')?.value || new Date().toISOString().slice(0,10);
+  b.workId = buildWorkId(S, date);
+
+  // 3) patch profil & charter depuis l’UI (le reste ne bouge pas)
+  b.profile = {
     name: qs('#client-name')?.value?.trim()||'',
     headcount: Number(qs('#client-headcount')?.value)||null,
     languages: csv(qs('#client-languages')?.value),
@@ -230,12 +220,25 @@ export function backupFlushLocal() {
     challenges: csv(qs('#client-challenges')?.value),
     constraints: csv(qs('#client-constraints')?.value)
   };
-  localStorage.setItem(`paria.client.${S.client}.profile`, JSON.stringify(profile));
+  localStorage.setItem(`paria.client.${S.client}.profile`, JSON.stringify(b.profile));
 
+  b.charter = {
+    ...(b.charter||{}),
+    title: qs('#charter-title')?.value?.trim()||'',
+    content: qs('#charter-content')?.value||'',
+    tags: csv(qs('#charter-tags')?.value),
+    state: { ...(b.charter?.state||{}), deleted: !!(b.charter?.state?.deleted) },
+    updated_ts: Date.now()
+  };
+
+  // 4) tabs (si tu tiens à refléter l’état UI)
   const tabs = JSON.parse(localStorage.getItem('paria.tabs')||'null') || { cards:'on', seance:'off', projector:'off' };
-  const blob = { workId, profile, charter, cards, index, tabs, meta:{schema:'v1', snapshot_at:new Date().toISOString()} };
-  localStorage.setItem('paria.blob', JSON.stringify(blob));
-  return blob;
+  b.tabs = { ...b.tabs, ...tabs };
+
+  // 5) écrire en appliquant la normalisation centrale
+  writeClientBlob(b);
+
+  return b;
 }
 
 export async function backupPushGit() {
@@ -732,11 +735,11 @@ function __todayStr(){
   const d=new Date(), pad=v=>String(v).padStart(2,'0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
-export function getWorkIdForDate(isoDate){ // ex: "2025-09-21"
-  const b = readClientBlob();
-  const norm = s => String(s||'').replace(/\|/g,'-').trim() || 'default';
-  return `${norm(b.charter?.client)}|${norm(b.charter?.service)}|${isoDate}`;
+export function getWorkIdForDate(isoDate){
+  const S = JSON.parse(localStorage.getItem('paria.settings')||'{}');
+  return buildWorkId(S, isoDate);
 }
+
 export function getWorkIdForToday(){ return getWorkIdForDate(__todayStr()); }
 
 // ---------- mesure de remplissage local ----------
@@ -879,6 +882,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
