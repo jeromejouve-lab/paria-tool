@@ -393,7 +393,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   // -- composer par section (sous le header de section) --
   function attachSectionComposer(sectionRoot, { cardId, sectionId }) {
     let box = sectionRoot.querySelector('.composer');
-    attachSectionComposer(sectionRoot, { cardId: card.id, sectionId: section.id });
 
     if (!box) {
       box = document.createElement('div');
@@ -469,19 +468,13 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     }
     
     // hide-upd : masque uniquement le corps
-    if (cb.dataset.action==='hide-upd'){
-      const art = cb.closest('.upd');
-      if (art) art.classList.toggle('is-hidden', cb.checked);
-      return;
-    }
-
-    // dans detail.addEventListener('change', ...) :
+    // remplace les deux blocs par CE SEUL bloc
     if (cb.dataset.action==='hide-upd'){
       const art = cb.closest('.upd');
       if (art) art.classList.toggle('is-hidden', cb.checked);
       const cardId = cb.dataset.card || host.dataset.selectedCardId;
       const updId  = cb.dataset.upd;
-      if (cardId && updId) hideEntry(cardId, updId, cb.checked); // <-- persiste dans paria.blob
+      if (cardId && updId) hideEntry(cardId, updId, cb.checked); // persiste dans paria.blob
       return;
     }
 
@@ -772,6 +765,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
