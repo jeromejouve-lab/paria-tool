@@ -590,7 +590,7 @@ export function pushSelectedCharterToCards(){
       section_id: sectionId,
       ts: p.ts || Date.now(),
       origin: 'charter',
-      type: 'analyse',
+      type: 'ai_md',
       md: p.content || '',
       html: null,
       meta: { prompt: p.prompt || chSrc.last_prompt || null, think: !!(p?.state?.think) }
@@ -882,6 +882,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
