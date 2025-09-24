@@ -507,8 +507,9 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     saveCharterHistory(vals);
     saveCharter(vals);
     // Persister le prompt réellement utilisé pour l’IA
+    let lastPrompt = '';
     try{
-      const lastPrompt = (typeof buildPromptPreviewFromScreen==='function')
+      lastPrompt = (typeof buildPromptPreviewFromScreen==='function')
         ? (buildPromptPreviewFromScreen(host) || '')
         : '';
       if (lastPrompt && lastPrompt.trim()){
@@ -781,6 +782,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
