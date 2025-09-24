@@ -8,8 +8,8 @@ import * as Journal   from './ui/tabs/journal.js';
 import './core/compat-exports.js';
 
 // --- app.js ---
-import { backupFlushLocal, backupPushGit } from './core/reducers.js';
-import { backupsList, restoreFromGit } from './core/reducers.js';
+import { backupFlushLocal, backupPushGit } from './domain/reducers.js';
+import { backupsList, restoreFromGit } from './domain/reducers.js';
 
 async function initOnBoot(){
   const blob = JSON.parse(localStorage.getItem('paria.blob')||'null');
@@ -93,6 +93,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
