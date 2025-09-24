@@ -14,60 +14,137 @@ function _ensureSeq(b,key){ b.seq=b.seq||{}; b.seq[key]=(b.seq[key]||0)+1; retur
 //  `${(S.client||'').trim()}|${(S.service||'').trim()}|${dateStr}`;
 
 // === ENTRIES (séances/projecteur modifiable) ================================
-export const SCHEMA_VERSION = 1;
+// === Canon ===
+export const BLOB_VERSION = 1;
+const ALLOWED_UPDATE_TYPES = new Set(['client_md','ai_md','note']);
 
-function uid() { return 'u:' + Date.now() + ':' + Math.random().toString(36).slice(2,6); }
-function asStrId(x){ return String(x); }
-function asNumId(x){ const n = Number(x); return Number.isFinite(n) ? n : 0; }
+function normStr(x){ return (typeof x==='string'? x : (x==null?'': String(x))); }
+function normArr(x){ return Array.isArray(x)? x : []; }
+function normBool(x){ return !!x; }
+function normNum(x){ const n = Number(x); return Number.isFinite(n)? n : 0; }
 
-export function normalizeBlob(b0 = {}) {
-  const b = {...b0};
-  b.meta = { ...(b.meta||{}), schema: SCHEMA_VERSION };
+// recalcul des séquenceurs à partir des IDs existants
+function computeSeq(b){
+  const cardMax = Math.max(0, ...(b.cards||[]).map(c=>+c.id||0));
+  const updMax  = Math.max(0, ...(b.cards||[]).flatMap(c => (c.updates||[]).map(u=>+u.id||0)));
+  b.seq = b.seq || {};
+  b.seq.next_card_id   = Math.max(b.seq.next_card_id||0,   cardMax+1);
+  b.seq.next_update_id = Math.max(b.seq.next_update_id||0, updMax+1);
+}
+
+// remap legacy → canon (desc→description, comment→client_md, ai→ai_md, etc.)
+function normalizeBlob(b){
+  b = b && typeof b==='object' ? b : {};
+  b.workId = normStr(b.workId);
 
   // profile
-  const pf = b.profile ||= {};
-  pf.languages  = Array.isArray(pf.languages)  ? pf.languages  : [];
-  pf.goals      = Array.isArray(pf.goals)      ? pf.goals      : [];
-  pf.challenges = Array.isArray(pf.challenges) ? pf.challenges : [];
-  pf.constraints= Array.isArray(pf.constraints)? pf.constraints: [];
+  const p = b.profile || {};
+  b.profile = {
+    name:        normStr(p.name),
+    headcount:   (p.headcount==null? null : Number(p.headcount)||null),
+    languages:   normArr(p.languages).map(String),
+    tone:        normStr(p.tone),
+    description: normStr(p.description ?? p.desc ?? ''), // ← legacy desc
+    goals:       normArr(p.goals).map(String),
+    challenges:  normArr(p.challenges).map(String),
+    constraints: normArr(p.constraints).map(String)
+  };
 
   // charter
-  const ch = b.charter ||= { title:'', content:'', tags:[] };
-  ch.tags = Array.isArray(ch.tags) ? ch.tags : [];
+  const ch = b.charter || {};
+  b.charter = {
+    title: normStr(ch.title),
+    content: normStr(ch.content),
+    tags: normArr(ch.tags).map(String),
+    state: { deleted: normBool(ch.state?.deleted) },
+    updated_ts: normNum(ch.updated_ts)
+  };
 
   // cards
-  b.cards = Array.isArray(b.cards) ? b.cards : [];
-  for (const c of b.cards) {
-    c.id = asNumId(c.id);
-    c.kind = c.kind==='mini' ? 'mini' : 'base';
-    if (c.parent_id!=null) c.parent_id = asNumId(c.parent_id);
-    if (Array.isArray(c.source_ids)) c.source_ids = c.source_ids.map(asNumId);
-    c.sections = Array.isArray(c.sections) ? c.sections.map(s=>({ id:asStrId(s.id), title:String(s.title||'') })) : [];
-    c.updates  = Array.isArray(c.updates)  ? c.updates  : [];
-    for (const u of c.updates) {
-      u.id = u.id ? String(u.id) : uid();
-      u.section_id = asStrId(u.section_id ?? '1');
-      u.type = (['client_md','note','ai_md'].includes(u.type)?u.type:'client_md');
-      u.origin = (['moi','client','ia'].includes(u.origin)?u.origin:'client');
-      u.md = String(u.md||'');
-      u.meta = { ...(u.meta||{}), created_ts: u.meta?.created_ts || Date.now() };
-      u.ai = u.ai || { status:'idle' };
-    }
-  }
+  b.cards = normArr(b.cards).map((c) => {
+    const cc = {...c};
+    cc.id = +cc.id||0;
+    cc.kind = (cc.kind==='mini'?'mini':'base');
+    cc.parent_id  = (cc.parent_id==null? null : +cc.parent_id||null);
+    cc.source_ids = normArr(cc.source_ids).map(x=>+x||0);
+    cc.title = normStr(cc.title);
+    cc.tags  = normArr(cc.tags).map(String);
+    cc.content = normStr(cc.content);
+    cc.sections = normArr(cc.sections).map(s => ({ id: normStr(s.id||'1'), title: normStr(s.title||'') }));
+    cc.state = { deleted: normBool(cc.state?.deleted), think: !!cc.state?.think, consolidated: !!cc.state?.consolidated };
+    cc.meta = { created_ts: normNum(cc.meta?.created_ts), updated_ts: normNum(cc.meta?.updated_ts) };
+
+    // updates/entries
+    cc.updates = normArr(cc.updates).map(u => {
+      const uu = {...u};
+      uu.id = +uu.id||0;
+      uu.section_id = normStr(uu.section_id||'1');
+      // type normalisé
+      let t = normStr(uu.type).toLowerCase();
+      if (t==='comment') t='client_md';
+      if (t==='ai') t='ai_md';
+      if (!ALLOWED_UPDATE_TYPES.has(t)) t='client_md';
+      uu.type = t;
+
+      uu.md = normStr(uu.md ?? uu.text ?? '');  // legacy text→md
+      uu.origin = (uu.origin==='ia' || uu.origin==='moi' || uu.origin==='client') ? uu.origin : 'client';
+      uu.meta = {
+        author: normStr(uu.meta?.author),
+        created_ts: normNum(uu.meta?.created_ts || Date.now()),
+        updated_ts: normNum(uu.meta?.updated_ts || 0),
+        hidden: !!uu.meta?.hidden,
+        validated: !!uu.meta?.validated,
+        think: !!uu.meta?.think
+      };
+      return uu;
+    });
+
+    // dédoublonner updates par id
+    const seen = new Set(); cc.updates = cc.updates.filter(u=> (seen.has(u.id)? false : (seen.add(u.id), true)));
+    return cc;
+  });
 
   // index
-  const idx = b.index ||= {};
-  for (const c of b.cards) {
-    idx[c.id] ||= { active:true, paused:false, deleted:false };
-  }
+  const idx = b.index || {};
+  b.index = Object.fromEntries(Object.entries(idx).map(([k,v]) => {
+    const id = +k||0;
+    const vv = v||{};
+    return [id, {
+      active:  !!vv.active,
+      paused:  !!vv.paused,
+      deleted: !!vv.deleted,
+      last_seen_ts: normNum(vv.last_seen_ts)
+    }];
+  }));
 
   // tabs
-  const tb = b.tabs ||= {};
-  tb.cards = 'on';
-  tb.seance = (['on','pause','off'].includes(tb.seance)?tb.seance:'on');
-  tb.projector = (['on','pause','off'].includes(tb.projector)?tb.projector:'on');
+  const tabs = b.tabs || {};
+  const normMode = v => (v==='pause'||v==='off')? v : 'on';
+  b.tabs = {
+    cards: 'on',
+    seance: normMode(tabs.seance),
+    projector: normMode(tabs.projector),
+    projector_id: (tabs.projector_id==null? undefined : +tabs.projector_id||undefined)
+  };
 
+  computeSeq(b);
+  b.__version = BLOB_VERSION;
   return b;
+}
+
+// Helpers ID (à utiliser par createCard / appendCardUpdate)
+export function newCardId(b){ computeSeq(b); return b.seq.next_card_id++; }
+export function newUpdateId(b){ computeSeq(b); return b.seq.next_update_id++; }
+
+export function readClientBlob(){
+  const b = JSON.parse(localStorage.getItem('paria.blob')||'{}');
+  return normalizeBlob(b);
+}
+
+export function writeClientBlob(b){
+  const nb = normalizeBlob(b||{});
+  localStorage.setItem('paria.blob', JSON.stringify(nb));
+  return nb;
 }
 
 export function validateBlob(b = {}) {
@@ -201,7 +278,7 @@ export async function restoreFromGit(fileUrl) {
   if (!r.ok) throw new Error(`Git ${r.status}`);
   const meta = await r.json(); const snap = JSON.parse(dec(meta.content||''));
   const blob = { workId:snap.workId, ...snap.data, meta:{...snap.meta, restored_at:new Date().toISOString()} };
-  localStorage.setItem('paria.blob', JSON.stringify(blob));
+  localStorage.setItem('paria.blob', JSON.stringify(normalizeBlob(blob)));
   // on garde paria.settings intact
   return blob;
 }
@@ -803,6 +880,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
