@@ -1,5 +1,4 @@
 // PARIA-V2-CLEAN v1.0.0 | domain/reducers.js
-import { readClientBlob, writeClientBlob } from '../core/store.js';
 import { logEvent } from './journal.js';
 import { bootstrapWorkspace } from '../core/net.js';
 import { buildWorkId } from '../core/settings.js';
@@ -16,7 +15,7 @@ function _ensureSeq(b,key){ b.seq=b.seq||{}; b.seq[key]=(b.seq[key]||0)+1; retur
 // === ENTRIES (séances/projecteur modifiable) ================================
 // === Canon ===
 export const BLOB_VERSION = 1;
-const ALLOWED_UPDATE_TYPES = new Set(['client_md','ai_md','note']);
+const ALLOWED_UPDATE_TYPES = new Set(['client_md','ai_md','note','analyse','comment','client_html']);
 
 function normStr(x){ return (typeof x==='string'? x : (x==null?'': String(x))); }
 function normArr(x){ return Array.isArray(x)? x : []; }
@@ -87,7 +86,7 @@ function normalizeBlob(b){
       uu.type = t;
 
       uu.md = normStr(uu.md ?? uu.text ?? '');  // legacy text→md
-      uu.origin = (uu.origin==='ia' || uu.origin==='moi' || uu.origin==='client') ? uu.origin : 'client';
+      uu.origin = (['ia','moi','client','charter','projecteur'].includes(uu.origin)) ? uu.origin : 'client';
       uu.meta = {
         author: normStr(uu.meta?.author),
         created_ts: normNum(uu.meta?.created_ts || Date.now()),
@@ -329,7 +328,7 @@ export function appendCardUpdate(cardId, sectionId, payload){
     c.sections.push({id:sectionId, title: payload?.section_title||('Section '+sectionId)});
   }
   c.updates = c.updates||[];
-  const id = _ensureSeq(b, 'updates_id');
+  const id = newUpdateId(b);
   const u = {
     id, section_id: sectionId,
     ts: payload?.ts || Date.now(),
@@ -390,7 +389,7 @@ export function getCardView(cardId, {sectionId, days=[], types=[]}={}){
   if (!c) return {section:null, groups:[]};
   const section = (c.sections||[]).find(s=>String(s.id)===String(sectionId));
   const filtDays  = new Set(days||[]);
-  const filtTypes = new Set((types&&types.length)?types: ['analyse','note','comment','client_md','client_html']);
+  const filtTypes = new Set((types&&types.length)?types: ['analyse','ai_md','note','comment','client_md','client_html']);
   const items = (c.updates||[]).filter(u=>{
     if (String(u.section_id)!==String(sectionId)) return false;
     if (!filtTypes.has(u.type)) return false;
@@ -429,10 +428,7 @@ export function listCards(){
 export function createCard({title='',content='',tags=[]}={}){
   const b = readClientBlob();
   b.cards = b.cards || [];
-  b.seq   = b.seq   || {};
-  b.seq.cards_id = b.seq.cards_id || 0;
-
-  const id = (++b.seq.cards_id);
+  const id = newCardId(b);
   const card = {
     id,
     // NEW: fallback propre depuis le Charter si title est vide
@@ -515,7 +511,7 @@ export function addNote(id, {author='moi', text=''}){
 }
 export function addComment(id, {author='moi', text=''}){
   ensureSection(id,'1','Proposition 1');
-  appendCardUpdate(id,'1',{ origin:'client', type:'comment', md:text, meta:{author} });
+  appendCardUpdate(id,'1',{ origin:'client', type:'client_md', md:text, meta:{author} });
   touchCard(id);
   return true;
 }
@@ -526,7 +522,7 @@ export function addAItoCard(id, list=[]){
   for (const it of (list||[])){
     appendCardUpdate(id,'1',{
       origin:'charter',
-      type:'analyse',
+      type:'ai_md',
       md: it?.content || '',
       meta:{ title:it?.title||'', tags:it?.tags||[], think:!!(it?.state?.think) }
     });
@@ -558,14 +554,12 @@ export function pushSelectedCharterToCards(){
   // init structures blob
   b.cards = b.cards || [];
   b.seq   = b.seq   || {};
-  b.seq.cards_id   = b.seq.cards_id   || 0;
-  b.seq.updates_id = b.seq.updates_id || 0;
-
+  
   let count = 0;
 
   for (const p of sel){
     // 1) nouvelle card
-    const cardId = (++b.seq.cards_id);
+    const cardId = newCardId(b);
     const sectionId = String(p.id||'1');
 
     const card = {
@@ -582,7 +576,7 @@ export function pushSelectedCharterToCards(){
     };
 
     // 2) première update = ANALYSE IA (avec prompt + penser)
-    const updId = (++b.seq.updates_id);
+    const updId = newUpdateId(b);
     card.updates.push({
       id: updId,
       section_id: sectionId,
@@ -880,6 +874,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
