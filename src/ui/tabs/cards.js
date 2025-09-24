@@ -475,6 +475,16 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       return;
     }
 
+    // dans detail.addEventListener('change', ...) :
+    if (cb.dataset.action==='hide-upd'){
+      const art = cb.closest('.upd');
+      if (art) art.classList.toggle('is-hidden', cb.checked);
+      const cardId = cb.dataset.card || host.dataset.selectedCardId;
+      const updId  = cb.dataset.upd;
+      if (cardId && updId) hideEntry(cardId, updId, cb.checked); // <-- persiste dans paria.blob
+      return;
+    }
+
     const art = cb.closest('.upd');
     if (art) art.classList.toggle('is-hidden', cb.checked);
     return;
@@ -762,6 +772,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
