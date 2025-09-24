@@ -9,8 +9,8 @@ function _dayKey(ts){ const d=new Date(ts); return `${d.getFullYear()}-${(d.getM
 function _ensureSeq(b,key){ b.seq=b.seq||{}; b.seq[key]=(b.seq[key]||0)+1; return b.seq[key]; }
 
 // --- reducers.js ---
-export const buildWorkId = (S, dateStr)=>
-  `${(S.client||'').trim()}|${(S.service||'').trim()}|${dateStr}`;
+//export const buildWorkId = (S, dateStr)=>
+//  `${(S.client||'').trim()}|${(S.service||'').trim()}|${dateStr}`;
 
 export function backupFlushLocal() {
   const S = JSON.parse(localStorage.getItem('paria.settings')||'{}');
@@ -695,6 +695,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
