@@ -666,7 +666,7 @@ export async function hydrateOnEnter(){
       __mergeAddOnly(snapY);
       return true;
     }
-  }catch(e){ console.warn('[hydrateOnEnter]', e); }
+  }catch(e){ }
   return false;
 }
 
@@ -695,6 +695,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
