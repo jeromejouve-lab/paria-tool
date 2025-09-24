@@ -380,11 +380,21 @@ function bindWorkId(root){
   
       const keys = Object.keys(localStorage).filter(k=>k.startsWith('paria') && k!=='paria.__backup__');
       const bak = keys.reduce((a,k)=>(a[k]=localStorage.getItem(k),a),{});
+      // garder la conf et le backup interne
+      const PROTECT = new Set(['paria.settings', 'paria.__backup__']);
+      
       localStorage.setItem('paria.__backup__', JSON.stringify({ stamp:new Date().toISOString(), bak }));
-  
-      for (const k of Object.keys(localStorage)){
-        if (k.startsWith('paria') && !k.endsWith('.__backup__')) localStorage.removeItem(k);
+      // wipe sélectif: on efface TOUT sauf la conf
+      for (const k of Object.keys(localStorage)) {
+        if (!k.startsWith('paria.')) continue;
+        if (PROTECT.has(k)) continue;
+        localStorage.removeItem(k);
       }
+
+      // écrire UNIQUEMENT les données restaurées
+      const blob = { workId: snap.workId, ...snap.data, meta: { ...snap.meta, restored_at: new Date().toISOString() } };
+      localStorage.setItem('paria.blob', JSON.stringify(blob));
+
       for (const [k,v] of Object.entries(content)){
         const key = k.startsWith('paria') ? k : `paria.${k}`;
         localStorage.setItem(key, typeof v==='string' ? v : JSON.stringify(v));
@@ -785,6 +795,7 @@ export function mountSettingsTab(host){
 
 export const mount = mountSettingsTab;
 export default { mount: mountSettingsTab };
+
 
 
 
