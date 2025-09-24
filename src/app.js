@@ -11,6 +11,21 @@ import './core/compat-exports.js';
 import { backupFlushLocal, backupPushGit } from './domain/reducers.js';
 import { backupsList, restoreFromGit } from './domain/reducers.js';
 
+// --- AUTOSAVE LOCAL (central) ---
+let __flushTimer = null;
+export function scheduleFlushLocal(delay = 300) {
+  clearTimeout(__flushTimer);
+  __flushTimer = setTimeout(async () => {
+    try {
+      const m = await import('/paria-tool/src/domain/reducers.js');
+      m.backupFlushLocal?.(); // UI -> paria.blob
+      // console.debug('[autosave] flush local ok');
+    } catch (e) {
+      console.warn('[autosave] flush local fail', e?.message||e);
+    }
+  }, delay);
+}
+
 async function initOnBoot(){
   const blob = JSON.parse(localStorage.getItem('paria.blob')||'null');
   if (!blob || !blob.workId) {
@@ -22,6 +37,20 @@ async function initOnBoot(){
   // ici: hydrate UI depuis paria.blob (charter/profile/cards)
 }
 initOnBoot();
+
+// 1) saisie/édition (input + change) => flush (debounce 300ms)
+document.addEventListener('input',  ev => {
+  scheduleFlushLocal(300);
+}, true);
+document.addEventListener('change', ev => {
+  scheduleFlushLocal(0);
+}, true);
+
+// 2) on quitte la page ou elle passe en arrière-plan => flush immédiat
+window.addEventListener('beforeunload', () => { try{ scheduleFlushLocal(0); }catch{} });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) scheduleFlushLocal(0);
+});
 
 let autobakTimer = setInterval(async ()=>{
   backupFlushLocal();
@@ -41,20 +70,25 @@ const TABS = Object.keys(mounts);
 
 export function showTab(tab){
   if (!TABS.includes(tab)) return;
+  
   // afficher/masquer les sections
   for (const id of TABS){
     const sec = document.getElementById(`tab-${id}`);
     if (sec) sec.style.display = (id === tab ? '' : 'none');
   }
+  
   // appeler le mount de l’onglet
   const fn = mounts[tab];
   if (typeof fn === 'function') { try { fn(); } catch (e) { console.error('mount error:', tab, e); } }
+  
   // marquer l’onglet actif sur la nav si tu as des classes .active
   document.querySelectorAll('header nav [data-tab]').forEach(b=>{
     const on = (b.dataset.tab === tab);
+    scheduleFlushLocal(0);   // flush immédiat AVANT de quitter l’onglet courant
     b.classList.toggle('active', on);
     b.classList.toggle('is-active', on); // <- au cas où l’ancien CSS le regarde
   });
+  
   // optionnel: hash (pas obligatoire)
   try { history.replaceState(null,'',`#${tab}`); } catch {}
 }
@@ -66,6 +100,7 @@ import('./domain/reducers.js').then(({ hydrateOnEnter, startAutoBackup })=>{
 });
 
 export function boot(){
+  
   // délégation de clic sur toute la page (boutons, liens, etc. portant data-tab)
   document.addEventListener('click', (ev)=>{
     const el = ev.target.closest('[data-tab]');
@@ -93,6 +128,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
