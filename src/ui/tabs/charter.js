@@ -100,7 +100,7 @@ function bindClientProfile(host){
   set('#client-languages',   (p.languages||[]).join(', '));
 
   let to; // debounce
-  ('input', (ev)=>{
+  host.addEventListener('input', (ev) => {
     if (!ev.target.closest('#client-name,#client-headcount,#client-desc,#client-goals,#client-challenges,#client-constraints,#client-tone,#client-languages')) return;
     clearTimeout(to);
     to = setTimeout(()=>{
@@ -776,6 +776,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
