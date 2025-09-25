@@ -26,9 +26,7 @@ export function scheduleFlushLocal(delay = 300) {
   }, delay);
 }
 
-async function initOnBoot(){
-  const blob = JSON.parse(localStorage.getItem('paria.blob')||'null');
-}
+async function initOnBoot(){}
 initOnBoot();
 
 // 1) saisie/édition (input + change) => flush (debounce 300ms)
@@ -70,9 +68,9 @@ export function showTab(tab){
   if (typeof fn === 'function') { try { fn(); } catch (e) { console.error('mount error:', tab, e); } }
   
   // marquer l’onglet actif sur la nav si tu as des classes .active
+  scheduleFlushLocal(0);   // flush immédiat AVANT de quitter l’onglet courant
   document.querySelectorAll('header nav [data-tab]').forEach(b=>{
     const on = (b.dataset.tab === tab);
-    scheduleFlushLocal(0);   // flush immédiat AVANT de quitter l’onglet courant
     b.classList.toggle('active', on);
     b.classList.toggle('is-active', on); // <- au cas où l’ancien CSS le regarde
   });
@@ -120,6 +118,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
