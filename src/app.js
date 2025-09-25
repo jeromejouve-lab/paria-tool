@@ -16,15 +16,13 @@ window.__pariaHydrating = true;
 // --- AUTOSAVE LOCAL (central) ---
 let __flushTimer = null;
 export function scheduleFlushLocal(delay = 300) {
+  if (window.__pariaHydrating) return; // ⛔ pas de flush pendant l’hydratation
   clearTimeout(__flushTimer);
   __flushTimer = setTimeout(async () => {
     try {
       const m = await import('/paria-tool/src/domain/reducers.js');
-      m.backupFlushLocal?.(); // UI -> paria.blob
-      // console.debug('[autosave] flush local ok');
-    } catch (e) {
-      console.warn('[autosave] flush local fail', e?.message||e);
-    }
+      m.backupFlushLocal?.(); // UI -> blob (passera par safeWriteBlob)
+    } catch(e){ console.warn('[autosave] flush local fail', e?.message||e); }
   }, delay);
 }
 
@@ -135,6 +133,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
