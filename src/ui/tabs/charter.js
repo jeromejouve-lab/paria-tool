@@ -1,6 +1,6 @@
 // ui/tabs/charter.js — 2 colonnes stables + statut + champs multi-lignes
 import {
-  getCharter, saveCharter,
+  getCharter, saveCharter, buildWorkId,
   setCharterAISelected, toggleCharterAIStatus, removeCharterAI,
   pushSelectedCharterToCards
 } from '../../domain/reducers.js';
@@ -539,7 +539,12 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         payload: {} // (rien d’autre côté charter)
       };
       
-      const res = await askAI({ work_id: buildWorkId(), task });
+      const res = await askAI({
+        work_id: (typeof buildWorkId === 'function'
+          ? buildWorkId()
+          : [s.client, s.service, (s.date || new Date().toISOString().slice(0,10))].filter(Boolean).join('|')),
+        task
+      });
       console.log('[Charter][askAI]', res);
       const ts = new Date(); // timestamp pour le statut
     
@@ -737,6 +742,9 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     try {
       const now = (typeof getCharter==='function') ? getCharter() : null;
       if (now) fillCharter(host, now);
+      
+      // rebind pour que la grille Client reflète le profil du blob
+      try { bindClientProfile(host); } catch {}
     } catch(e){}
   }, { passive:true });
 
@@ -801,6 +809,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
