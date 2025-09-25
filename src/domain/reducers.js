@@ -4,6 +4,67 @@ import { bootstrapWorkspace } from '../core/net.js';
 import { buildWorkId } from '../core/settings.js';
 import { ghContentsUrl, ghHeaders } from '../core/net.js';
 
+// ====== WRITE GATE ======
+function isBlankStr(s){ return !s || !String(s).trim(); }
+function hasText(s){ return !!(s && String(s).trim().length); }
+
+function normalizeCharter(ch){
+  ch = ch || {};
+  return {
+    title: String(ch.title||''),
+    content: String(ch.content||''),
+    tags: Array.isArray(ch.tags) ? ch.tags.map(String) : [],
+    ai: Array.isArray(ch.ai) ? ch.ai.map(p => ({
+      id: String(p?.id??''), ts: Number(p?.ts)||Date.now(),
+      title: String(p?.title||''), content: String(p?.content||''),
+      md: (typeof p?.md==='string'?p.md:undefined),
+      prompt: (typeof p?.prompt==='string'?p.prompt:''),
+      state: { selected: !!p?.state?.selected, deleted: !!p?.state?.deleted }
+    })) : [],
+    state: { deleted: !!ch?.state?.deleted },
+    updated_ts: Number(ch?.updated_ts)||Date.now()
+  };
+}
+
+export function safeWriteBlob(patch={}, reason=''){
+  const cur = JSON.parse(localStorage.getItem('paria.blob')||'{}');
+
+  // --- Charter guard: ne jamais écraser un charter non vide avec un patch vide (UI)
+  if (patch.charter){
+    const c = normalizeCharter(patch.charter);
+    const hasCur = hasText(cur?.charter?.content) || hasText(cur?.charter?.title);
+    const patchIsEmpty = !hasText(c.content) && !hasText(c.title) && (!Array.isArray(c.tags) || c.tags.length===0);
+    if (hasCur && patchIsEmpty) {
+      // on conserve le charter actuel, mais on accepte quand même le .ai si fourni
+      if (Array.isArray(c.ai) && c.ai.length){
+        const keep = normalizeCharter(cur.charter||{});
+        keep.ai = c.ai;                 // merge AI uniquement
+        patch.charter = keep;
+      } else {
+        delete patch.charter;           // rien à appliquer sur charter
+      }
+    } else {
+      patch.charter = c;
+    }
+  }
+
+  // --- Cards/index/tabs: si patch.cards est [], ne pas effacer l’existant par défaut
+  if (Array.isArray(patch.cards) && patch.cards.length===0 && Array.isArray(cur.cards) && cur.cards.length>0){
+    delete patch.cards;
+  }
+
+  // --- Merge & short-circuit si pas de diff
+  const next = structuredClone(cur);
+  const before = JSON.stringify(cur);
+  Object.assign(next, patch);
+  const after  = JSON.stringify(next);
+  if (before === after) return { ok:false, reason:'noop', next:cur };
+
+  localStorage.setItem('paria.blob', after);
+  document.dispatchEvent(new CustomEvent('paria:blob-updated', { detail:{ reason } }));
+  return { ok:true, reason, next: next };
+}
+
 // ---- Cards v2: sections + updates (append-only) ----
 function _dayKey(ts){ const d=new Date(ts); return `${d.getFullYear()}-${(d.getMonth()+1+'').padStart(2,'0')}-${(d.getDate()+'').padStart(2,'0')}`; }
 function _ensureSeq(b,key){ b.seq=b.seq||{}; b.seq[key]=(b.seq[key]||0)+1; return b.seq[key]; }
@@ -156,9 +217,7 @@ export function readClientBlob(){
 }
 
 export function writeClientBlob(b){
-  const nb = normalizeBlob(b||{});
-  localStorage.setItem('paria.blob', JSON.stringify(nb));
-  return nb;
+  return safeWriteBlob(b, 'writeClientBlob');
 }
 
 export function validateBlob(b = {}) {
@@ -250,9 +309,11 @@ export function backupFlushLocal() {
   b.tabs = { ...b.tabs, ...tabs };
 
   // 5) écrire en appliquant la normalisation centrale
-  writeClientBlob(b);
-
-  return b;
+  const t = document.querySelector('#charter-title')?.value || '';
+  const c = document.querySelector('#charter-content')?.value || '';
+  const g = (document.querySelector('#charter-tags')?.value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const patch = { charter: { title:t, content:c, tags:g } };
+  return safeWriteBlob(patch, 'ui-flush');
 }
 
 export async function backupPushGit() {
@@ -557,7 +618,12 @@ export function removeCardAI(){ return true; }       // no-op v2 (compat)
 
 // --- Charter
 export function getCharter(){ return readClientBlob().charter; }
-export function saveCharter(patch){ const b=readClientBlob(); b.charter={ ...(b.charter||{}), ...patch, state:{ ...(b.charter?.state||{}), updated_ts:Date.now() } }; writeClientBlob(b); logEvent('charter/update',{kind:'charter',id:'_'}); return true; }
+export function saveCharter(patch){ 
+  const b=readClientBlob(); 
+  b.charter={ ...(b.charter||{}), ...patch, state:{ ...(b.charter?.state||{}), updated_ts:Date.now() } }; 
+  logEvent('charter/update',{kind:'charter',id:'_'}); 
+  return safeWriteBlob({ charter: patch }, 'saveCharter');
+}
 export function setCharterAISelected(aiId, val){ const b=readClientBlob(); b.charter.ai=(b.charter.ai||[]).map(p=>p.id===aiId?({...p,state:{...(p.state||{}),selected:!!val,updated_ts:Date.now()}}):p); writeClientBlob(b); logEvent('charter/select',{kind:'charter',id:'_'},{aiId,selected:!!val}); return true; }
 export function toggleCharterAIStatus(aiId,key){ const b=readClientBlob(); b.charter.ai=(b.charter.ai||[]).map(p=>p.id===aiId?({...p,state:{...(p.state||{}),[key]:!p.state?.[key],updated_ts:Date.now()}}):p); writeClientBlob(b); logEvent('charter/ai-flag',{kind:'charter',id:'_'},{aiId,key}); return true; }
 export function removeCharterAI(aiId){ const b=readClientBlob(); b.charter.ai=(b.charter.ai||[]).map(p=>p.id===aiId?({...p,state:{...(p.state||{}),deleted:true,updated_ts:Date.now()}}):p); writeClientBlob(b); logEvent('charter/ai-remove',{kind:'charter',id:'_'},{aiId}); return true; }
@@ -896,6 +962,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
