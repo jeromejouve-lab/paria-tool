@@ -20,7 +20,7 @@ export function scheduleFlushLocal(delay = 300) {
   clearTimeout(__flushTimer);
   __flushTimer = setTimeout(async () => {
     try {
-      const m = await import('/paria-tool/src/domain/reducers.js');
+      const m = await import('./domain/reducers.js');
       m.backupFlushLocal?.(); // UI -> blob (passera par safeWriteBlob)
     } catch(e){ console.warn('[autosave] flush local fail', e?.message||e); }
   }, delay);
@@ -51,11 +51,6 @@ window.addEventListener('beforeunload', () => { try{ scheduleFlushLocal(0); }cat
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) scheduleFlushLocal(0);
 });
-
-let autobakTimer = setInterval(async ()=>{
-  backupFlushLocal();
-  try { await backupPushGit(); console.log('⏱ autobackup ok'); } catch(e){ console.warn('autobackup fail', e.message); }
-}, 60*60*1000); // 5mn
 
 const mounts = {
   settings : Settings.mount,
@@ -132,6 +127,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
