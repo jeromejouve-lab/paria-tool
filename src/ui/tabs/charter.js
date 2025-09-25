@@ -600,7 +600,6 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
           content:host.querySelector('#charter-content')?.value||'',
           tags:   (host.querySelector('#charter-tags')?.value||'').split(',').map(s=>s.trim()).filter(Boolean)
         };
-        const promptUsed = promptForAI || lastPrompt || buildPromptPreviewFromScreen(host);
         
         // estampiller puis injecter
         const _src = Array.isArray(norm?.results) ? norm.results : [];
@@ -835,6 +834,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
