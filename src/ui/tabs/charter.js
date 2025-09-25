@@ -79,6 +79,21 @@ function buildPromptPreviewFromScreen(host){
   return lines.join('\n');
 }
 
+function readClientProfileFromUI(host){
+  const $ = (s)=> host.querySelector(s);
+  const csv = (s)=> (s||'').split(',').map(x=>x.trim()).filter(Boolean);
+  return {
+    name:        $('#client-name')?.value?.trim() || '',
+    headcount:   parseInt($('#client-headcount')?.value || '0', 10) || 0,
+    description: $('#client-desc')?.value || '',
+    goals:       csv($('#client-goals')?.value),
+    challenges:  csv($('#client-challenges')?.value),
+    constraints: csv($('#client-constraints')?.value),
+    tone:        $('#client-tone')?.value?.trim() || '',
+    languages:   csv($('#client-languages')?.value)
+  };
+}
+
 // [ADD] Binder du profil client (lecture + autosave)
 function bindClientProfile(host){
   const s = settingsLoad() || {};
@@ -529,12 +544,25 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     try{
       const charter = getCharter();                 // {title, content, tags, ...}
       const s = settingsLoad() || {};
-      const profile = (typeof readClientProfile==='function') ? (readClientProfile(s.client||'') || {}) : {};
-      const task = {
+      
+      // on relit le profil tel qu’affiché à l’écran (plus à jour)
+      const profUI  = (typeof readClientProfileFromUI==='function') ? readClientProfileFromUI(host) : {};
+      
+      // on persiste pour que tout le monde (onglets / restau) lise le même état
+      try { if (typeof writeClientProfile==='function') writeClientProfile(s.client||'', profUI); } catch{}
+        const profile = profUI;
+        const promptForAI = (lastPrompt && lastPrompt.trim())
+           ? lastPrompt
+           : (typeof buildPromptPreviewFromScreen==='function' ? buildPromptPreviewFromScreen(host) : '');
+        
+        const task = {
         mode: 'paria',
         subject: { kind: 'charter' },
         context: { profile, charter, tab: 'charter' },
-        payload: {} // (rien d’autre côté charter)
+        payload: {},
+        
+         // ⬅️ le proxy GAS prend ce champ comme source de vérité
+         prompt: promptForAI
       };
       
       const res = await askAI({
@@ -555,7 +583,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       if (norm.status === 'ok' && norm.results?.length){
        
         // 1) prompt réellement utilisé
-        const promptUsed = buildCharterPrompt(vals);
+        const promptUsed = promptForAI || lastPrompt || buildPromptPreviewFromScreen(host);
 
         // 2) estampiller chaque proposition
         const stamped = (norm.results||[]).map((p, idx)=>({
@@ -572,7 +600,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
           content:host.querySelector('#charter-content')?.value||'',
           tags:   (host.querySelector('#charter-tags')?.value||'').split(',').map(s=>s.trim()).filter(Boolean)
         };
-        const _promptUsed = buildCharterPrompt(_vals);
+        const promptUsed = promptForAI || lastPrompt || buildPromptPreviewFromScreen(host);
         
         // estampiller puis injecter
         const _src = Array.isArray(norm?.results) ? norm.results : [];
@@ -807,6 +835,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
