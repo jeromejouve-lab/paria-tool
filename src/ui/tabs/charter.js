@@ -278,8 +278,6 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     }
   }catch(e){ console.warn('[Charter][MIGRATE ai]', e); }
 
-  if (window.__pariaHydrating || !window.__tabDirtyCharter) return;
-
   // init history datalist pour le contenu
   attachContentHistoryDatalist(host);
 
@@ -798,6 +796,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
