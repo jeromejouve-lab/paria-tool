@@ -11,7 +11,7 @@ import {
   appendCardUpdate, touchCard, __cards_migrate_v2_once, createCard, hydrateOnEnter, startAutoBackup
 } from "../../domain/reducers.js";
 
-import { readClientBlob, writeClientBlob } from "../../core/store.js";
+import { readClientBlob, writeClientBlob } from "../../domain/reducers.js";
 
 const $ = (s,r=document)=>r.querySelector(s);
 
@@ -234,7 +234,11 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   }
   
   renderTimeline();
-    
+
+  document.addEventListener('paria:blob-updated', () => {
+    try { renderTimeline(); renderDetail(); } catch {}
+  }, { passive:true });
+        
   timeline.addEventListener('click',(ev)=>{
     // 🗑️ / ↩︎ : ne change PAS la sélection
     const del = ev.target.closest('[data-action="mini-soft-delete"]');
@@ -772,6 +776,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
