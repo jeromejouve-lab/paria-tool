@@ -29,10 +29,6 @@ export function scheduleFlushLocal(delay = 300) {
 async function initOnBoot(){
   const blob = JSON.parse(localStorage.getItem('paria.blob')||'null');
   if (!blob || !blob.workId) {
-    const S = JSON.parse(localStorage.getItem('paria.settings')||'{}');
-    const date = document.querySelector('#work-date')?.value || new Date().toISOString().slice(0,10);
-    const list = await backupsList(date); // propose dernière
-    if (list.length) await restoreFromGit(list[0].url);
   }
   // ici: hydrate UI depuis paria.blob (charter/profile/cards)
 }
@@ -127,6 +123,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
