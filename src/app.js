@@ -26,9 +26,6 @@ export function scheduleFlushLocal(delay = 300) {
   }, delay);
 }
 
-async function initOnBoot(){}
-initOnBoot();
-
 // 1) saisie/édition (input + change) => flush (debounce 300ms)
 document.addEventListener('input',  ev => {
   scheduleFlushLocal(300);
@@ -118,6 +115,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
