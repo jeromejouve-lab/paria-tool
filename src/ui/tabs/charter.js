@@ -607,7 +607,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
           ...p,
           id: p.id ?? (Date.now()+'-'+i),
           ts: Date.now(),
-          prompt: p.prompt || _promptUsed
+          prompt: p.prompt || promptUsed
         }));
         
         // 👇 forcer la persistance + re-render
@@ -834,6 +834,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
