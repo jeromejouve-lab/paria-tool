@@ -529,12 +529,16 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     btnGen.disabled = true;
     $status.textContent = '⏳ Analyse en cours…';
     try{
-      const r = await askAI({
-        mode:'paria',
-        subject:{kind:'charter'},
-        payload:{ title:vals.title, content:vals.content, tags:vals.tags, components:['P','A','R','I'] },
-        context:{ tab:'charter' }
-      });
+      const charter = getCharter();                 // {title, content, tags, ...}
+      const profile = readClientProfile() || {};    // {name, headcount, languages, tone, description, goals, challenges, constraints}
+      const task = {
+        mode: 'paria',
+        subject: { kind: 'charter' },
+        context: { profile, charter, tab: 'charter' },
+        payload: {} // (rien d’autre côté charter)
+      };
+      
+      const res = await askAI({ work_id: buildWorkId(), task });
       console.log('[Charter][askAI]', r);
       const ts = new Date(); // timestamp pour le statut
     
@@ -796,6 +800,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
