@@ -3,7 +3,7 @@ import {
   listCards, getSession, startSession, pauseSession, stopSession,
   getCardView, setSectionFilters, listCardDays
 } from '../../domain/reducers.js';
-import { readClientBlob } from '../../core/store.js';
+import { readClientBlob } from '../../domain/reducers.js';
 
 const $ = (s,r=document)=>r.querySelector(s);
 const $$= (s,r=document)=>Array.from(r.querySelectorAll(s));
@@ -257,6 +257,13 @@ export function mount(host=document.getElementById('tab-projector')){
   // (3) bind handlers une seule fois
   if (host.dataset.projBound === '1') return;
   host.dataset.projBound = '1';
+  
+  document.addEventListener('paria:blob-updated', () => {
+    const wrap = document.querySelector('#cards-timeline')?.closest('.projector');
+    if (!wrap) return;
+    renderTimeline(wrap);
+    renderDetail(wrap, currentCardId());
+  });
 
   document.addEventListener('visibilitychange', ()=>{
     if (document.visibilityState === 'visible'){
@@ -327,6 +334,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
