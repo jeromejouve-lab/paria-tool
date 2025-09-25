@@ -252,6 +252,13 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   const ch = getCharter();
   host.innerHTML = html(ch);
 
+  ['#charter-title','#charter-content','#charter-tags'].forEach(sel=>{
+    const el = host.querySelector(sel);
+    if (!el) return;
+    el.addEventListener('input', ()=> window.__tabDirtyCharter = true, {passive:true});
+    el.addEventListener('change',()=> window.__tabDirtyCharter = true, {passive:true});
+  });
+
   // restore last saved values
   const _saved = loadCharter();
   if (_saved) fillCharter(host, _saved);
@@ -270,6 +277,8 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       if (changed && typeof saveCharter==='function') saveCharter({ ai: ch0.ai });
     }
   }catch(e){ console.warn('[Charter][MIGRATE ai]', e); }
+
+  if (window.__pariaHydrating || !window.__tabDirtyCharter) return;
 
   // init history datalist pour le contenu
   attachContentHistoryDatalist(host);
@@ -721,6 +730,13 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     return { show, hide };
   })();
 
+  document.addEventListener('paria:blob-updated', ()=>{
+    try {
+      const now = (typeof getCharter==='function') ? getCharter() : null;
+      if (now) fillCharter(host, now);
+    } catch(e){}
+  }, { passive:true });
+
   host.addEventListener('click', (ev)=>{
     const btn = ev.target.closest('[data-action]'); if (!btn) return;
     const id = btn.closest('[data-id]')?.dataset?.id; if (!id) return;
@@ -782,6 +798,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
