@@ -530,7 +530,8 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     $status.textContent = '⏳ Analyse en cours…';
     try{
       const charter = getCharter();                 // {title, content, tags, ...}
-      const profile = readClientProfile() || {};    // {name, headcount, languages, tone, description, goals, challenges, constraints}
+      const s = settingsLoad() || {};
+      const profile = (typeof readClientProfile==='function') ? (readClientProfile(s.client||'') || {}) : {};
       const task = {
         mode: 'paria',
         subject: { kind: 'charter' },
@@ -539,13 +540,13 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       };
       
       const res = await askAI({ work_id: buildWorkId(), task });
-      console.log('[Charter][askAI]', r);
+      console.log('[Charter][askAI]', res);
       const ts = new Date(); // timestamp pour le statut
     
       // r peut déjà être normalisé par core/ai.js ; sinon on le normalise ici
-      const norm = (r && typeof r.status === 'string' && Array.isArray(r.results))
-        ? r
-        : normalizeAIResponse(r);
+      const norm = (res && typeof res.status === 'string' && Array.isArray(res.results))
+        ? res
+        : (typeof normalizeAIResponse==='function' ? normalizeAIResponse(res) : {status:'error',results:[],error:'bad ai resp'});
       console.log('[Charter][norm]', norm);
       
       if (norm.status === 'ok' && norm.results?.length){
@@ -571,7 +572,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         const _promptUsed = buildCharterPrompt(_vals);
         
         // estampiller puis injecter
-        const _src = (norm && Array.isArray(norm.results)) ? norm.results : (results||[]);
+        const _src = Array.isArray(norm?.results) ? norm.results : [];
         const _stamped = _src.map((p,i)=>({
           ...p,
           id: p.id ?? (Date.now()+'-'+i),
@@ -800,6 +801,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
