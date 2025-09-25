@@ -678,7 +678,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
           position:'fixed', left:'50%', top:'50%', transform:'translate(-50%,-50%)',
           width:'min(960px,92vw)', height:'min(80vh,calc(100vh - 40px))',
           background:'#1a1a1a', color:'#eaeaea', border:'1px solid #333',
-          boxShadow:'0 10px 40px rgba(0,0,0,.5)', display:'flex', flexDirection:'column', userSelect:'none'
+          boxShadow:'0 10px 40px rgba(0,0,0,.5)', display:'flex', flexDirection:'column', userSelect:'auto'
         });
   
         const head = document.createElement('div');
@@ -691,7 +691,10 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         const pre = document.createElement('pre');
         pre.id = 'prompt-overlay-pre';
         Object.assign(pre.style, {whiteSpace:'pre-wrap',margin:'0',padding:'12px',overflow:'auto',flex:'1 1 auto',font:'13px/1.45 ui-monospace,Menlo,Consolas,monospace',background:'transparent',color:'#eaeaea'});
-  
+        pre.style.userSelect = 'text';
+        pre.style.cursor = 'text';
+        pre.setAttribute('tabindex', '0'); // (facultatif) permet Ctrl+A / Cmd+A
+
         const grip = document.createElement('div');
         grip.id = 'prompt-overlay-resize';
         Object.assign(grip.style, {position:'absolute',right:'0',bottom:'0',width:'18px',height:'18px',cursor:'nwse-resize',background:'linear-gradient(135deg, transparent 50%, #666 50%)'});
@@ -834,6 +837,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
