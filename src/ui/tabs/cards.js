@@ -360,7 +360,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
                   </label>
                 </div>
                 <div class="upd-body">
-                  <pre style="white-space:pre-wrap;margin:6px 0 0 0">${(u.md||u.html||'').replace(/</g,'&lt;')}</pre>
+                  <pre style="white-space:pre-wrap;margin:6px 0 0 0">${(u.md ?? u.html ?? u.content ?? '').replace(/</g,'&lt;')}</pre>
                   ${u.meta?.prompt?`<details style="margin-top:6px"><summary>Prompt</summary><pre style="white-space:pre-wrap">${(u.meta.prompt||'').replace(/</g,'&lt;')}</pre></details>`:''}
                 </div>
               </article>
@@ -772,6 +772,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
