@@ -28,9 +28,6 @@ export function scheduleFlushLocal(delay = 300) {
 
 async function initOnBoot(){
   const blob = JSON.parse(localStorage.getItem('paria.blob')||'null');
-  if (!blob || !blob.workId) {
-  }
-  // ici: hydrate UI depuis paria.blob (charter/profile/cards)
 }
 initOnBoot();
 
@@ -123,6 +120,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
