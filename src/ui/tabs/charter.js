@@ -1,13 +1,13 @@
 // ui/tabs/charter.js — 2 colonnes stables + statut + champs multi-lignes
 import {
-  getCharter, saveCharter, buildWorkId,
+  getCharter, saveCharter, 
   setCharterAISelected, toggleCharterAIStatus, removeCharterAI,
   pushSelectedCharterToCards
 } from '../../domain/reducers.js';
 import { askAI, applyAIResults } from '../../core/ai.js';
 
 // [ADD] Lecture settings + persistance profil client
-import { settingsLoad } from '../../core/settings.js';
+import { settingsLoad, buildWorkId } from '../../core/settings.js';
 import { readClientProfile, writeClientProfile } from '../../domain/reducers.js';
 
 const $ = (s,r=document)=>r.querySelector(s);
@@ -809,6 +809,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
