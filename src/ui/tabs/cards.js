@@ -124,7 +124,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     const ov = ensureCalOverlay();
     const b = readClientBlob();
     const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
-    const f = (card.ui?.filters?.[secId]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
+    const f = (card.ui?.filters?.[secId]) || {days:[], types:['analyse','ai_md','note','comment','client_md','client_html']};
     const days = listCardDays(cardId, secId); // ['YYYY-MM-DD', ...]
     // grouper par mois
     const byMonth = {};
@@ -321,7 +321,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   
       // sections
       for (const sec of (card.sections||[])){
-        const f = (card.ui?.filters?.[sec.id]) || {days:[], types:['analyse','note','comment','client_md','client_html']};
+        const f = (card.ui?.filters?.[sec.id]) || {days:[], types:['analyse','ai_md','note','comment','client_md','client_html']};
         const days = listCardDays(card.id, sec.id);
         const view = getCardView(card.id, { sectionId: sec.id, days: f.days, types: f.types });
   
@@ -329,7 +329,14 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
           <input type="checkbox" data-action="sec-day" data-card="${card.id}" data-sec="${sec.id}" value="${d}" ${f.days.includes(d)?'checked':''}> ${d}
         </label>`).join('');
   
-        const typeNames = [['analyse','Analyse'],['note','Note'],['comment','Commentaire'],['client_md','Client MD'],['client_html','Client HTML']];
+        const typeNames = [
+          ['analyse','Analyse'],
+          ['ai_md','IA (md)'],
+          ['note','Note'],
+          ['comment','Commentaire'],
+          ['client_md','Client MD'],
+          ['client_html','Client HTML']
+        ];
         const chipsTypes = typeNames.map(([val,lab])=>`<label class="chip">
           <input type="checkbox" data-action="sec-type" data-card="${card.id}" data-sec="${sec.id}" value="${val}" ${f.types.includes(val)?'checked':''}> ${lab}
         </label>`).join('');
@@ -765,6 +772,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
