@@ -11,6 +11,8 @@ import './core/compat-exports.js';
 import { backupFlushLocal, backupPushGit } from './domain/reducers.js';
 import { backupsList, restoreFromGit } from './domain/reducers.js';
 
+window.__pariaHydrating = true;
+
 // --- AUTOSAVE LOCAL (central) ---
 let __flushTimer = null;
 export function scheduleFlushLocal(delay = 300) {
@@ -94,9 +96,14 @@ export function showTab(tab){
 }
 
 // init workspace (pull Git s’il faut) + lancer l’unique auto-backup
-import('./domain/reducers.js').then(({ hydrateOnEnter, startAutoBackup })=>{
-  hydrateOnEnter();          // merge du Git « aujourd’hui -> hier » si nécessaire
-  startAutoBackup(5*60*1000); // un seul timer global
+import('./domain/reducers.js').then(async ({ hydrateOnEnter, startAutoBackup })=>{
+  try {
+    await hydrateOnEnter();            // <— on attend l’hydratation locale/git
+  } finally {
+    window.__pariaHydrating = false;
+    document.dispatchEvent(new CustomEvent('paria:hydrated'));
+  }
+  startAutoBackup(60*60*1000);         // autobackup toutes les heures
 });
 
 export function boot(){
@@ -128,6 +135,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
