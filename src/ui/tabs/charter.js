@@ -100,6 +100,14 @@ function bindClientProfile(host){
   const client = (s.client || '').trim();
   if (!client) return;
 
+  try {
+    const bad = localStorage.getItem('paria.client.undefined.profile');
+    if (bad && !localStorage.getItem(`paria.client.${client}.profile`)) {
+      localStorage.setItem(`paria.client.${client}.profile`, bad);
+    }
+    localStorage.removeItem('paria.client.undefined.profile');
+  } catch {}
+  
   const p = (typeof readClientProfile === 'function') ? readClientProfile(client) : {};
   const set = (sel, v)=>{ const el = $(sel, host); if (el) el.value = (v ?? ''); };
 
@@ -542,29 +550,41 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     btnGen.disabled = true;
     $status.textContent = '⏳ Analyse en cours…';
     try{
-      const charter = getCharter();                 // {title, content, tags, ...}
+      const charter = getCharter();
       const s = settingsLoad() || {};
       
-      // on relit le profil tel qu’affiché à l’écran (plus à jour)
-      const profUI  = (typeof readClientProfileFromUI==='function') ? readClientProfileFromUI(host) : {};
+      // Profil client: on lit ce qui est à l'écran
+      const profUI = (typeof readClientProfileFromUI==='function') ? readClientProfileFromUI(host) : {};
       
-      // on persiste pour que tout le monde (onglets / restau) lise le même état
-      try { if (typeof writeClientProfile==='function') writeClientProfile(s.client||'', profUI); } catch{}
-        const profile = profUI;
-        const promptForAI = (lastPrompt && lastPrompt.trim())
-           ? lastPrompt
-           : (typeof buildPromptPreviewFromScreen==='function' ? buildPromptPreviewFromScreen(host) : '');
-        
-        const task = {
+      // Résolution robuste de l'ID client (fallback sur workId)
+      const wid = (typeof buildWorkId==='function') ? buildWorkId() : '';
+      const fallbackClient = (wid && wid.includes('|')) ? wid.split('|')[0] : '';
+      const clientId = (s.client && String(s.client).trim()) || fallbackClient;
+      
+      // Persistance du profil sous la bonne clé (jamais "undefined")
+      try {
+        if (clientId && typeof writeClientProfile==='function') {
+          writeClientProfile(clientId, profUI);
+        } else if (clientId) {
+          localStorage.setItem(`paria.client.${clientId}.profile`, JSON.stringify(profUI));
+        }
+      } catch {}
+      
+      const profile = profUI;
+      
+      // Prompt réellement utilisé (celui qu'on voit dans l'aperçu)
+      const promptForAI = (lastPrompt && lastPrompt.trim())
+        ? lastPrompt
+        : (typeof buildPromptPreviewFromScreen==='function' ? buildPromptPreviewFromScreen(host) : '');
+      
+      const task = {
         mode: 'paria',
         subject: { kind: 'charter' },
         context: { profile, charter, tab: 'charter' },
         payload: {},
-        
-         // ⬅️ le proxy GAS prend ce champ comme source de vérité
-         prompt: promptForAI
+        prompt: promptForAI
       };
-      
+    
       const res = await askAI({
         work_id: (typeof buildWorkId === 'function'
           ? buildWorkId()
@@ -611,7 +631,12 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         }));
         
         // 👇 forcer la persistance + re-render
-        saveCharter({ ai: (getCharter().ai || []).concat(_stamped), last_prompt: lastPrompt });
+        saveCharter({
+          ai: (getCharter().ai || []).concat(_stamped),
+          last_prompt: (promptForAI || lastPrompt || ''),
+          last_prompt_ts: Date.now()
+        });
+
         const box = document.querySelector('#charter-proposals-box');
         if (box) box.innerHTML = renderProposals(getCharter());
 
@@ -837,6 +862,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
