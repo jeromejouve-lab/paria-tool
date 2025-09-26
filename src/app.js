@@ -2,7 +2,7 @@
 import * as Settings  from './ui/tabs/settings.js';
 import * as Charter   from './ui/tabs/charter.js';
 import * as Cards     from './ui/tabs/cards.js';
-import * as Scenarios from './ui/tabs/scenarios.js';
+import * as Seances from './ui/tabs/seances.js';
 import * as Projector from './ui/tabs/projector.js';
 import * as Journal   from './ui/tabs/journal.js';
 import './core/compat-exports.js';
@@ -59,6 +59,8 @@ async function publishEncryptedSnapshot(){
 
   const sess = await ensureSessionKey();
   const blob = readClientBlob();
+  const b64e = (u8)=> btoa(String.fromCharCode(...u8));
+  
   // extrait seulement ce qui doit être partagé (mini-cards, etc.)
   const view = {
     cards: (blob.cards||[]).filter(c => c.kind==='mini' && !c?.state?.deleted),
@@ -91,7 +93,7 @@ const mounts = {
   settings : Settings.mount,
   charter  : Charter.mount,
   cards    : Cards.mount,
-  scenarios: Scenarios.mount,
+  seances: Sceances.mount,
   projector: Projector.mount,
   journal  : Journal.mount,
 };
@@ -162,6 +164,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
