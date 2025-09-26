@@ -531,6 +531,40 @@ export function createCard({title='',content='',tags=[]}={}){
   return id;
 }
 
+// Clone une card source en "mini-card" (jamais on n’écrit l’originale)
+export function createMiniFromSource(sourceId){
+  const b = readClientBlob();
+  b.cards = b.cards || [];
+
+  const src = (b.cards||[]).find(x => String(x.id) === String(sourceId));
+  if (!src) return null;
+
+  const id = newCardId(b);
+  const mini = {
+    id,
+    kind: 'mini',
+    parent_id: +src.id,
+    source_ids: [ +src.id ],
+    title: src.title || '',
+    tags: Array.isArray(src.tags) ? [...src.tags] : [],
+    content: src.content || '',
+    state: { deleted:false, think:false },
+    created_ts: Date.now(),
+    updated_ts: Date.now(),
+    // on copie les sections (id + title) mais PAS les updates
+    sections: Array.isArray(src.sections)
+      ? src.sections.map(s => ({ id: String(s.id), title: String(s.title || ('Section '+s.id)) }))
+      : [],
+    updates: []
+  };
+
+  b.cards.push(mini);
+  writeClientBlob(b);
+  logEvent('card/mini_create', { source_id: src.id, id });
+  maybeImmediateBackup?.();
+  return id;
+}
+
 export function updateCard(id, patch={}){
   const b = readClientBlob();
   const it = (b.cards||[]).find(c=>String(c.id)===String(id));
@@ -962,6 +996,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
