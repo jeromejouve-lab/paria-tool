@@ -474,7 +474,7 @@ export function getCardView(cardId, {sectionId, days=[], types=[]}={}){
   
   if (c && c.kind === 'mini') {
     const blob = readClientBlob();
-    const src = (blob.cs || []).find(x => String(x.id) === String(c.parent_id));
+    const src = (b.cards || []).find(x => String(x.id) === String(c.parent_id));
     const srcUpdates = Array.isArray(src?.updates) ? src.updates : [];
     // Afficher : updates de la source (lecture seule) + updates de la mini
     effectiveUpdates = srcUpdates.concat(effectiveUpdates);
@@ -485,7 +485,7 @@ export function getCardView(cardId, {sectionId, days=[], types=[]}={}){
   const section = (c.sections||[]).find(s=>String(s.id)===String(sectionId));
   const filtDays  = new Set(days||[]);
   const filtTypes = new Set((types&&types.length)?types: ['analyse','ai_md','note','comment','client_md','client_html']);
-  const items = (c.effectiveUpdates ||[]).filter(u=>{
+  const items = (effectiveUpdates ||[]).filter(u=>{
     if (String(u.section_id)!==String(sectionId)) return false;
     if (!filtTypes.has(u.type)) return false;
     if (filtDays.size && !filtDays.has(_dayKey(u.ts))) return false;
@@ -1008,6 +1008,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
