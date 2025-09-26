@@ -5,30 +5,37 @@ import { settingsLoad } from './settings.js';
 // --- base64 helpers
 const b64e = (u8)=> btoa(String.fromCharCode(...u8));
 const b64d = (s)=> Uint8Array.from(atob(s), c => c.charCodeAt(0));
-const GAS = (JSON.parse(localStorage.getItem('paria.settings')||'{}').endpoints||{}).proxy;
 
 export async function stateGet(workId){
-  const r = await fetch(GAS.url, { method:'POST', headers:{'Content-Type':'text/plain'},
-    body: JSON.stringify({ route:'state.get', work_id: workId, secret:GAS.secret })});
-  return r.ok ? r.json() : {ok:false};
+  const { url, secret } = getGAS();
+  if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify({ route:'state.get', work_id: workId, secret })});
+  return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
 export async function stateSet(workId, payload){ // {tabs, rev, K_sess?, exp_s?}
-  const r = await fetch(GAS.url, { method:'POST', headers:{'Content-Type':'text/plain'},
-    body: JSON.stringify({ route:'state.set', work_id: workId, payload, secret:GAS.secret })});
-  return r.ok ? r.json() : {ok:false};
+  const { url, secret } = getGAS();
+  if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify({ route:'state.set', work_id: workId, payload, secret })});
+  return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
 export async function dataSet(workId, snapshot){ // {iv, ct, ver, ts}
-  const r = await fetch(GAS.url, { method:'POST', headers:{'Content-Type':'text/plain'},
-    body: JSON.stringify({ route:'data.set', work_id: workId, payload:snapshot, secret:GAS.secret })});
-  return r.ok ? r.json() : {ok:false};
+  const { url, secret } = getGAS();
+  if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify({ route:'data.set', work_id: workId, payload:snapshot, secret })});
+  return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
 export async function dataGet(workId){
-  const r = await fetch(GAS.url, { method:'POST', headers:{'Content-Type':'text/plain'},
-    body: JSON.stringify({ route:'data.get', work_id: workId, secret:GAS.secret })});
-  return r.ok ? r.json() : {ok:false};
+  const { url, secret } = getGAS();
+  if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify({ route:'data.get', work_id: workId, secret })});
+  return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
 // --- AES-GCM
@@ -279,6 +286,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
