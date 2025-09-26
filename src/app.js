@@ -90,7 +90,7 @@ const mounts = {
   settings : Settings.mount,
   charter  : Charter.mount,
   cards    : Cards.mount,
-  seances: Sceances.mount,
+  seances: Seances.mount,
   projector: Projector.mount,
   journal  : Journal.mount,
 };
@@ -161,6 +161,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
