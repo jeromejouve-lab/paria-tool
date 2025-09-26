@@ -5,6 +5,35 @@ import {
 } from '../../domain/reducers.js';
 import { readClientBlob } from '../../domain/reducers.js';
 
+import { stateGet, dataGet } from '../../domain/net.js';
+import { aesImportKeyRawB64, aesDecryptJSON } from '../../domain/net.js';
+import { buildWorkId } from '../../core/settings.js';
+
+let __cliKey = null; // CryptoKey en RAM, jamais en localStorage
+
+async function pollLoop(){
+  try{
+    const st = await stateGet(buildWorkId());
+    const on = st?.tabs?.projector === 'on' || st?.tabs?.seance === 'on';
+    if (!on || !st?.K_sess){
+      __cliKey = null;
+      renderLocked(on ? 'pause' : 'off'); // désactive clics/affiche écran bloqué
+      return;
+    }
+    if (!__cliKey){ // (ré)importe la clé
+      __cliKey = await aesImportKeyRawB64(st.K_sess);
+    }
+    const snap = await dataGet(buildWorkId());
+    if (snap?.ct && snap?.iv){
+      const view = await aesDecryptJSON(__cliKey, snap.ct, snap.iv);
+      renderFromView(view); // timeline/détail depuis "view"
+    }
+  }catch(e){ /* no-op */ }
+}
+
+// démarrer
+setInterval(pollLoop, 1500);
+
 const $ = (s,r=document)=>r.querySelector(s);
 const $$= (s,r=document)=>Array.from(r.querySelectorAll(s));
 
@@ -334,6 +363,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
