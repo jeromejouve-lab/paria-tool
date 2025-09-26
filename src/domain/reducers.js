@@ -243,7 +243,7 @@ export function hideEntry(cardId, updateId, hidden = true) {
   if (!c) return false;
   const u = (c.updates||[]).find(x => String(x.id) === String(updateId));
   if (!u) return false;
-  u.meta = { ...(u.meta||{}), hidden: !!hidden, updated_ts: Date.now() };
+  u.meta = Object.assign({}, (u.meta||{}), { hidden: !!hidden, updated_ts: Date.now() });
   c.updated_ts = Date.now();
   writeClientBlob(b);
   logEvent('entry/hide', { kind:'update', card_id:cardId, update_id:updateId }, { hidden: !!hidden });
@@ -962,6 +962,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
