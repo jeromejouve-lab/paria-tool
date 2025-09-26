@@ -11,7 +11,7 @@ import './core/compat-exports.js';
 import { backupFlushLocal, backupPushGit } from './domain/reducers.js';
 import { backupsList, restoreFromGit } from './domain/reducers.js';
 import { buildWorkId } from './core/settings.js';
-import { stateSet, stateGet, dataSet } from './domain/net.js';
+import { stateSet, stateGet, dataSet } from './core/net.js';
 import { aesImportKeyRawB64, aesEncryptJSON } from './domain/net.js'; // helpers crypto
 import { readClientBlob } from './domain/reducers.js';
 
@@ -164,6 +164,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
