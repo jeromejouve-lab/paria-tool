@@ -10,8 +10,26 @@ import './core/compat-exports.js';
 // --- app.js ---
 import { backupFlushLocal, backupPushGit } from './domain/reducers.js';
 import { backupsList, restoreFromGit } from './domain/reducers.js';
+import { buildWorkId } from './core/settings.js';
+import { stateSet, stateGet, dataSet } from './domain/net.js';
+import { aesImportKeyRawB64, aesEncryptJSON } from './domain/net.js'; // helpers crypto
+import { readClientBlob } from './domain/reducers.js';
 
 window.__pariaHydrating = true;
+window.__sess = { b64:null, key:null, exp:0 }; // K_sess en base64 + CryptoKey + expiration (ms)
+
+async function ensureSessionKey(){
+  const now = Date.now();
+  if (window.__sess.key && window.__sess.exp > now+5000) return window.__sess;
+  // (re)génère une clé 256 bits
+  const raw = crypto.getRandomValues(new Uint8Array(32));
+  const b64 = b64e(raw);
+  const key = await aesImportKeyRawB64(b64);
+  window.__sess = { b64, key, exp: now + 30_000 }; // TTL 30s
+  // publie la clé côté état (visible seulement si tabs.on)
+  await stateSet(buildWorkId(), { K_sess:b64, exp_s:30 }); 
+  return window.__sess;
+}
 
 // --- AUTOSAVE LOCAL (central) ---
 let __flushTimer = null;
@@ -25,6 +43,35 @@ export function scheduleFlushLocal(delay = 300) {
     } catch(e){ console.warn('[autosave] flush local fail', e?.message||e); }
   }, delay);
 }
+
+let __pubTimer = null;
+document.addEventListener('paria:blob-updated', ()=>{
+  clearTimeout(__pubTimer);
+  __pubTimer = setTimeout(publishEncryptedSnapshot, 300); // throttle
+});
+
+async function publishEncryptedSnapshot(){
+  const workId = buildWorkId();
+  // si l’onglet séance/projecteur n’est pas "on", on ne publie pas
+  const st = await stateGet(workId);
+  const on = st?.tabs?.seance === 'on' || st?.tabs?.projector === 'on';
+  if (!on) return;
+
+  const sess = await ensureSessionKey();
+  const blob = readClientBlob();
+  // extrait seulement ce qui doit être partagé (mini-cards, etc.)
+  const view = {
+    cards: (blob.cards||[]).filter(c => c.kind==='mini' && !c?.state?.deleted),
+    tabs:  blob.tabs||{},
+    index: blob.index||{},
+    ver:   1,
+    ts:    Date.now()
+  };
+  const { iv, ct } = await aesEncryptJSON(sess.key, view);
+  await dataSet(workId, { iv, ct, ver:1, ts:Date.now() });
+}
+
+await stateSet(buildWorkId(), { K_sess:null }); // clé retirée => clients ne peuvent plus déchiffrer
 
 // 1) saisie/édition (input + change) => flush (debounce 300ms)
 document.addEventListener('input',  ev => {
@@ -115,6 +162,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
