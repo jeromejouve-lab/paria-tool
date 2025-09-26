@@ -2,6 +2,50 @@
 
 import { settingsLoad } from './settings.js';
 
+// --- base64 helpers
+const b64e = (u8)=> btoa(String.fromCharCode(...u8));
+const b64d = (s)=> Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const GAS = (JSON.parse(localStorage.getItem('paria.settings')||'{}').endpoints||{}).proxy;
+
+
+export async function stateGet(workId){
+  const r = await fetch(GAS.url, { method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify({ route:'state.get', work_id: workId, secret:GAS.secret })});
+  return r.ok ? r.json() : {ok:false};
+}
+export async function stateSet(workId, payload){ // {tabs, rev, K_sess?, exp_s?}
+  const r = await fetch(GAS.url, { method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify({ route:'state.set', work_id: workId, payload, secret:GAS.secret })});
+  return r.ok ? r.json() : {ok:false};
+}
+export async function dataSet(workId, snapshot){ // {iv, ct, ver, ts}
+  const r = await fetch(GAS.url, { method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify({ route:'data.set', work_id: workId, payload:snapshot, secret:GAS.secret })});
+  return r.ok ? r.json() : {ok:false};
+}
+export async function dataGet(workId){
+  const r = await fetch(GAS.url, { method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify({ route:'data.get', work_id: workId, secret:GAS.secret })});
+  return r.ok ? r.json() : {ok:false};
+}
+
+// --- AES-GCM
+export async function aesImportKeyRawB64(b64){
+  const raw = b64d(b64);
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt','decrypt']);
+}
+export async function aesEncryptJSON(key, obj){
+  const iv  = crypto.getRandomValues(new Uint8Array(12));
+  const pt  = new TextEncoder().encode(JSON.stringify(obj));
+  const ct  = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, pt));
+  return { iv: b64e(iv), ct: b64e(ct) };
+}
+export async function aesDecryptJSON(key, ctB64, ivB64){
+  const iv = b64d(ivB64), ct = b64d(ctB64);
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, ct);
+  return JSON.parse(new TextDecoder().decode(new Uint8Array(pt)));
+}
+
 // --- net.js ---
 export const ghHeaders = (token)=>({
   'Accept':'application/vnd.github+json',
@@ -231,6 +275,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
