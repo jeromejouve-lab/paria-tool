@@ -1,12 +1,10 @@
 // src/ui/tabs/projector.js — clean rewrite (clone de la timeline Cards en read-only)
 import {
   listCards, getSession, startSession, pauseSession, stopSession,
-  getCardView, setSectionFilters, listCardDays
+  getCardView, setSectionFilters, listCardDays, readClientBlob
 } from '../../domain/reducers.js';
-import { readClientBlob } from '../../domain/reducers.js';
 
-import { stateGet, dataGet } from '../../domain/net.js';
-import { aesImportKeyRawB64, aesDecryptJSON } from '../../domain/net.js';
+import { stateGet, dataGet, aesImportKeyRawB64, aesDecryptJSON } from '../../core/net.js';
 import { buildWorkId } from '../../core/settings.js';
 
 let __cliKey = null; // CryptoKey en RAM, jamais en localStorage
@@ -363,6 +361,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
