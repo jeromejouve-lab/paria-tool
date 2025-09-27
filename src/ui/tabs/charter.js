@@ -332,7 +332,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       // ❶ Sauvegarde “courante”
       try { 
         if (typeof saveCharter === 'function') saveCharter(v);
-        else localStorage.setItem('paria.charter', JSON.stringify(v));
+       
       } catch{}
       // ❷ Historique (par WorkID)
       if (typeof saveCharterHistory === 'function') saveCharterHistory(v);
@@ -343,8 +343,8 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
   function loadCharter(){
     try{
-      if (typeof getCharter === 'function') return getCharter();
-      return JSON.parse(localStorage.getItem('paria.charter')||'null');
+      return getCharter();
+
     }catch{
       return null;
     }
@@ -862,6 +862,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
