@@ -1,12 +1,12 @@
 // src/core/ai.js — IA centrale normalisée
 import { settingsLoad, buildWorkId } from './settings.js';
-import { getCharter, saveCharter } from '../domain/reducers.js';
+import { getCharter, saveCharter, readClientProfile } from '../domain/reducers.js';
 
 // ----------------- helpers contexte -----------------
 const uid = () => 'p-' + Math.random().toString(36).slice(2) + Date.now();
 
 function loadClientProfile(clientId){
-  try { return JSON.parse(localStorage.getItem(`paria.client.${clientId}.profile`) || '{}'); }
+  try { return (typeof readClientProfile === 'function') ? (readClientProfile(clientId) || {}) : {}; }
   catch { return {}; }
 }
  
