@@ -14,6 +14,8 @@ function normalizeCharter(ch){
     title: String(ch.title||''),
     content: String(ch.content||''),
     tags: Array.isArray(ch.tags) ? ch.tags.map(String) : [],
+  
+    // tableau historique (legacy)
     ai: Array.isArray(ch.ai) ? ch.ai.map(p => ({
       id: String(p?.id??''), ts: Number(p?.ts)||Date.now(),
       title: String(p?.title||''), content: String(p?.content||''),
@@ -21,9 +23,25 @@ function normalizeCharter(ch){
       prompt: (typeof p?.prompt==='string'?p.prompt:''),
       state: { selected: !!p?.state?.selected, deleted: !!p?.state?.deleted }
     })) : [],
+  
+    // 👇 slot unique (nouveau)
+    ai_current: (ch.ai_current && typeof ch.ai_current === 'object')
+      ? (()=>{
+          const p = ch.ai_current;
+          return {
+            id: String(p?.id??''), ts: Number(p?.ts)||Date.now(),
+            title: String(p?.title||''), content: String(p?.content||''),
+            md: (typeof p?.md==='string'?p.md:undefined),
+            prompt: (typeof p?.prompt==='string'?p.prompt:''),
+            state: { think: !!p?.state?.think, deleted: !!p?.state?.deleted }
+          };
+        })()
+      : null,
+  
     state: { deleted: !!ch?.state?.deleted },
     updated_ts: Number(ch?.updated_ts)||Date.now()
   };
+
 }
 
 export function safeWriteBlob(patch={}, reason=''){
@@ -111,28 +129,47 @@ function normalizeBlob(b){
   };
 
   // charter
-  const ch = b.charter || {};
-  b.charter = {
-    title: normStr(ch.title),
-    content: normStr(ch.content),
-    tags: normArr(ch.tags).map(String),
-  
-    // 👇 AJOUT : on conserve et on normalise les propositions IA
-    ai: Array.isArray(ch.ai) ? ch.ai.map(p => ({
-      id:       String(p && p.id != null ? p.id : ''),
-      ts:       Number(p && p.ts) || Date.now(),
-      title:    String(p && p.title    ? p.title    : ''),
-      content:  String(p && p.content  ? p.content  : ''),
-      prompt:   typeof (p && p.prompt) === 'string' ? p.prompt : '',
-      state: {
-        selected: !!(p && p.state && p.state.selected),
-        deleted:  !!(p && p.state && p.state.deleted)
-      }
-    })) : [],
-  
-    state: { deleted: normBool(ch.state?.deleted) },
-    updated_ts: normNum(ch.updated_ts)
-  };
+const ch = b.charter || {};
+b.charter = {
+  title: normStr(ch.title),
+  content: normStr(ch.content),
+  tags: normArr(ch.tags).map(String),
+
+  // historique
+  ai: Array.isArray(ch.ai) ? ch.ai.map(p => ({
+    id:       String(p && p.id != null ? p.id : ''),
+    ts:       Number(p && p.ts) || Date.now(),
+    title:    normStr(p && p.title),
+    content:  normStr(p && p.content),
+    prompt:   normStr(p && p.prompt),
+    state: {
+      selected: !!(p && p.state && p.state.selected),
+      deleted:  !!(p && p.state && p.state.deleted)
+    }
+  })) : [],
+
+  // 👇 slot unique
+  ai_current: (ch.ai_current && typeof ch.ai_current === 'object')
+    ? (()=>{
+        const p = ch.ai_current;
+        return {
+          id:       String(p && p.id != null ? p.id : ''),
+          ts:       Number(p && p.ts) || Date.now(),
+          title:    normStr(p && p.title),
+          content:  normStr(p && p.content),
+          prompt:   normStr(p && p.prompt),
+          state: {
+            think:   !!(p && p.state && p.state.think),
+            deleted: !!(p && p.state && p.state.deleted)
+          }
+        };
+      })()
+    : null,
+
+  state: { deleted: normBool(ch.state?.deleted) },
+  updated_ts: normNum(ch.updated_ts)
+};
+
 
   // cards
   b.cards = normArr(b.cards).map((c) => {
@@ -1005,6 +1042,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
