@@ -1,6 +1,6 @@
 // src/core/ai.js — IA centrale normalisée
 import { settingsLoad, buildWorkId } from './settings.js';
-import { getCharter, saveCharter, readClientProfile } from '../domain/reducers.js';
+import { getCharter, saveCharter, readClientProfile, writeClientProfile } from '../domain/reducers.js';
 
 // ----------------- helpers contexte -----------------
 const uid = () => 'p-' + Math.random().toString(36).slice(2) + Date.now();
@@ -264,6 +264,38 @@ export function applyAIResults(subject, items, { mode = 'replace' } = {}) {
 
 // ----------------- export central -----------------
 export async function askAI(task = {}){
+
+  // [MiniFlush] — si des champs balisés data-dirty existent, on flushe minimalement
+  if (typeof document !== 'undefined') {
+    try {
+      const dirty = Array.from(document.querySelectorAll('[data-dirty=\"1\"][data-bind]'));
+      if (dirty.length){
+        const chPatch = {};
+        const profPatch = {};
+        for (const el of dirty){
+          const bind = el.getAttribute('data-bind') || '';
+          const val = (el.tagName==='TEXTAREA' || el.tagName==='INPUT') ? (el.value||'') : (el.textContent||'');
+          if (bind.startsWith('charter.')) {
+            const key = bind.split('.')[1];
+            if (key === 'tags') chPatch.tags = String(val||'').split(',').map(s=>s.trim()).filter(Boolean);
+            else chPatch[key] = val;
+          } else if (bind.startsWith('profile.')) {
+            const key = bind.split('.')[1];
+            profPatch[key] = val;
+          }
+          el.removeAttribute('data-dirty');
+        }
+        if (Object.keys(chPatch).length) await saveCharter(chPatch);
+        const S = (typeof settingsLoad==='function') ? (settingsLoad()||{}) : {};
+        const cid = (S.client||'').trim();
+        if (cid && Object.keys(profPatch).length && typeof writeClientProfile === 'function') {
+          const cur = (typeof readClientProfile==='function') ? (readClientProfile(cid)||{}) : {};
+          await writeClientProfile(cid, { ...cur, ...profPatch });
+        }
+      }
+    } catch(e){ console.warn('[AI][MiniFlush] non bloquant', e); }
+  }
+
   // 1) Contexte commun
   const { client: clientId, service: serviceId } = workCtx();
   const client = { id: clientId, ...loadClientProfile(clientId) };
