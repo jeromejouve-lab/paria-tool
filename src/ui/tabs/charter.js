@@ -269,6 +269,21 @@ function fillCharter(root, vals){
 }
 
 export function mountCharterTab(host = document.getElementById('tab-charter')) {
+
+  // [Gate] — hydratation conditionnée à un clientId résolu
+  const S = (typeof settingsLoad === 'function') ? (settingsLoad() || {}) : {};
+  const wid = (typeof buildWorkId === 'function') ? buildWorkId() : '';
+  const fallbackClient = (wid && wid.includes('|')) ? wid.split('|')[0] : '';
+  const clientId = (S.client && String(S.client).trim()) || fallbackClient;
+
+  if (!clientId) {
+    host.innerHTML = `<section class="block muted">
+      <h3>Charter</h3>
+      <div>⚠️ Aucun client sélectionné. Ouvre l’onglet <b>Réglages</b> et renseigne Client/Service.</div>
+    </section>`;
+    return; // pas d'hydratation sans clientId
+  }
+
   if (!host) return;
   const ch = getCharter();
   host.innerHTML = html(ch);
@@ -862,6 +877,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
