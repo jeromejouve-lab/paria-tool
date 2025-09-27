@@ -62,8 +62,18 @@ export function safeWriteBlob(patch={}, reason=''){
         delete patch.charter;
       }
     } else {
-      patch.charter = c;
+      // Merge profond côté Charter : on ne perd pas ai/ai_current si absents du patch
+      const keep = normalizeCharter(cur.charter || {});
+      const hadAi       = Object.prototype.hasOwnProperty.call(patch.charter, 'ai');
+      const hadAiCur    = Object.prototype.hasOwnProperty.call(patch.charter, 'ai_current');
+    
+      const merged = { ...keep, ...c };
+      if (!hadAiCur) merged.ai_current = keep.ai_current;
+      if (!hadAi)    merged.ai         = keep.ai;
+    
+      patch.charter = merged;
     }
+
   }
 
   // --- Cards/index/tabs: si patch.cards est [], ne pas effacer l’existant par défaut
@@ -1042,6 +1052,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
