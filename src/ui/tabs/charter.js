@@ -142,16 +142,14 @@ function bindClientProfile(host){
 }
 
 function renderProposals(ch){
-  const list = (ch.ai||[]).filter(p=>!p?.state?.deleted);
-  if (!list.length) return `<div class="muted">— Aucune proposition.</div>`;
+  const base = ch.ai_current ? [ch.ai_current] 
+              : (Array.isArray(ch.ai) ? ch.ai.slice(-1) : []);
+  const list = base.filter(p=>!p?.state?.deleted);
+
   return `
     <ul class="charter-proposals">
       ${list.map(p=>`
         <li class="proposal" data-id="${p.id}">
-          <label class="sel">
-            <input type="checkbox" class="chk-sel" ${p?.state?.selected?'checked':''}/>
-            <span>Sélectionner</span>
-          </label>
           <div class="proposal-body">
             <h4 class="proposal-title" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
               <span>${esc(p.title||'')}</span>
@@ -241,7 +239,7 @@ function html(ch){
         <!-- barre de boutons locale (pas .row pour éviter l’étalement) -->
         <div class="btns" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
           <button id="charter-gen" type="button">Analyser</button>
-          <button id="charter-push" type="button">Envoyer les sélectionnés vers Cards</button>
+          <button id="charter-push" type="button">Envoyer l’analyse vers Cards</button>
         </div>
 
         <div id="charter-status" class="muted" style="margin-top:8px">—</div>
@@ -676,14 +674,13 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
         
         // 👇 forcer la persistance + re-render
         saveCharter({
-          ai: (getCharter().ai || []).concat(_stamped),
+          ai_current: _stamped[0],   // ← slot unique
           last_prompt: (promptForAI || lastPrompt || ''),
           last_prompt_ts: Date.now()
         });
 
         const box = document.querySelector('#charter-proposals-box');
         if (box) box.innerHTML = renderProposals(getCharter());
-
 
         $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
         $('#charter-proposals-box', host).querySelectorAll('.actions [data-action="prop-preview"]').forEach(el=>el.remove());
@@ -708,22 +705,16 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   // Push sélectionnés -> Cards
   $('#charter-push', host).onclick = ()=>{
     const ch = (typeof getCharter==='function') ? getCharter() : {};
-    const sel = (ch.ai||[]).filter(p => p?.state?.selected && !p?.state?.deleted);
+    const cur = ch.ai_current || (Array.isArray(ch.ai) ? ch.ai.slice(-1)[0] : null);
     const $status = $('#charter-status', host);
-    if (!sel.length){
-      if ($status) $status.textContent = '— aucune proposition sélectionnée';
+    if (!cur){
+      if ($status) $status.textContent = '— aucune analyse en cours';
       return;
     }
     const created = (typeof pushSelectedCharterToCards==='function') ? pushSelectedCharterToCards() : 0;
-    if ($status) $status.textContent = `✅ ${created} envoyée(s) vers Cards`;
+    if ($status) $status.textContent = created ? `✅ ${created} envoyée(s) vers Cards` : '— rien à envoyer';
   };
 
-  // Sélection + pictos
-  host.addEventListener('change', (ev)=>{
-    const chk = ev.target.closest('.chk-sel'); if (!chk) return;
-    const id = ev.target.closest('[data-id]')?.dataset?.id; if (!id) return;
-    setCharterAISelected(id, chk.checked);
-  });
   // --- Prompt Overlay (singleton) ---
   const PromptOverlay = (() => {
     const LSKEY = 'paria.promptOverlay.v1';
@@ -856,7 +847,8 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
           || btn.closest('.proposal')?.getAttribute('data-id')
           || btn.closest('[data-id]')?.getAttribute('data-id');
       const ch = (typeof getCharter==='function') ? getCharter() : {};
-      const pr = (ch.ai||[]).find(x=>String(x.id)===String(id));
+      const base = [].concat(ch.ai_current ? [ch.ai_current] : []).concat(ch.ai || []);
+      const pr = base.find(x=>String(x.id)===String(id));
       const txt = pr?.prompt || ch?.last_prompt || '(prompt indisponible)';
       PromptOverlay.show(txt);
       return;
@@ -906,6 +898,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
