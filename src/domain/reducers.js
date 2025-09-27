@@ -293,7 +293,7 @@ export function backupFlushLocal() {
     challenges: csv(qs('#client-challenges')?.value),
     constraints: csv(qs('#client-constraints')?.value)
   };
-  localStorage.setItem(`paria.client.${S.client}.profile`, JSON.stringify(b.profile));
+  writeClientProfile(S.client, b.profile);
 
   b.charter = {
     ...(b.charter||{}),
@@ -676,10 +676,7 @@ export function removeCharterAI(aiId){ const b=readClientBlob(); b.charter.ai=(b
 export function pushSelectedCharterToCards(){
   const b = readClientBlob();
 
-  // --- source sélection : prioriser paria.charter (même source que l'UI) ---
-  const chLocal = (()=>{ try{ return JSON.parse(localStorage.getItem('paria.charter')||'{}'); }catch{ return {}; } })();
-  const chBlob  = b.charter || {};
-  const chSrc   = (Array.isArray(chLocal.ai) && chLocal.ai.length > 0) ? chLocal : chBlob;
+  const chSrc = getCharter() || {};
 
   // sélection effective
   const sel = (chSrc.ai||[]).filter(p => p?.state?.selected && !p?.state?.deleted);
@@ -1008,6 +1005,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
