@@ -705,7 +705,7 @@ export function saveCharter(patch){
   const b=readClientBlob(); 
   b.charter={ ...(b.charter||{}), ...patch, state:{ ...(b.charter?.state||{}), updated_ts:Date.now() } }; 
   logEvent('charter/update',{kind:'charter',id:'_'}); 
-  return safeWriteBlob({ charter: patch }, 'saveCharter');
+  return safeWriteBlob({ charter: b.charter }, 'saveCharter');
 }
 export function setCharterAISelected(aiId, val){ const b=readClientBlob(); b.charter.ai=(b.charter.ai||[]).map(p=>p.id===aiId?({...p,state:{...(p.state||{}),selected:!!val,updated_ts:Date.now()}}):p); writeClientBlob(b); logEvent('charter/select',{kind:'charter',id:'_'},{aiId,selected:!!val}); return true; }
 export function toggleCharterAIStatus(aiId,key){ const b=readClientBlob(); b.charter.ai=(b.charter.ai||[]).map(p=>p.id===aiId?({...p,state:{...(p.state||{}),[key]:!p.state?.[key],updated_ts:Date.now()}}):p); writeClientBlob(b); logEvent('charter/ai-flag',{kind:'charter',id:'_'},{aiId,key}); return true; }
@@ -1042,6 +1042,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
