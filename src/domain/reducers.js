@@ -35,13 +35,13 @@ export function safeWriteBlob(patch={}, reason=''){
     const hasCur = hasText(cur?.charter?.content) || hasText(cur?.charter?.title);
     const patchIsEmpty = !hasText(c.content) && !hasText(c.title) && (!Array.isArray(c.tags) || c.tags.length===0);
     if (hasCur && patchIsEmpty) {
-      // on conserve le charter actuel, mais on accepte quand même le .ai si fourni
-      if (Array.isArray(c.ai) && c.ai.length){
+      if ((Array.isArray(c.ai) && c.ai.length) || c.ai_current){
         const keep = normalizeCharter(cur.charter||{});
-        keep.ai = c.ai;                 // merge AI uniquement
+        if (Array.isArray(c.ai) && c.ai.length) keep.ai = c.ai;
+        if (c.ai_current) keep.ai_current = c.ai_current;  // ← support slot unique
         patch.charter = keep;
       } else {
-        delete patch.charter;           // rien à appliquer sur charter
+        delete patch.charter;
       }
     } else {
       patch.charter = c;
@@ -678,17 +678,17 @@ export function pushSelectedCharterToCards(){
 
   const chSrc = getCharter() || {};
 
-  // sélection effective
-  const sel = (chSrc.ai||[]).filter(p => p?.state?.selected && !p?.state?.deleted);
-  if (!sel.length) return 0;
-
   // init structures blob
   b.cards = b.cards || [];
   b.seq   = b.seq   || {};
   
   let count = 0;
+  const base = chSrc.ai_current 
+    ? [chSrc.ai_current] 
+    : (Array.isArray(chSrc.ai) ? chSrc.ai.filter(p => p?.state?.selected && !p?.state?.deleted) : []);
+  if (!base.length) return 0;
 
-  for (const p of sel){
+  for (const p of base){
     // 1) nouvelle card
     const cardId = newCardId(b);
     const sectionId = String(p.id||'1');
@@ -1005,6 +1005,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
