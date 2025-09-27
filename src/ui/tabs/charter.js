@@ -1,7 +1,6 @@
 // ui/tabs/charter.js — 2 colonnes stables + statut + champs multi-lignes
 import {
   getCharter, saveCharter, 
-  setCharterAISelected, toggleCharterAIStatus, removeCharterAI,
   pushSelectedCharterToCards, readClientProfile, writeClientProfile
 } from '../../domain/reducers.js';
 import { askAI, applyAIResults } from '../../core/ai.js';
@@ -160,10 +159,6 @@ function renderProposals(ch){
             </h4>
             <div class="proposal-content">${(p.content||'').replace(/\n/g,'<br>')}</div>
             ${p.tags?.length?`<div class="tags">${p.tags.map(t=>`<span class="tag">#${t}</span>`).join(' ')}</div>`:''}
-          </div>
-          <div class="actions">
-            <button class="icon-think" title="À réfléchir" data-action="prop-think">${p?.state?.think?'🤔':'💡'}</button>
-            <button class="icon-trash" title="Supprimer" data-action="prop-delete">🗑️</button>
           </div>
         </li>`).join('')}
     </ul>`;
@@ -830,6 +825,11 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     try {
       const now = (typeof getCharter==='function') ? getCharter() : null;
       if (now) fillCharter(host, now);
+      try {
+        const ch = (typeof getCharter==='function') ? getCharter() : now;
+        const box = host.querySelector('#charter-proposals-box');
+        if (box && ch) box.innerHTML = renderProposals(ch);
+      } catch {}
       
       // rebind pour que la grille Client reflète le profil du blob
       try { bindClientProfile(host); } catch {}
@@ -854,25 +854,6 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
       return;
     }
   
-    if (btn.dataset.action==='prop-delete') removeCharterAI(id);
-    if (btn.dataset.action === 'prop-think'){
-      const card = btn.closest('.proposal,[data-id]');
-      const id = btn.dataset.propId || card?.getAttribute('data-id');
-      const ch = (typeof getCharter==='function') ? getCharter() : {};
-      const p  = (ch.ai||[]).find(x=>String(x.id)===String(id));
-      if (!p) return;
-    
-      const next = !(p?.state?.think);
-      p.state = {...(p.state||{}), think: next};
-    
-      if (typeof saveCharter==='function') saveCharter({ ai: ch.ai });
-    
-      // Mise à jour UI locale uniquement (pas de re-render global)
-      btn.textContent = next ? '🤔' : '💡';
-      btn.title = next ? 'À réfléchir (activé)' : 'À réfléchir (désactivé)';
-      return;
-    }
-
     $('#charter-proposals-box', host).innerHTML = renderProposals(getCharter());
     
     // Purge: si une prop n'est plus à l'écran → retirer son prompt du JSON
@@ -898,6 +879,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
