@@ -291,8 +291,15 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   ['#charter-title','#charter-content','#charter-tags'].forEach(sel=>{
     const el = host.querySelector(sel);
     if (!el) return;
-    el.addEventListener('input', ()=> window.__tabDirtyCharter = true, {passive:true});
-    el.addEventListener('change',()=> window.__tabDirtyCharter = true, {passive:true});
+    // bind sémantique pour mini-flush
+    const bind = (sel === '#charter-title') ? 'charter.title'
+               : (sel === '#charter-content') ? 'charter.content'
+               : 'charter.tags';
+    el.setAttribute('data-bind', bind);
+  
+    const markDirty = () => { window.__tabDirtyCharter = true; el.setAttribute('data-dirty','1'); };
+    el.addEventListener('input',  markDirty, {passive:true});
+    el.addEventListener('change', markDirty, {passive:true});
   });
 
   // restore last saved values
@@ -544,11 +551,34 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
   const btnGen = $('#charter-gen', host);
   const $status = $('#charter-status', host); 
 
+  async function miniFlushCharterFromUI(root){
+    try{
+      const dirty = Array.from(root.querySelectorAll('[data-dirty="1"][data-bind^="charter."]'));
+      if (!dirty.length) return;
+  
+      const patch = {};
+      for (const el of dirty){
+        const bind = el.getAttribute('data-bind'); // 'charter.title' | 'charter.content' | 'charter.tags'
+        const key  = bind.split('.')[1];
+        const val  = (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') ? (el.value || '') : (el.textContent || '');
+        if (key === 'tags') {
+          patch.tags = String(val||'').split(',').map(s=>s.trim()).filter(Boolean);
+        } else {
+          patch[key] = val;
+        }
+        el.removeAttribute('data-dirty'); // flushé
+      }
+      if (Object.keys(patch).length) await saveCharter(patch);
+    }catch(e){ console.warn('[MiniFlush][CharterUI] non bloquant', e); }
+  }
+
   btnGen.onclick = async ()=>{
     const vals = getVals(host);
     const ts = new Date();
     saveCharterHistory(vals);
-    saveCharter(vals);
+    await miniFlushCharterFromUI(host); // ← flush minimal des seuls champs modifiés
+    const charter = getCharter();       // ← puis lecture depuis le blob
+
     // Persister le prompt réellement utilisé pour l’IA
     let lastPrompt = '';
     try{
@@ -565,7 +595,6 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
     btnGen.disabled = true;
     $status.textContent = '⏳ Analyse en cours…';
     try{
-      const charter = getCharter();
       const s = settingsLoad() || {};
       
       // Profil client: on lit ce qui est à l'écran
@@ -877,6 +906,7 @@ export function mountCharterTab(host = document.getElementById('tab-charter')) {
 
 export const mount = mountCharterTab;
 export default { mount };
+
 
 
 
