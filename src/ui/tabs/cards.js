@@ -8,7 +8,7 @@ import { askAI } from '../../core/ai.js';
 
 import {
   getCardView, setSectionFilters, listCardDays,
-  appendCardUpdate, touchCard, __cards_migrate_v2_once, createCard, hydrateOnEnter, startAutoBackup
+  appendCardUpdate, touchCard, __cards_migrate_v2_once, createCard, hydrateOnEnter, startAutoBackup, createMiniFromSource
 } from "../../domain/reducers.js";
 
 import { readClientBlob, writeClientBlob } from "../../domain/reducers.js";
@@ -120,12 +120,32 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     });
     return calOverlay;
   }
+
   function showSectionCalendar(cardId, secId){
     const ov = ensureCalOverlay();
     const b = readClientBlob();
     const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
     const f = (card.ui?.filters?.[secId]) || {days:[], types:['analyse','ai_md','note','comment','client_md','client_html']};
-    const days = listCardDays(cardId, secId); // ['YYYY-MM-DD', ...]
+    
+    // Si "Historique (famille)" est coché sur la section, on agrège les jours de toute la filiation
+    const secEl = detail.querySelector(`.card-block[data-card="${cardId}"] .section[data-sec="${secId}"]`);
+    const familyMode = !!(secEl && secEl.dataset.history === '1');
+    let days = [];
+    if (!familyMode){
+      days = listCardDays(cardId, secId);
+    } else {
+      const b2 = readClientBlob();
+      const card = (b2.cards||[]).find(x=>String(x.id)===String(cardId));
+      const familyIds = [...new Set([...(card?.source_ids||[]), card?.parent_id, card?.id].map(String).filter(Boolean))];
+      const set = new Set();
+      for (const fid of familyIds){
+        const c = (b2.cards||[]).find(x=>String(x.id)===String(fid));
+        const ups = (c?.updates||[]).filter(u => u?.section_id === secId);
+        for (const u of ups) set.add(_dayKey(u.ts));
+      }
+      days = Array.from(set).sort();
+    }
+
     // grouper par mois
     const byMonth = {};
     for(const d of days){
@@ -220,17 +240,18 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
             <span>#${id}${think}</span>
             ${c.state?.consolidated ? '<span class="badge" title="Consolidation" style="background:#ff8c00;color:#111;padding:0 6px;border-radius:999px;font-weight:600;margin-left:6px">🧩</span>' : ''}
             <span class="ts" style="margin-left:auto">${ts}</span>
+            <button class="btn btn-xxs" title="Dupliquer (nouvelle card)" data-action="mini-duplicate" data-id="${id}" style="margin-left:8px">＋</button>
             <button class="btn btn-xxs" title="${tip}" data-action="mini-soft-delete" data-id="${id}" style="margin-left:8px">${btn}</button>
           </header>
           <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">
             ${title}
           </div>
-          +${c.kind==='mini'
+          ${c.kind==='mini'
             ? `<div class="family" style="font-size:11px;opacity:.75;margin-top:4px">
-                 Famille : ${
-                   [...new Set([...(c.source_ids||[]), c.parent_id].filter(Boolean))]
-                   .map(id=>`#${id}`).join(' ')
-                 }
+                  Famille : ${
+                    [...new Set([...(c.source_ids||[]), c.parent_id].filter(Boolean))]
+                    .map(fid=>`<a href="#" data-action="goto-card" data-id="${fid}">#${fid}</a>`).join(' ')
+                  }
                </div>`
             : ''
           }
@@ -275,6 +296,34 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
         detail.innerHTML = '<div style="opacity:.7">Aucune card sélectionnée</div>';
         return;
       }
+      return;
+    }
+
+    // Dupliquer -> créer une mini depuis la source courante
+    const dup = ev.target.closest('[data-action="mini-duplicate"]');
+    if (dup){
+      const id = String(dup.dataset.id);
+      const newId = createMiniFromSource(id);
+      selectedIds = new Set();
+      primaryId   = String(newId);
+      renderTimeline(); renderDetail();
+      return;
+    }
+
+    // Cliquer sur #id -> focus (Ctrl/⌘ pour multi-sélection)
+    const go = ev.target.closest('[data-action="goto-card"]');
+    if (go){
+      const id = String(go.dataset.id);
+      if (ev.ctrlKey || ev.metaKey){
+        if (!selectedIds) selectedIds = new Set();
+        selectedIds.add(id);
+        if (!primaryId) primaryId = id;
+      } else {
+        selectedIds = new Set([id]);
+        primaryId   = id;
+      }
+      renderTimeline(); renderDetail();
+      ev.preventDefault();
       return;
     }
 
@@ -388,6 +437,9 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
               <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
                 ${chipsDays}
                 ${chipsTypes}
+                <label class="chip">
+                  <input type="checkbox" data-action="sec-history" data-card="${card.id}" data-sec="${sec.id}"> Historique (famille)
+                </label>
                 <button class="btn btn-xs" data-action="sec-calendar" data-card="${card.id}" data-sec="${sec.id}">Calendrier</button>
                 <button class="btn btn-xs" data-action="sec-select-all" data-card="${card.id}" data-sec="${sec.id}">Sélectionner tout</button>
                 <button class="btn btn-xs" data-action="sec-clear" data-card="${card.id}" data-sec="${sec.id}">Tout masquer</button>
@@ -480,6 +532,24 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       const set = new Set(f.types||[]);
       cb.checked ? set.add(cb.value) : set.delete(cb.value);
       setSectionFilters(cardId, sec, {days:f.days, types:[...set]});
+      renderDetail();
+      return;
+    }
+
+    // sec-history : bascule affichage jours = card seule / famille complète
+    if (cb.dataset.action==='sec-history'){
+      const sec = cb.dataset.sec;
+      const cardId = cb.dataset.card || host.dataset.selectedCardId; if(!cardId) return;
+      // marqueur DOM immédiat
+      const secEl = detail.querySelector(`.card-block[data-card="${cardId}"] .section[data-sec="${sec}"]`);
+      if (secEl) secEl.dataset.history = cb.checked ? '1' : '0';
+      // persistance (si reducers accepte des clés en plus dans filters)
+      try {
+        const b = readClientBlob();
+        const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+        const f = (card?.ui?.filters?.[sec]) || {days:[], types:['analyse','ai_md','note','comment','client_md','client_html']};
+        setSectionFilters(cardId, sec, { ...f, history: !!cb.checked });
+      } catch {}
       renderDetail();
       return;
     }
@@ -828,6 +898,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
