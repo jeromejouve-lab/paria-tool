@@ -42,9 +42,28 @@ export function scheduleFlushLocal(delay = 300) {
 }
 
 let __pubTimer = null;
+let __stateTimer = null;
+async function publishState(){
+  try{
+    const workId = buildWorkId();
+    const m = await import('./domain/reducers.js');
+    if (m.isRemoteViewer?.()) return; // remote = lecture seule, pas d’emit
+    const blob = m.readClientBlob?.() || {};
+    await stateSet(workId, { tabs: blob.tabs || {} });
+  }catch(e){ /* no-op best-effort */ }
+}
+
 document.addEventListener('paria:blob-updated', ()=>{
   clearTimeout(__pubTimer);
   __pubTimer = setTimeout(publishEncryptedSnapshot, 300); // throttle
+  
+  // publier aussi l'état des tabs (léger et throttlé)
+  clearTimeout(__stateTimer);
+  __stateTimer = setTimeout(publishState, 150);
+});
+
+// publication immédiate quand un onglet bascule (évènement dédié des reducers)
+document.addEventListener('paria:tabs-changed', ()=>{ publishState(); });
 });
 
 async function publishEncryptedSnapshot(){
@@ -53,12 +72,16 @@ async function publishEncryptedSnapshot(){
   if (isRemoteViewer()) return; // remote = lecture seule, pas de publication
 
   // si l’onglet séance/projecteur n’est pas "on", on ne publie pas
-  const st = await stateGet(workId);
-  const on = st?.tabs?.seance === 'on' || st?.tabs?.projector === 'on';
+  // on décide depuis le blob local (source de vérité)
+  const { readClientBlob } = await import('./domain/reducers.js');
+  const blob = readClientBlob();
+  const on = (blob?.tabs?.seance === 'on') || (blob?.tabs?.projector === 'on');
   if (!on) return;
 
+  // on pousse aussi l’état des tabs côté "state" (meilleure synchro remote)
+  await stateSet(workId, { tabs: blob.tabs || {} });
+
   const sess = await ensureSessionKey();
-  const blob = readClientBlob();
   const b64e = (u8)=> btoa(String.fromCharCode(...u8));
   
   // extrait seulement ce qui doit être partagé (mini-cards, etc.)
@@ -170,6 +193,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
