@@ -497,7 +497,7 @@ export function setSectionFilters(cardId, sectionId, filters){
   c.ui.filters = c.ui.filters||{};
   {
     const prev = c.ui.filters[sectionId] || {};
-    c.ui.filters[secId] = {
+    c.ui.filters[sectionId] = {
       days:  Array.isArray(filters.days)  ? filters.days  : (prev.days  || []),
       types: Array.isArray(filters.types) ? filters.types : (prev.types || []),
       history: (typeof filters.history === 'boolean') ? filters.history : !!prev.history
@@ -1080,6 +1080,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
