@@ -10,10 +10,9 @@ import './core/compat-exports.js';
 // --- app.js ---
 import { backupFlushLocal, backupPushGit, backupsList, restoreFromGit, readClientBlob } from './domain/reducers.js';
 import { buildWorkId } from './core/settings.js';
-import { stateSet, stateGet, dataSet, aesImportKeyRawB64, aesEncryptJSON } from './core/net.js';
+import { stateSet, dataSet } from './core/net.js';
 
 window.__pariaHydrating = true;
-window.__sess = { b64:null, key:null, exp:0 }; // K_sess en base64 + CryptoKey + expiration (ms)
 
 // --- Crypto helpers (HKDF + AES-GCM) -----------------------------------------
 function b64u(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
@@ -100,8 +99,7 @@ async function publishEncryptedSnapshot(){
   await stateSet(workId, { tabs: blob.tabs || {} });
 
   const sess = await ensureSessionKey();
-  const b64e = (u8)=> btoa(String.fromCharCode(...u8));
-  
+   
   // extrait seulement ce qui doit être partagé (mini-cards, etc.)
   const view = {
     cards: (blob.cards||[]).filter(c => c.kind==='mini' && !c?.state?.deleted),
@@ -110,10 +108,8 @@ async function publishEncryptedSnapshot(){
     ver:   1,
     ts:    Date.now()
   };
-  const { iv, ct } = await aesEncryptJSON(sess.key, view);
   
   // --- Encrypt view snapshot (AES-256-GCM) ---
-
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plain = new TextEncoder().encode(JSON.stringify(view));   // 'view' = payload clair déjà construit
   const ctBuf = await crypto.subtle.encrypt({name:'AES-GCM', iv}, sess.kv, plain);
@@ -226,6 +222,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
