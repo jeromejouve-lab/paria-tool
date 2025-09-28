@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="fr">
-<base href="/paria-tool/">
 
 <head>
+  <base href="/paria-tool/">
   <meta charset="utf-8" />
   <title>PARIA v2 – full</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -98,12 +98,24 @@
 <script>
   // marquer cette page comme "remote viewer" + type (projector ou seances)
   window.__pariaMode = 'viewer'; // pour isRemoteViewer()
-  window.__pariaRemote = location.pathname.includes('/seances') ;
+  window.__pariaRemote = '/seances';
 </script>
 
+<script>
+  if (window.__pariaMode==='viewer') {
+    const nav = document.querySelector('header nav');
+    if (nav) nav.style.display = 'none';
+    // cache tout, puis montre la seances
+    document.querySelectorAll('main > section').forEach(s => s.style.display='none');
+    const proj = document.getElementById('tab-seances');
+    if (proj) proj.style.display = 'block';
+  }
+</script>
+  
 <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
 
 
 
