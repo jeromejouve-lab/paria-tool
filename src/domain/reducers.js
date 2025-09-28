@@ -270,6 +270,29 @@ b.charter = {
 export function newCardId(b){ computeSeq(b); return b.seq.next_card_id++; }
 export function newUpdateId(b){ computeSeq(b); return b.seq.next_update_id++; }
 
+// --- Tabs tri-state (cards/seance/projector) ---------------------------------
+export function getTabMode(tab){
+  try { return (readClientBlob().tabs||{})[tab] || 'off'; } catch { return 'off'; }
+}
+export function setTabMode(tab, mode){
+  const b = readClientBlob();
+  const m = (mode==='on'||mode==='pause') ? mode : 'off';
+  b.tabs = Object.assign(
+    { cards:'on', seance:'off', projector:'off' },
+    b.tabs||{},
+    { [tab]: m }
+  );
+  writeClientBlob(b);
+  try { localStorage.setItem('paria.tabs', JSON.stringify(b.tabs)); } catch {}
+  document.dispatchEvent(new CustomEvent('paria:tabs-changed', { detail: { tab, mode:m } }));
+  return m;
+}
+export function cycleTabMode(tab){
+  const cur = getTabMode(tab);
+  const nxt = (cur==='on') ? 'pause' : (cur==='pause' ? 'off' : 'on');
+  return setTabMode(tab, nxt);
+}
+
 export function readClientBlob(){
   const b = JSON.parse(localStorage.getItem('paria.blob')||'{}');
   return normalizeBlob(b);
@@ -1080,6 +1103,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
