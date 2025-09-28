@@ -12,6 +12,16 @@ import { backupFlushLocal, backupPushGit, backupsList, restoreFromGit, readClien
 import { buildWorkId } from './core/settings.js';
 import { stateSet, dataSet } from './core/net.js';
 
+function getRemoteBase(){
+  try{
+    // si tu as une conf persistée, tu peux la lire ici
+    const s = (window.pariaSettingsLoad && window.pariaSettingsLoad()) || {};
+    if (s.remoteBase) return s.remoteBase;
+  }catch{}
+  // fallback: ton GitHub Pages
+  return 'https://jeromejouve-lab.github.io/paria-tool';
+}
+
 window.__pariaHydrating = true;
 
 // --- Crypto helpers (HKDF + AES-GCM) -----------------------------------------
@@ -82,6 +92,30 @@ document.addEventListener('paria:blob-updated', ()=>{
 
 // publication immédiate quand un onglet bascule (évènement dédié des reducers)
 document.addEventListener('paria:tabs-changed', ()=>{ publishState(); });
+
+// Ouvrir/Copier les liens Projecteur/Séances (demandes provenant de Cards)
+document.addEventListener('paria:remote-link', async (ev)=>{
+  try{
+    const { tab, action } = ev.detail || {};
+    if (!tab || !['projector','seance'].includes(tab)) return;
+    const m = await import('./domain/reducers.js');
+    // règle: si off/pause => on place 'pause' avant d'ouvrir/copier ; si 'on' => on laisse tel quel
+    const cur = m.getTabMode?.(tab);
+    if (cur==='off' || cur==='pause') m.setTabMode?.(tab, 'pause');
+    // session + URL
+    const sess = await ensureSessionKey(); // {sid, token, kv, kc}
+    const workId = buildWorkId();
+    const base   = getRemoteBase();
+    const path   = (tab==='projector') ? '/projector/' : '/seances/';
+    const url    = `${base}${path}?work_id=${encodeURIComponent(workId)}&sid=${encodeURIComponent(sess.sid)}#k=${sess.token}`;
+    if (action==='open'){
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else if (action==='copy'){
+      await navigator.clipboard.writeText(url);
+      console.info('[paria] lien copié:', url);
+    }
+  }catch(e){ console.warn('[paria] remote-link error', e); }
+});
 
 async function publishEncryptedSnapshot(){
   const workId = buildWorkId();
@@ -222,6 +256,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
