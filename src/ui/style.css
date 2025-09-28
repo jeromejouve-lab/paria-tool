@@ -84,6 +84,30 @@
 .card-mini.is-active{ outline:2px solid #3b82f6; outline-offset:2px; }
 .card-mini.is-del{ border-color:#cc3344; background:#161214; opacity:.9; outline:2px solid #cc3344; outline-offset:2px; }
 
+/* Mini-cards: header compact, sans débordement */
+.card-mini{ box-sizing:border-box; overflow:hidden; }
+.card-mini header{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:6px; padding:4px 6px;
+}
+
+/* Groupe d'actions à droite (si pas présent, ça n'abîme rien) */
+.card-mini header .mini-actions{ display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+
+/* Badges et horodatage compacts */
+.card-mini header .ts{ font-size:12px; opacity:.8; }
+
+/* Boutons ultra compacts (＋ / 🗑️) */
+.card-mini header .btn-xxs{
+  border:none; background:rgba(255,255,255,.08);
+  height:22px; min-width:22px; padding:0 6px; margin:0 0 0 4px;
+  line-height:20px; font-size:12px; border-radius:6px;
+}
+.card-mini header .btn-xxs:hover{ background:rgba(255,255,255,.14); }
+.card-mini header .btn-xxs:focus{ outline:none; box-shadow:none; }
+
+/* Empêche le "halo bleu" de mordre l'encadrement */
+.card-mini:focus-within{ outline-offset:2px; }
 
 
 
