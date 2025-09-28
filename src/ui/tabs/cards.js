@@ -64,11 +64,16 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     <span class="muted">Projecteur:</span>
     <button class="btn btn-xxs" data-act="cycle-proj" title="on → pause → off">⟳</button>
     <strong id="mode-proj" class="muted"></strong>
+    <button class="btn btn-xxs" data-act="open-proj" title="Ouvrir le projecteur">Ouvrir</button>
+    <button class="btn btn-xxs" data-act="copy-proj" title="Copier le lien projecteur">Copier lien</button>
     <span style="width:12px;display:inline-block"></span>
     <span class="muted">Séances:</span>
     <button class="btn btn-xxs" data-act="cycle-sea" title="on → pause → off">⟳</button>
     <strong id="mode-sea" class="muted"></strong>
-  `;
+    <button class="btn btn-xxs" data-act="open-sea" title="Ouvrir la séance">Ouvrir</button>
+    <button class="btn btn-xxs" data-act="copy-sea" title="Copier le lien séance">Copier lien</button>
+ `;
+
   bar.appendChild(stateBox);
 
   const refreshModes = ()=>{
@@ -80,6 +85,22 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     if (!a) return;
     if (a.dataset.act==='cycle-proj'){ cycleTabMode('projector'); refreshModes(); return; }
     if (a.dataset.act==='cycle-sea'){  cycleTabMode('seance');    refreshModes(); return; }
+    if (a.dataset.act==='open-proj'){
+      document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'open' }}));
+      return;
+    }
+    if (a.dataset.act==='copy-proj'){
+      document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'copy' }}));
+      return;
+    }
+    if (a.dataset.act==='open-sea'){
+      document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'seance', action:'open' }}));
+      return;
+    }
+    if (a.dataset.act==='copy-sea'){
+      document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'seance', action:'copy' }}));
+      return;
+    }
   });
   document.addEventListener('paria:tabs-changed', refreshModes);
   refreshModes();
