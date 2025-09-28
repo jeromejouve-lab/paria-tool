@@ -15,17 +15,36 @@ import { stateSet, stateGet, dataSet, aesImportKeyRawB64, aesEncryptJSON } from 
 window.__pariaHydrating = true;
 window.__sess = { b64:null, key:null, exp:0 }; // K_sess en base64 + CryptoKey + expiration (ms)
 
+// --- Crypto helpers (HKDF + AES-GCM) -----------------------------------------
+function b64u(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function b64uToBytes(s){ s=s.replace(/-/g,'+').replace(/_/g,'/'); const pad = s.length%4 ? '='.repeat(4-(s.length%4)) : ''; const bin = atob(s+pad); const out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; }
+function strBytes(s){ return new TextEncoder().encode(s); }
+async function hkdf(ikm, salt, info, len=32){
+  const key = await crypto.subtle.importKey('raw', ikm, {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
+  const prk = await crypto.subtle.sign('HMAC', key, salt);
+  const T1 = new Uint8Array(await crypto.subtle.sign('HMAC', await crypto.subtle.importKey('raw', prk, {name:'HMAC',hash:'SHA-256'}, false, ['sign']), new Uint8Array([...info,1])));
+  return T1.slice(0,len);
+}
+
 async function ensureSessionKey(){
-  const now = Date.now();
-  if (window.__sess.key && window.__sess.exp > now+5000) return window.__sess;
-  // (re)génère une clé 256 bits
-  const raw = crypto.getRandomValues(new Uint8Array(32));
-  const b64 = b64e(raw);
-  const key = await aesImportKeyRawB64(b64);
-  window.__sess = { b64, key, exp: now + 30_000 }; // TTL 30s
-  // publie la clé côté état (visible seulement si tabs.on)
-  await stateSet(buildWorkId(), { K_sess:b64, exp_s:30 }); 
-  return window.__sess;
+  // Génère ou réutilise une session {sid, token} et dérive K_view/K_cmd
+  if (window.__pariaSess && window.__pariaSess.sid && window.__pariaSess.kv) return window.__pariaSess;
+  const workId = buildWorkId();
+   
+  // token 32o aléatoire (base64url), sid lisible
+  const tokBytes = crypto.getRandomValues(new Uint8Array(32));
+  const tokenB64u = b64u(tokBytes);
+  const sid = `S-${new Date().toISOString().slice(0,10)}-${Math.random().toString(36).slice(2,8)}`;
+  
+  // HKDF (salt=workId)
+  const salt = strBytes(workId);
+  const kvRaw = await hkdf(tokBytes, salt, strBytes('view:'+sid), 32);
+  const kcRaw = await hkdf(tokBytes, salt, strBytes('cmd:'+sid), 32);
+  
+  // Clé AES-GCM pour le chiffrage snapshot
+  const kv = await crypto.subtle.importKey('raw', kvRaw, {name:'AES-GCM'}, false, ['encrypt']);
+  window.__pariaSess = { sid, token: tokenB64u, kv, kc: kcRaw }; // kc gardée brute (HMAC à l'étape 4)
+  return window.__pariaSess;
 }
 
 // --- AUTOSAVE LOCAL (central) ---
@@ -92,7 +111,22 @@ async function publishEncryptedSnapshot(){
     ts:    Date.now()
   };
   const { iv, ct } = await aesEncryptJSON(sess.key, view);
-  await dataSet(workId, { iv, ct, ver:1, ts:Date.now() });
+  
+  // --- Encrypt view snapshot (AES-256-GCM) ---
+  const sess = await ensureSessionKey();            // {sid, token, kv}
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plain = new TextEncoder().encode(JSON.stringify(view));   // 'view' = payload clair déjà construit
+  const ctBuf = await crypto.subtle.encrypt({name:'AES-GCM', iv}, sess.kv, plain);
+  const encSnapshot = {
+    v: 1,
+    alg: 'A256GCM',
+    sid: sess.sid,
+    rev: view.rev || (readClientBlob()?.rev)||0,
+    n: b64u(iv),
+    ct: b64u(ctBuf)
+  };
+
+  await dataSet(workId, 'snapshot', encSnapshot);
 }
 
 await stateSet(buildWorkId(), { K_sess:null }); // clé retirée => clients ne peuvent plus déchiffrer
@@ -192,6 +226,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
