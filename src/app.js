@@ -26,7 +26,6 @@ window.__pariaHydrating = true;
 
 // --- Crypto helpers (HKDF + AES-GCM) -----------------------------------------
 function b64u(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
-function b64uToBytes(s){ s=s.replace(/-/g,'+').replace(/_/g,'/'); const pad = s.length%4 ? '='.repeat(4-(s.length%4)) : ''; const bin = atob(s+pad); const out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; }
 function strBytes(s){ return new TextEncoder().encode(s); }
 async function hkdf(ikm, salt, info, len=32){
   const key = await crypto.subtle.importKey('raw', ikm, {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
@@ -256,6 +255,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
