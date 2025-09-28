@@ -1,7 +1,8 @@
 // PARIA-V2-CLEAN v1.0.0 | ui/tabs/cards.js (injection)
 import {
   listCards, toggleThink, softDeleteCard,
-  addNote, addComment, addAItoCard, updateCard, saveWorkset, listWorksets, addSectionEntry, hideEntry, aiAnalyzeEntry
+  addNote, addComment, addAItoCard, updateCard, saveWorkset, listWorksets, addSectionEntry, hideEntry, aiAnalyzeEntry,
+  getTabMode, setTabMode, cycleTabMode
 } from '../../domain/reducers.js';
 
 import { askAI } from '../../core/ai.js';
@@ -54,6 +55,34 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     bar.style.background = 'var(--bg,#0f0f10)';
     bar.style.paddingBottom = '8px';
   }
+
+  // -- contrôles de session distants (état global) --
+  const stateBox = document.createElement('div');
+  stateBox.className = 'cards-remote-state';
+  stateBox.style.cssText = 'display:flex;gap:8px;align-items:center;margin-left:auto';
+  stateBox.innerHTML = `
+    <span class="muted">Projecteur:</span>
+    <button class="btn btn-xxs" data-act="cycle-proj" title="on → pause → off">⟳</button>
+    <strong id="mode-proj" class="muted"></strong>
+    <span style="width:12px;display:inline-block"></span>
+    <span class="muted">Séances:</span>
+    <button class="btn btn-xxs" data-act="cycle-sea" title="on → pause → off">⟳</button>
+    <strong id="mode-sea" class="muted"></strong>
+  `;
+  bar.appendChild(stateBox);
+
+  const refreshModes = ()=>{
+    stateBox.querySelector('#mode-proj').textContent = getTabMode('projector');
+    stateBox.querySelector('#mode-sea').textContent  = getTabMode('seance');
+  };
+  bar.addEventListener('click', (ev)=>{
+    const a = ev.target.closest('[data-act]');
+    if (!a) return;
+    if (a.dataset.act==='cycle-proj'){ cycleTabMode('projector'); refreshModes(); return; }
+    if (a.dataset.act==='cycle-sea'){  cycleTabMode('seance');    refreshModes(); return; }
+  });
+  document.addEventListener('paria:tabs-changed', refreshModes);
+  refreshModes();
   
   let timeline = host.querySelector('#cards-timeline');
   let detail = host.querySelector('#card-detail');
@@ -898,6 +927,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
