@@ -113,7 +113,7 @@ async function publishEncryptedSnapshot(){
   const { iv, ct } = await aesEncryptJSON(sess.key, view);
   
   // --- Encrypt view snapshot (AES-256-GCM) ---
-  const sess = await ensureSessionKey();            // {sid, token, kv}
+
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plain = new TextEncoder().encode(JSON.stringify(view));   // 'view' = payload clair déjà construit
   const ctBuf = await crypto.subtle.encrypt({name:'AES-GCM', iv}, sess.kv, plain);
@@ -226,6 +226,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
