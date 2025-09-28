@@ -98,7 +98,7 @@
 <script>
   // marquer cette page comme "remote viewer" + type (projector ou seances)
   window.__pariaMode = 'viewer'; // pour isRemoteViewer()
-  window.__pariaRemote = 'seances';
+  window.__pariaRemote = location.pathname.includes('/projector') ? 'projector' : 'seance';
 </script>
 
 <script>
@@ -115,6 +115,7 @@
 <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
 
 
 
