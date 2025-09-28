@@ -225,6 +225,15 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
           <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">
             ${title}
           </div>
+          +${c.kind==='mini'
+            ? `<div class="family" style="font-size:11px;opacity:.75;margin-top:4px">
+                 Famille : ${
+                   [...new Set([...(c.source_ids||[]), c.parent_id].filter(Boolean))]
+                   .map(id=>`#${id}`).join(' ')
+                 }
+               </div>`
+            : ''
+          }
         </article>`;
       }
     }).join('');
@@ -382,6 +391,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
                 <button class="btn btn-xs" data-action="sec-calendar" data-card="${card.id}" data-sec="${sec.id}">Calendrier</button>
                 <button class="btn btn-xs" data-action="sec-select-all" data-card="${card.id}" data-sec="${sec.id}">Sélectionner tout</button>
                 <button class="btn btn-xs" data-action="sec-clear" data-card="${card.id}" data-sec="${sec.id}">Tout masquer</button>
+                <button class="btn btn-xs" data-action="pick-family">Afficher la famille</button>
               </div>
             </header>
             ${groups || '<div style="opacity:.6;padding:6px 0">Aucun élément pour ce filtre.</div>'}
@@ -396,10 +406,11 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
         <button class="btn btn-xs" data-action="exp-md">Exporter MD (sélection)</button>
         <button class="btn btn-xs" data-action="exp-html">Exporter HTML (sélection)</button>
         <button class="btn btn-xs" data-action="exp-print">Imprimer/PDF (sélection)</button>
+        <button class="btn btn-xs" data-action="imp-md-file">Importer MD (nouvelle card)</button>
+        <input type="file" id="imp-md-file" accept=".md,.markdown,.txt" style="display:none">
       </div>
     `;
   }
-
 
   // -- composer par section (sous le header de section) --
   function attachSectionComposer(sectionRoot, { cardId, sectionId }) {
@@ -666,9 +677,49 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       }
       return;
     }
+    if (btn.dataset.action==='pick-family'){
+
+      // On part de la carte primaire (ou la seule sélectionnée)
+      const b = readClientBlob();
+      const cur = (b.cards||[]).find(x=>String(x.id)===String(primaryId||host.dataset.selectedCardId||''));
+      if (!cur) return;
+      const fam = [...new Set([...(cur.source_ids||[]), cur.parent_id, cur.id].filter(Boolean))].map(String);
+      
+      // sélection = toute la famille, primaire = la plus récente (dernier id)
+      selectedIds = new Set(fam.filter(id=>String(id)!==String(cur.id)));
+      primaryId = String(cur.id);
+      renderTimeline();
+      renderDetail();
+      return;
+    }
+
+    // import .md => nouvelle card
+    if (btn.dataset.action==='imp-md-file'){
+      const input = document.getElementById('imp-md-file');
+      if (!input) return;
+      input.value = '';
+      input.onchange = async (e)=>{
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const text = await file.text();
+        const name = (file.name||'client.md').replace(/\.[^.]+$/,'').trim() || 'Client';
+        const newId = createCard({ title: name });
+        // update client_md dans section "Client" (id 's1' par défaut)
+        appendCardUpdate(String(newId), 's1', {
+          origin:'client', type:'client_md', md: text, section_title:'Client'
+        });
+        touchCard(String(newId));
+        // focus timeline/détail
+        selectedIds = new Set(); primaryId = String(newId);
+        renderTimeline(); renderDetail();
+      };
+      input.click();
+      return;
+    }
 
     // exports
     if (btn.dataset.action==='exp-md' || btn.dataset.action==='exp-html' || btn.dataset.action==='exp-print'){
+      
       // 1) cartes concernées = primaire puis autres sélectionnées
       const ids = [];
       if (primaryId) ids.push(String(primaryId));
@@ -686,6 +737,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
           picksByCard.get(cid).add(uid);
         }
       } else {
+      
         // si aucune case cochée : on exporte TOUT des cards sélectionnées
         for (const cid of ids) picksByCard.set(String(cid), null);
       }
@@ -776,6 +828,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
