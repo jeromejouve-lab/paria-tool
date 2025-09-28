@@ -64,7 +64,6 @@ document.addEventListener('paria:blob-updated', ()=>{
 
 // publication immédiate quand un onglet bascule (évènement dédié des reducers)
 document.addEventListener('paria:tabs-changed', ()=>{ publishState(); });
-});
 
 async function publishEncryptedSnapshot(){
   const workId = buildWorkId();
@@ -193,6 +192,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
