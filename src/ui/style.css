@@ -109,5 +109,16 @@
 /* Empêche le "halo bleu" de mordre l'encadrement */
 .card-mini:focus-within{ outline-offset:2px; }
 
+/* Famille: rendre visibles les liens #id dans les mini-cards */
+.card-mini .family{ color: rgba(255,255,255,.85); } /* label "Famille :" lisible */
+.card-mini .family a,
+.card-mini .family a:link,
+.card-mini .family a:visited{
+  color: #8ab4f8 !important;        /* bleu lisible sur fond sombre */
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor; /* discret */
+}
+.card-mini .family a:hover{ text-decoration: underline; }
+.card-mini .family a:active{ color: #f87171 !important; } /* rouge au clic */
 
 
