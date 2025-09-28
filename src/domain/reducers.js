@@ -495,7 +495,15 @@ export function setSectionFilters(cardId, sectionId, filters){
   if (!c) return false;
   c.ui = c.ui||{filters:{}};
   c.ui.filters = c.ui.filters||{};
-  c.ui.filters[sectionId] = { days: filters.days||[], types: filters.types||[] };
+  {
+    const prev = c.ui.filters[secId] || {};
+    c.ui.filters[secId] = {
+      days:  Array.isArray(filters.days)  ? filters.days  : (prev.days  || []),
+      types: Array.isArray(filters.types) ? filters.types : (prev.types || []),
+      history: (typeof filters.history === 'boolean') ? filters.history : !!prev.history
+    };
+  }  
+  
   writeClientBlob(b);
   return true;
 }
@@ -1072,6 +1080,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
