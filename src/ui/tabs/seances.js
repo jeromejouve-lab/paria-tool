@@ -8,7 +8,7 @@ import {
   // mini-cards & updates
   createMiniFromSource, addSectionEntry, hideEntry, touchCard,
   // IA (contexte charter + commentaire)
-  aiAnalyzeEntry,
+  aiAnalyzeEntry, isRemoteViewer
 } from '../../domain/reducers.js';
 
 import { buildWorkId } from '../../core/settings.js';
@@ -152,6 +152,7 @@ function renderDayChips(host){
 }
 
 function sectionComposerHTML(cardId, secId){
+  if (isRemoteViewer()) return ''; // remote = pas de saisie
   return `
     <div class="composer" data-card="${cardId}" data-sec="${secId}" style="display:flex;gap:6px;margin:8px 0;align-items:flex-start">
       <textarea class="composer-text" rows="2" style="flex:1" placeholder="Commentaire séance…"></textarea>
@@ -175,6 +176,8 @@ async function onComposerAction(host, btn){
   const sel    = box.querySelector('.composer-origin');
   const text   = (ta?.value||'').trim();
   const origin = (sel?.value||'client');
+
+  if (isRemoteViewer()) return; // rien à faire côté remote
 
   if (btn.dataset.cmd==='add'){
     if (!text) return;
