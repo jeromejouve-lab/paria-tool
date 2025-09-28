@@ -49,6 +49,9 @@ document.addEventListener('paria:blob-updated', ()=>{
 
 async function publishEncryptedSnapshot(){
   const workId = buildWorkId();
+  const { isRemoteViewer } = await import('./domain/reducers.js');
+  if (isRemoteViewer()) return; // remote = lecture seule, pas de publication
+
   // si l’onglet séance/projecteur n’est pas "on", on ne publie pas
   const st = await stateGet(workId);
   const on = st?.tabs?.seance === 'on' || st?.tabs?.projector === 'on';
@@ -123,14 +126,20 @@ export function showTab(tab){
 }
 
 // init workspace (pull Git s’il faut) + lancer l’unique auto-backup
-import('./domain/reducers.js').then(async ({ hydrateOnEnter, startAutoBackup })=>{
+import('./domain/reducers.js').then(async ({ hydrateOnEnter, startAutoBackup, isRemoteViewer })=>{
   try {
-    await hydrateOnEnter();            // <— on attend l’hydratation locale/git
+    // côté remote → pas d’hydratation réseau
+    if (!isRemoteViewer()) {
+      await hydrateOnEnter();   // <— hydratation locale/git seulement en mode auteur
+    }
   } finally {
     window.__pariaHydrating = false;
     document.dispatchEvent(new CustomEvent('paria:hydrated'));
   }
-  startAutoBackup(60*60*1000);         // autobackup toutes les heures
+  // côté remote → pas d’autobackup
+  if (!isRemoteViewer()) {
+    startAutoBackup(60*60*1000);
+  }
 });
 
 export function boot(){
@@ -161,6 +170,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
