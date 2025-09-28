@@ -96,25 +96,24 @@
 </main>
 
 <script>
-  // marquer cette page comme "remote viewer" + type (projector ou seances)
-  window.__pariaMode = 'viewer'; // pour isRemoteViewer()
-  window.__pariaRemote = location.pathname.includes('/projector') ? 'projector' : 'seance';
+  window.__pariaMode   = window.__pariaMode   || 'viewer';
+  window.__pariaRemote = window.__pariaRemote || (location.pathname.includes('/projector') ? 'projector' : 'seance');
+  document.documentElement.classList.add('viewer', `viewer--${window.__pariaRemote}`);
 </script>
 
-<script>
-  if (window.__pariaMode==='viewer') {
-    const nav = document.querySelector('header nav');
-    if (nav) nav.style.display = 'none';
-    // cache tout, puis montre la seances
-    document.querySelectorAll('main > section').forEach(s => s.style.display='none');
-    const proj = document.getElementById('tab-seances');
-    if (proj) proj.style.display = 'block';
-  }
-</script>
+<style>
+  /* en mode viewer, on masque tout par défaut */
+  .viewer header nav { display:none; }
+  .viewer main > section { display:none; }
+  /* on n’affiche que la section ciblée (noms d’ID uniformisés) */
+  .viewer.viewer--projector #tab-projector { display:block; }
+  .viewer.viewer--seance    #tab-seances   { display:block; } /* ou #tab-seance selon ton id */
+</style>
   
 <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
 
 
 
