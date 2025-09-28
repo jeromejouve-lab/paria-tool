@@ -516,16 +516,24 @@ export function listCardDays(cardId, sectionId){
 export function getCardView(cardId, {sectionId, days=[], types=[]}={}){
   const b = readClientBlob();
   const c = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+ 
   // ---- AGGRÉGATION UPDATES (source + mini) ----
-  let effectiveUpdates = Array.isArray(c?.updates) ? c.updates : [];
+   let effectiveUpdates = Array.isArray(c?.updates) ? c.updates : [];
   
-  if (c && c.kind === 'mini') {
-    const blob = readClientBlob();
-    const src = (b.cards || []).find(x => String(x.id) === String(c.parent_id));
-    const srcUpdates = Array.isArray(src?.updates) ? src.updates : [];
-    // Afficher : updates de la source (lecture seule) + updates de la mini
-    effectiveUpdates = srcUpdates.concat(effectiveUpdates);
-  }
+   if (c && c.kind === 'mini') {
+     const cards = (b.cards || []);
+     // famille = ancêtres + parent direct, sans doublons, filtres truthy
+     const familyIds = [...new Set([...(c.source_ids||[]), c.parent_id]
+                       .map(x=>String(x)).filter(Boolean))];
+     const ancUpdates = familyIds.flatMap(fid => {
+       const src = cards.find(x => String(x.id) === fid);
+       return Array.isArray(src?.updates) ? src.updates : [];
+     });
+     
+     // lecture agrégée = ancêtres (lecture seule) + mini (éditable)
+     effectiveUpdates = ancUpdates.concat(effectiveUpdates);
+   }
+
   // ---------------------------------------------
 
   if (!c) return {section:null, groups:[]};
@@ -603,7 +611,7 @@ export function createMiniFromSource(sourceId){
     id,
     kind: 'mini',
     parent_id: +src.id,
-    source_ids: [ +src.id ],
+    source_ids: Array.isArray(src.source_ids) ? [...src.source_ids, +src.id] : [ +src.id ],
     title: src.title || '',
     tags: Array.isArray(src.tags) ? [...src.tags] : [],
     content: src.content || '',
@@ -1052,6 +1060,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
