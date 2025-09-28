@@ -383,7 +383,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   
       // sections
       for (const sec of (card.sections||[])){
-        const f = (card.ui?.filters?.[sec.id]) || {days:[], types:['analyse','ai_md','note','comment','client_md','client_html']};
+        const f = (card.ui?.filters?.[sec.id]) || {days:[], types:['analyse','ai_md','note','comment','client_md','client_html'], history:false};
         const days = listCardDays(card.id, sec.id);
         const view = getCardView(card.id, { sectionId: sec.id, days: f.days, types: f.types });
   
@@ -431,14 +431,14 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
         `).join('');
   
         chunks.push(`
-          <div class="section" data-sec="${sec.id}" style="padding:10px">
+          <div class="section" data-sec="${sec.id}" data-history="${f.history?1:0}" style="padding:10px">
             <header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
               <h4 style="margin:0">${(sec.title||('Section '+sec.id)).replace(/</g,'&lt;')}</h4>
               <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
                 ${chipsDays}
                 ${chipsTypes}
                 <label class="chip">
-                  <input type="checkbox" data-action="sec-history" data-card="${card.id}" data-sec="${sec.id}"> Historique (famille)
+                  <input type="checkbox" data-action="sec-history" data-card="${card.id}" data-sec="${sec.id}" ${f.history?'checked':''}> Historique (famille)
                 </label>
                 <button class="btn btn-xs" data-action="sec-calendar" data-card="${card.id}" data-sec="${sec.id}">Calendrier</button>
                 <button class="btn btn-xs" data-action="sec-select-all" data-card="${card.id}" data-sec="${sec.id}">Sélectionner tout</button>
@@ -898,6 +898,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
