@@ -44,7 +44,7 @@ function setRemoteMode(mode){
   const ov = ensureOverlay();
   const badge = ov.querySelector('#remote-overlay-badge');
   if (mode==='off'){
-    ov.style.display='flex'; ov.style.background='rgba(0,0,0,.85)'; badge.textContent='En attente (off)';
+    ov.style.display='flex'; ov.style.background='rgba(0,0,0,.85)'; badge.textContent='Session terminée (off)';
   } else if (mode==='pause'){
     ov.style.display='flex'; ov.style.background='rgba(0,0,0,.35)'; badge.textContent='Pause';
   } else {
@@ -53,6 +53,7 @@ function setRemoteMode(mode){
 }
 
 async function pollLoop(){
+  if (window.__pariaMode !== 'viewer' || window.__pariaRemote !== 'projector') return;
   try{
     const qs   = new URLSearchParams(location.search);
     const workId = qs.get('work_id') || buildWorkId();
@@ -102,7 +103,10 @@ async function pollLoop(){
 }
 
 // démarrer
-setInterval(pollLoop, 1500);
+if (window.__pariaMode === 'viewer' && window.__pariaRemote === 'projector') {
+  pollLoop();                  // kick immédiat
+  setInterval(pollLoop, 1500); // suivi périodique
+}
 
 const $ = (s,r=document)=>r.querySelector(s);
 const $$= (s,r=document)=>Array.from(r.querySelectorAll(s));
@@ -463,6 +467,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
