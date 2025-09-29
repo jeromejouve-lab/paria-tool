@@ -163,7 +163,7 @@ function safeCards(){
 }
 
 function currentCardId(){
-  const sess = getSession() || {};
+  const sess = (window.__pariaMode==='viewer') ? {} : (getSession()||{});
   const { cards } = safeCards();
   return sess.card_id || getLocalSel() || (cards[0]?.id ?? null);
 }
@@ -210,7 +210,7 @@ let primaryId = null;
 function renderTimeline(host){
   const wrap = $('#cards-timeline', host); if (!wrap) return;
   const { b, cards } = safeCards();
-  const sess = getSession() || {};
+  const sess = (window.__pariaMode==='viewer') ? {} : (getSession()||{});
   const activeId = String(sess.card_id || getLocalSel() || primaryId || '');
 
   function esc(s){ return String(s||'').replace(/</g,'&lt;'); }
@@ -390,20 +390,24 @@ export function mount(host=document.getElementById('tab-projector')){
   host.innerHTML = htmlShell();
 
   // (2) always render UI (même si déjà câblé)
-  renderTimeline(host);
-  renderDayChips(host);
-  renderDetail(host);
+  if (window.__pariaMode!=='viewer') {
+    renderTimeline(host);
+    renderDayChips(host);
+    renderDetail(host);
+  }
 
   // (3) bind handlers une seule fois
   if (host.dataset.projBound === '1') return;
   host.dataset.projBound = '1';
-  
-  document.addEventListener('paria:blob-updated', () => {
-    const wrap = document.querySelector('#cards-timeline')?.closest('.projector');
-    if (!wrap) return;
-    renderTimeline(wrap);
-    renderDetail(wrap, currentCardId());
-  });
+
+  if (window.__pariaMode!=='viewer') {
+    document.addEventListener('paria:blob-updated', () => {
+      const wrap = document.querySelector('#cards-timeline')?.closest('.projector');
+      if (!wrap) return;
+      renderTimeline(wrap);
+      renderDetail(wrap, currentCardId());
+    });
+  }
 
   document.addEventListener('visibilitychange', ()=>{
     if (document.visibilityState === 'visible'){
@@ -466,7 +470,7 @@ export function mount(host=document.getElementById('tab-projector')){
   host.addEventListener('change', (ev)=>{
     const t = ev.target;
     if (!t) return;
-    if (/^t_(analyse|note|comment|client)$/.test(t.name||'')){
+    if (/^t_(analyse|ai_md|note|comment|client)$/.test(t.name||'')){
       renderDetail(host);
     }
     if (t.dataset?.action==='sec-day'){
@@ -477,6 +481,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
