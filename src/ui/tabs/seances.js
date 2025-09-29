@@ -20,6 +20,8 @@ import { stateGet, dataGet, aesImportKeyRawB64, aesDecryptJSON } from '../../cor
 const $  = (s,r=document)=>r.querySelector(s);
 const $$ = (s,r=document)=>Array.from(r.querySelectorAll(s));
 
+let __remoteDead = false;
+
 // --- Remote crypto (HKDF + AES-GCM) ------------------------------------------
 const te = new TextEncoder(), td = new TextDecoder();
 const b64uToBytes = (s)=>{ s=s.replace(/-/g,'+').replace(/_/g,'/'); const pad=s.length%4? '='.repeat(4-(s.length%4)) : ''; const bin=atob(s+pad); const out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; };
