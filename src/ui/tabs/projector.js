@@ -7,6 +7,7 @@ import { stateGet, dataGet, aesImportKeyRawB64, aesDecryptJSON } from '../../cor
 import { buildWorkId } from '../../core/settings.js';
 
 let __cliKey = null; // CryptoKey en RAM, jamais en localStorage
+let __remoteDead = false;
 
 // --- Remote crypto (HKDF + AES-GCM) ------------------------------------------
 const td = new TextDecoder(); const te = new TextEncoder();
@@ -44,6 +45,7 @@ function setRemoteMode(mode){
   const ov = ensureOverlay();
   const badge = ov.querySelector('#remote-overlay-badge');
   if (mode==='off'){
+    __remoteDead = true; // OFF terminal: stoppe toute activité
     ov.style.display='flex'; ov.style.background='rgba(0,0,0,.85)'; badge.textContent='Session terminée (off)';
   } else if (mode==='pause'){
     ov.style.display='flex'; ov.style.background='rgba(0,0,0,.35)'; badge.textContent='Pause';
@@ -53,6 +55,7 @@ function setRemoteMode(mode){
 }
 
 async function pollLoop(){
+  if (__remoteDead) return;
   if (window.__pariaMode !== 'viewer' || window.__pariaRemote !== 'projector') return;
   try{
     const qs   = new URLSearchParams(location.search);
@@ -104,6 +107,7 @@ async function pollLoop(){
 
 // démarrer
 if (window.__pariaMode === 'viewer' && window.__pariaRemote === 'projector') {
+  setRemoteMode('pause'); // overlay immédiat, pas de flash "off"
   pollLoop();                  // kick immédiat
   setInterval(pollLoop, 1500); // suivi périodique
 }
@@ -470,6 +474,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
