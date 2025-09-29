@@ -190,6 +190,7 @@ function htmlShell(){
       <div class="muted">Filtres</div>
       <div id="chips-days" class="chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       <label><input type="checkbox" name="t_analyse" checked> analyse</label>
+      <label><input type="checkbox" name="t_ai_md"  checked> IA (md)</label>
       <label><input type="checkbox" name="t_note"    checked> note</label>
       <label><input type="checkbox" name="t_comment" checked> commentaire</label>
       <label><input type="checkbox" name="t_client"  checked> client</label>
@@ -273,6 +274,7 @@ function typeFilters(host){
   const box = $('#proj-filters', host);
   return {
     analyse:  $('input[name="t_analyse"]', box)?.checked !== false,
+    ai_md:    $('input[name="t_ai_md"]',   box)?.checked !== false,
     note:     $('input[name="t_note"]',    box)?.checked !== false,
     comment:  $('input[name="t_comment"]', box)?.checked !== false,
     client:   $('input[name="t_client"]',  box)?.checked !== false,
@@ -280,6 +282,7 @@ function typeFilters(host){
 }
 function keepType(t,on){
   if (t==='analyse') return on.analyse;
+  if (t==='ai_md')   return on.ai_md;
   if (t==='note') return on.note;
   if (t==='comment') return on.comment;
   if (t?.startsWith('client')) return on.client;
@@ -467,6 +470,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
