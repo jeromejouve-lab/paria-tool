@@ -2,7 +2,7 @@
 import {
   listCards, toggleThink, softDeleteCard,
   addNote, addComment, addAItoCard, updateCard, saveWorkset, listWorksets, addSectionEntry, hideEntry, aiAnalyzeEntry,
-  getTabMode, setTabMode, cycleTabMode
+  getTabMode, setTabMode
 } from '../../domain/reducers.js';
 
 import { askAI } from '../../core/ai.js';
@@ -62,23 +62,36 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   stateBox.style.cssText = 'display:flex;gap:8px;align-items:center;margin-left:auto';
   stateBox.innerHTML = `
     <span class="muted">Projecteur:</span>
-    <button class="btn btn-xxs" data-act="cycle-proj" title="on → pause → off">⟳</button>
-    <strong id="mode-proj" class="muted"></strong>
-    <button class="btn btn-xxs" data-act="open-proj" title="Ouvrir le projecteur">Ouvrir</button>
-    <button class="btn btn-xxs" data-act="copy-proj" title="Copier le lien projecteur">Copier lien</button>
+    <button class="btn btn-xxs" data-act="set-proj-on"    title="ON (activer)">▶</button>
+    <button class="btn btn-xxs" data-act="set-proj-pause" title="PAUSE (lecture seule)">⏸</button>
+    <button class="btn btn-xxs" data-act="set-proj-off"   title="OFF (fin)">⏹</button>
+    <strong id="mode-proj" class="muted" style="min-width:48px;text-align:center"></strong>
+    <button class="btn btn-xxs" data-act="copy-proj" title="Copier lien projecteur">Copier lien</button>
     <span style="width:12px;display:inline-block"></span>
     <span class="muted">Séances:</span>
-    <button class="btn btn-xxs" data-act="cycle-sea" title="on → pause → off">⟳</button>
-    <strong id="mode-sea" class="muted"></strong>
-    <button class="btn btn-xxs" data-act="open-sea" title="Ouvrir la séance">Ouvrir</button>
-    <button class="btn btn-xxs" data-act="copy-sea" title="Copier le lien séance">Copier lien</button>
- `;
+    <button class="btn btn-xxs" data-act="set-sea-on"    title="ON (activer)">▶</button>
+    <button class="btn btn-xxs" data-act="set-sea-pause" title="PAUSE (lecture seule)">⏸</button>
+    <button class="btn btn-xxs" data-act="set-sea-off"   title="OFF (fin)">⏹</button>
+    <strong id="mode-sea" class="muted" style="min-width:48px;text-align:center"></strong>
+    <button class="btn btn-xxs" data-act="copy-sea" title="Copier lien séance">Copier lien</button>
+  `;
 
   bar.appendChild(stateBox);
 
   const refreshModes = ()=>{
-    stateBox.querySelector('#mode-proj').textContent = getTabMode('projector');
-    stateBox.querySelector('#mode-sea').textContent  = getTabMode('seance');
+    const mp = getTabMode('projector');
+    const ms = getTabMode('seance');
+    stateBox.querySelector('#mode-proj').textContent = mp || '';
+    stateBox.querySelector('#mode-sea').textContent  = ms || '';
+    // activer le bon radio (style .is-active)
+    const setActive = (grp, mode)=> {
+      ['on','pause','off'].forEach(m=>{
+        const btn = stateBox.querySelector(`[data-act="set-${grp}-${m}"]`);
+        if (btn) btn.classList.toggle('is-active', m===mode);
+      });
+    };
+    setActive('proj', mp);
+    setActive('sea',  ms);
   };
   bar.addEventListener('click', (ev)=>{
     const a = ev.target.closest('[data-act]');
@@ -90,7 +103,10 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       return;
     }
     if (a.dataset.act==='copy-proj'){
+      // OFF → PAUSE (et renouveler ticket côté handler global), sinon état inchangé
+      if (getTabMode('projector')==='off') { setTabMode('projector','pause'); }
       document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'copy' }}));
+      refreshModes();
       return;
     }
     if (a.dataset.act==='open-sea'){
@@ -98,9 +114,17 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       return;
     }
     if (a.dataset.act==='copy-sea'){
+      if (getTabMode('seance')==='off') { setTabMode('seance','pause'); }
       document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'seance', action:'copy' }}));
+      refreshModes();
       return;
     }
+    if (a.dataset.act==='set-proj-on'){    setTabMode('projector','on');    refreshModes(); return; }
+    if (a.dataset.act==='set-proj-pause'){ setTabMode('projector','pause'); refreshModes(); return; }
+    if (a.dataset.act==='set-proj-off'){   setTabMode('projector','off');   refreshModes(); return; }
+    if (a.dataset.act==='set-sea-on'){     setTabMode('seance','on');       refreshModes(); return; }
+    if (a.dataset.act==='set-sea-pause'){  setTabMode('seance','pause');    refreshModes(); return; }
+    if (a.dataset.act==='set-sea-off'){    setTabMode('seance','off');      refreshModes(); return; }
   });
   document.addEventListener('paria:tabs-changed', refreshModes);
   refreshModes();
@@ -948,6 +972,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
