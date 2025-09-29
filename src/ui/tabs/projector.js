@@ -1,7 +1,6 @@
 // src/ui/tabs/projector.js — clean rewrite (clone de la timeline Cards en read-only)
 import {
-  listCards, getSession, startSession, pauseSession, stopSession,
-  getCardView, setSectionFilters, listCardDays, readClientBlob
+  getSession, startSession, pauseSession, stopSession
 } from '../../domain/reducers.js';
 
 import { stateGet, dataGet, aesImportKeyRawB64, aesDecryptJSON } from '../../core/net.js';
@@ -28,24 +27,78 @@ async function deriveViewKey(tokenB64u, workId, sid){
   return crypto.subtle.importKey('raw', raw, {name:'AES-GCM'}, false, ['decrypt']);
 }
 
+// --- Overlay remote mode (off/pause/on) -------------------------------------
+function ensureOverlay(){
+  let ov = document.getElementById('remote-overlay');
+  if (!ov){
+    ov = document.createElement('div');
+    ov.id = 'remote-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;display:none;align-items:center;justify-content:center;font:600 18px/1.2 system-ui;background:rgba(0,0,0,.0);color:#fff;z-index:9999;';
+    ov.innerHTML = '<div id="remote-overlay-badge" style="padding:10px 14px;border-radius:10px;background:rgba(0,0,0,.55);backdrop-filter:blur(2px)">•••</div>';
+    document.body.appendChild(ov);
+  }
+  return ov;
+}
+
+function setRemoteMode(mode){
+  const ov = ensureOverlay();
+  const badge = ov.querySelector('#remote-overlay-badge');
+  if (mode==='off'){
+    ov.style.display='flex'; ov.style.background='rgba(0,0,0,.85)'; badge.textContent='En attente (off)';
+  } else if (mode==='pause'){
+    ov.style.display='flex'; ov.style.background='rgba(0,0,0,.35)'; badge.textContent='Pause';
+  } else {
+    ov.style.display='none';
+  }
+}
+
 async function pollLoop(){
   try{
-    const st = await stateGet(buildWorkId());
-    const on = st?.tabs?.projector === 'on' || st?.tabs?.seance === 'on';
-    if (!on || !st?.K_sess){
-      __cliKey = null;
-      renderLocked(on ? 'pause' : 'off'); // désactive clics/affiche écran bloqué
-      return;
+    const qs   = new URLSearchParams(location.search);
+    const workId = qs.get('work_id') || buildWorkId();
+    const sid    = qs.get('sid') || '';
+    const token  = (location.hash||'').replace(/^#?k=/,''); // base64url (ikm)
+
+    // (1) état onglet -> overlay
+    try{
+      const st = await stateGet(workId);
+      const mode = (st?.tabs?.projector) || 'off';
+      setRemoteMode(mode);
+    }catch{}
+
+    // (2) charger snapshot (chiffré v1 / legacy clair)
+    let snap = await dataGet(workId, 'snapshot');
+    if (snap && snap.v===1 && snap.alg==='A256GCM'){
+      if (!token || !sid) return; // paramètres insuffisants
+      try{
+        const k  = await deriveViewKey(token, workId, sid);
+        const iv = b64uToBytes(snap.n);
+        const ct = b64uToBytes(snap.ct);
+        const plain = await crypto.subtle.decrypt({name:'AES-GCM', iv}, k, ct);
+        snap = JSON.parse(new TextDecoder().decode(plain));
+      }catch{ return; }
+    } else if (snap && snap.ct && snap.iv){
+      // Fallback legacy (K_sess côté state + aesDecryptJSON)
+      try{
+        const st2 = await stateGet(workId);
+        if (st2?.K_sess){
+          if (!__cliKey) __cliKey = await aesImportKeyRawB64(st2.K_sess);
+          snap = await aesDecryptJSON(__cliKey, snap.ct, snap.iv);
+        } else { snap = null; }
+      }catch{ snap = null; }
     }
-    if (!__cliKey){ // (ré)importe la clé
-      __cliKey = await aesImportKeyRawB64(st.K_sess);
+
+    if (snap){
+      // Publier en RAM + re-render (read-only)
+      window.__remoteSnapshot = snap;
+      const host = document.getElementById('tab-projector');
+      if (host){
+        renderTimeline(host);
+        renderDayChips(host);
+        renderDetail(host);
+      }
     }
-    const snap = await dataGet(buildWorkId());
-    if (snap?.ct && snap?.iv){
-      const view = await aesDecryptJSON(__cliKey, snap.ct, snap.iv);
-      renderFromView(view); // timeline/détail depuis "view"
-    }
-  }catch(e){ /* no-op */ }
+  }catch{}
 }
 
 // démarrer
@@ -65,12 +118,49 @@ function _dayKey(ts){
 function getLocalSel(){ try{ return localStorage.getItem('projector.sel'); }catch{return null;} }
 function setLocalSel(id){ try{ localStorage.setItem('projector.sel', String(id)); }catch{} }
 
+function listCardDaysSnap(cardId){
+  const b = (window.__remoteSnapshot || {});
+  const card = (b.cards||[]).find(c=>String(c.id)===String(cardId));
+  if (!card) return [];
+  const set = new Set();
+  for (const u of (card.updates||[])){ if (u?.ts) set.add(_dayKey(u.ts)); }
+  return Array.from(set).sort();
+}
+
+function getCardViewSnap(cardId, { sectionId, days=[], types=[] } = {}){
+  const b = (window.__remoteSnapshot || {});
+  const card = (b.cards||[]).find(c=>String(c.id)===String(cardId));
+  const groups = [];
+  if (!card) return { groups };
+  const wantDays  = new Set(days||[]);
+  const wantTypes = new Set((types&&types.length)?types:['analyse','ai_md','note','comment','client_md','client_html']);
+  const all = (card.updates||[]).filter(u=>{
+    if (sectionId && String(u.section_id)!==String(sectionId)) return false;
+    const d = _dayKey(u.ts||Date.now());
+    if (wantDays.size && !wantDays.has(d)) return false;
+    if (wantTypes.size && !wantTypes.has(u.type)) return false;
+    return true;
+  }).sort((a,b)=>a.ts<b.ts?1:-1);
+  const byDay = {};
+  for (const u of all){ const d=_dayKey(u.ts||Date.now()); (byDay[d]=byDay[d]||[]).push(u); }
+  for (const d of Object.keys(byDay).sort((a,b)=>a<b?1:-1)){ groups.push({ day:d, items:byDay[d] }); }
+  return { groups };
+}
+
 function safeCards(){
   let b; try{ b = readClientBlob(); }catch{ b = {}; }
   const cards = (b.cards||[]).filter(c=>!(c.state?.deleted));
   cards.sort((a,b)=> (b.updated_ts||0)-(a.updated_ts||0));
   return { b, cards };
 }
+
+function safeCards(){
+  const b = (window.__remoteSnapshot || {});
+  const cards = (b.cards||[]).filter(c=>!(c.state?.deleted)).slice()
+    .sort((a,b)=> (b.updated_ts||0)-(a.updated_ts||0));
+  return { b, cards };
+}
+
 function currentCardId(){
   const sess = getSession() || {};
   const { cards } = safeCards();
@@ -159,7 +249,7 @@ function renderTimeline(host){
 function renderDayChips(host){
   const box = $('#chips-days', host); if (!box) return;
   const cid = currentCardId(); if (!cid) { box.innerHTML=''; return; }
-  const days = listCardDays(String(cid)); // même API que Cards :contentReference[oaicite:0]{index=0}
+  const days = listCardDaysSnap(String(cid));
 
   const key = `projector.filters.days.${cid}`;
   let sel = [];
@@ -219,7 +309,7 @@ function renderDetail(host){
     const f = (card.ui?.filters?.[sec.id]) || { days:daysSel, types:['analyse','ai_md','note','comment','client_md','client_html'] };
     // priorité aux jours du panneau global; sinon ceux stockés dans la card
     const filt = { days: (daysSel.length?daysSel:(f.days||[])), types: f.types };
-    const v = getCardView(String(card.id), { sectionId: sec.id, days: filt.days, types: filt.types }); // même API que Cards :contentReference[oaicite:1]{index=1}
+    const v = getCardViewSnap(String(card.id), { sectionId: sec.id, days: filt.days, types: filt.types });
     // filtrage types (checkbox) côté Projecteur
     v.groups.forEach(g=>{
       g.items = g.items.filter(u=> keepType(u.type, on));
@@ -380,6 +470,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
