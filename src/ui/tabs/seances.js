@@ -109,7 +109,9 @@ async function loadAndRenderSnapshot(host){
   }
   if (!snap) return;
   window.__remoteSnapshot = snap; // publish en RAM
-
+  renderTimeline(host);
+  renderDayChips(host);
+  renderDetail(host);
 }
 
 function safeCards(){
