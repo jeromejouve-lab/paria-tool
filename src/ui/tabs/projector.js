@@ -148,13 +148,6 @@ function getCardViewSnap(cardId, { sectionId, days=[], types=[] } = {}){
 }
 
 function safeCards(){
-  let b; try{ b = readClientBlob(); }catch{ b = {}; }
-  const cards = (b.cards||[]).filter(c=>!(c.state?.deleted));
-  cards.sort((a,b)=> (b.updated_ts||0)-(a.updated_ts||0));
-  return { b, cards };
-}
-
-function safeCards(){
   const b = (window.__remoteSnapshot || {});
   const cards = (b.cards||[]).filter(c=>!(c.state?.deleted)).slice()
     .sort((a,b)=> (b.updated_ts||0)-(a.updated_ts||0));
@@ -470,6 +463,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
