@@ -170,7 +170,7 @@ function currentCardId(){
 
 // ---------- shell ----------
 function htmlShell(){
-  const sess = getSession() || {};
+  const sess = (window.__pariaMode==='viewer') ? {} : (getSession()||{});
   return `
   <div class="projector" style="padding:8px">
     <section class="block" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -178,7 +178,7 @@ function htmlShell(){
         <strong>Projecteur</strong>
         <span> • État: <span id="proj-state">${sess.status||'idle'}</span></span>
       </div>
-      <div style="margin-left:auto;display:flex;gap:6px">
+      <div style="margin-left:auto;display:flex;gap:6px;${window.__pariaMode==='viewer'?'display:none;':''}">
         <button title="Démarrer"        data-action="session-start">▶️</button>
         <button title="Pause"           data-action="session-pause">⏸️</button>
         <button title="Stop"            data-action="session-stop">⏹️</button>
@@ -431,17 +431,20 @@ export function mount(host=document.getElementById('tab-projector')){
     if (!b) return;
 
     if (b.dataset.action==='session-start'){
+      if (window.__pariaMode==='viewer') return;
       const id = currentCardId();
       if (id) await startSession(id);
       $('#proj-state', host).textContent = (getSession()?.status||'idle');
       return;
     }
     if (b.dataset.action==='session-pause'){
+      if (window.__pariaMode==='viewer') return;
       await pauseSession();
       $('#proj-state', host).textContent = (getSession()?.status||'idle');
       return;
     }
     if (b.dataset.action==='session-stop'){
+      if (window.__pariaMode==='viewer') return;
       await stopSession();
       $('#proj-state', host).textContent = (getSession()?.status||'idle');
       return;
@@ -474,6 +477,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
