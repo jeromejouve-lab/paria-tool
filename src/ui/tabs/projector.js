@@ -9,6 +9,25 @@ import { buildWorkId } from '../../core/settings.js';
 
 let __cliKey = null; // CryptoKey en RAM, jamais en localStorage
 
+// --- Remote crypto (HKDF + AES-GCM) ------------------------------------------
+const td = new TextDecoder(); const te = new TextEncoder();
+const b64uToBytes = (s)=>{ s=s.replace(/-/g,'+').replace(/_/g,'/'); const pad=s.length%4? '='.repeat(4-(s.length%4)) : ''; const bin=atob(s+pad); const out=new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; };
+async function hkdf(ikm, salt, info, len=32){
+  const key = await crypto.subtle.importKey('raw', ikm, {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
+  const prk = await crypto.subtle.sign('HMAC', key, salt);
+  const k2  = await crypto.subtle.importKey('raw', prk, {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
+  const t1  = await crypto.subtle.sign('HMAC', k2, new Uint8Array([...info,1]));
+  return new Uint8Array(t1).slice(0,len);
+}
+
+async function deriveViewKey(tokenB64u, workId, sid){
+  const ikm  = b64uToBytes(tokenB64u);
+  const salt = te.encode(workId);
+  const info = te.encode('view:'+sid);
+  const raw  = await hkdf(ikm, salt, info, 32);
+  return crypto.subtle.importKey('raw', raw, {name:'AES-GCM'}, false, ['decrypt']);
+}
+
 async function pollLoop(){
   try{
     const st = await stateGet(buildWorkId());
@@ -361,6 +380,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
