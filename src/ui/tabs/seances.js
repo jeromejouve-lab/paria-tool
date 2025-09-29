@@ -15,17 +15,110 @@ import {
 } from '../../domain/reducers.js';
 
 import { buildWorkId } from '../../core/settings.js';
+import { stateGet, dataGet, aesImportKeyRawB64, aesDecryptJSON } from '../../core/net.js';
 
 const $  = (s,r=document)=>r.querySelector(s);
 const $$ = (s,r=document)=>Array.from(r.querySelectorAll(s));
+
+// --- Remote crypto (HKDF + AES-GCM) ------------------------------------------
+const te = new TextEncoder(), td = new TextDecoder();
+const b64uToBytes = (s)=>{ s=s.replace(/-/g,'+').replace(/_/g,'/'); const pad=s.length%4? '='.repeat(4-(s.length%4)) : ''; const bin=atob(s+pad); const out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; };
+async function hkdf(ikm, salt, info, len=32){
+  const key = await crypto.subtle.importKey('raw', ikm, {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
+  const prk = await crypto.subtle.sign('HMAC', key, salt);
+  const k2  = await crypto.subtle.importKey('raw', prk, {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
+  const t1  = await crypto.subtle.sign('HMAC', k2, new Uint8Array([...info,1]));
+  return new Uint8Array(t1).slice(0,len);
+}
+
+async function deriveViewKey(tokenB64u, workId, sid){
+  const ikm  = b64uToBytes(tokenB64u);
+  const salt = te.encode(workId);
+  const info = te.encode('view:'+sid);
+  const raw  = await hkdf(ikm, salt, info, 32);
+  return crypto.subtle.importKey('raw', raw, {name:'AES-GCM'}, false, ['decrypt']);
+}
+
+// --- Overlay remote mode ------------------------------------------------------
+function ensureOverlay(){
+  let ov = document.getElementById('remote-overlay');
+  if (!ov){
+    ov = document.createElement('div');
+    ov.id = 'remote-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;display:none;align-items:center;justify-content:center;font:600 18px/1.2 system-ui;background:rgba(0,0,0,.0);color:#fff;z-index:9999;';
+    ov.innerHTML = '<div id="remote-overlay-badge" style="padding:10px 14px;border-radius:10px;background:rgba(0,0,0,.55);backdrop-filter:blur(2px)">•••</div>';
+    document.body.appendChild(ov);
+  }
+  return ov;
+}
+
+function setRemoteMode(mode){
+  const ov = ensureOverlay();
+  const badge = ov.querySelector('#remote-overlay-badge');
+  if (mode==='off'){
+    ov.style.display='flex'; ov.style.background='rgba(0,0,0,.85)'; badge.textContent='Session terminée (off)';
+  } else if (mode==='pause'){
+    ov.style.display='flex'; ov.style.background='rgba(0,0,0,.35)'; badge.textContent='Pause';
+  } else {
+    ov.style.display='none';
+  }
+}
 
 function fmtTs(ts){ try{ return ts ? new Date(ts).toLocaleString() : ''; }catch{ return ''; } }
 function esc(s){ return String(s||'').replace(/</g,'&lt;'); }
 function _dayKey(ts){ const d=new Date(ts); const mm=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0'); return `${d.getFullYear()}-${mm}-${dd}`; }
 
+// --- Remote snapshot loader ---------------------------------------------------
+async function loadAndRenderSnapshot(host){
+  const qs     = new URLSearchParams(location.search);
+  const workId = qs.get('work_id') || (buildWorkId?.()||'');
+  const sid    = qs.get('sid') || '';
+  const token  = (location.hash||'').replace(/^#?k=/,'');
+  if (!workId){ console.warn('[seances] workId manquant'); return; }
+
+  // 1) état tabs -> overlay
+  try{
+    const st = await stateGet(workId);
+    setRemoteMode((st?.tabs?.seance)||'off');
+  }catch{}
+
+  // 2) snapshot chiffré v1 / fallback legacy clair
+  let snap = await dataGet(workId, 'snapshot');
+  if (snap && snap.v===1 && snap.alg==='A256GCM'){
+    if (!token || !sid) return;
+    try{
+      const k  = await deriveViewKey(token, workId, sid);
+      const iv = b64uToBytes(snap.n);
+      const ct = b64uToBytes(snap.ct);
+      const plain = await crypto.subtle.decrypt({name:'AES-GCM', iv}, k, ct);
+      snap = JSON.parse(td.decode(plain));
+    }catch(e){ console.error('[seances] decrypt KO', e); return; }
+  } else if (snap && snap.ct && snap.iv){
+    // legacy (si jamais) : dépend de K_sess côté state
+    try{
+      const st2 = await stateGet(workId);
+      if (st2?.K_sess){
+        const key = await aesImportKeyRawB64(st2.K_sess);
+        snap = await aesDecryptJSON(key, snap.ct, snap.iv);
+      }
+    }catch{}
+  }
+  if (!snap) return;
+  window.__remoteSnapshot = snap; // publish en RAM
+  renderTimeline(host);
+  renderDayChips(host);
+  renderDetail(host);
+}
+
 function safeCards(){
-  let b; try{ b = readClientBlob(); }catch{ b = {}; }
-  const cards = (b.cards||[]).filter(c=>!c.state?.deleted).sort((a,b)=> (b.updated_ts||0)-(a.updated_ts||0));
+  let b;
+  if (isRemoteViewer()){
+    b = window.__remoteSnapshot || {};
+  } else {
+    try{ b = readClientBlob(); }catch{ b = {}; }
+  }
+  const cards = (b.cards||[]).filter(c=>!c.state?.deleted)
+    .slice().sort((a,b)=> (b.updated_ts||0)-(a.updated_ts||0));
   return { b, cards };
 }
 
@@ -69,8 +162,38 @@ function currentCardId(){
 }
 function setLocalSel(id){ try{ localStorage.setItem('seances.sel', String(id)); }catch{} }
 
+function listCardDaysSnap(cardId){
+  const b = window.__remoteSnapshot || {};
+  const card = (b.cards||[]).find(c=>String(c.id)===String(cardId));
+  if (!card) return [];
+  const S = new Set();
+  for (const u of (card.updates||[])){ if (u?.ts) S.add(_dayKey(u.ts)); }
+  return Array.from(S).sort();
+}
+
+function getCardViewSnap(cardId, { sectionId, days=[], types=[] } = {}){
+  const b = window.__remoteSnapshot || {};
+  const card = (b.cards||[]).find(c=>String(c.id)===String(cardId));
+  const groups = [];
+  if (!card) return { groups };
+  const wantDays  = new Set(days||[]);
+  const wantTypes = new Set((types&&types.length)?types:['analyse','ai_md','note','comment','client_md','client_html']);
+  const all = (card.updates||[]).filter(u=>{
+    if (sectionId && String(u.section_id)!==String(sectionId)) return false;
+    const d = _dayKey(u.ts||Date.now());
+    if (wantDays.size && !wantDays.has(d)) return false;
+    if (wantTypes.size && !wantTypes.has(u.type)) return false;
+    return true;
+  }).sort((a,b)=>a.ts<b.ts?1:-1);
+  const byDay = {};
+  for (const u of all){ const d=_dayKey(u.ts||Date.now()); (byDay[d]=byDay[d]||[]).push(u); }
+  for (const d of Object.keys(byDay).sort((a,b)=>a<b?1:-1)){ groups.push({ day:d, items:byDay[d] }); }
+  return { groups };
+}
+
 // Assure une mini-card à partir d’une source (jamais écrire l’original)
 function ensureMini(cardId){
+  if (isRemoteViewer()) return cardId; // remote = lecture seule
   const { cards } = safeCards();
   const c = cards.find(x=>String(x.id)===String(cardId));
   if (!c) return null;
@@ -132,7 +255,9 @@ function keepType(t,on){
 function renderDayChips(host){
   const box = $('#chips-days', host); if (!box) return;
   const cid = primaryId || currentCardId(); if (!cid) { box.innerHTML=''; return; }
-  const days = listCardDays(String(cid));
+  const days = isRemoteViewer()
+    ? listCardDaysSnap(String(cid))
+    : listCardDays(String(cid));
   const key = `seances.filters.days.${cid}`;
   let sel = [];
   try { sel = JSON.parse(localStorage.getItem(key) || '[]'); } catch {}
@@ -239,7 +364,9 @@ function renderDetail(host){
 
   for (const sec of sections){
     const f = (card.ui?.filters?.[sec.id]) || { days:daysSel, types:['analyse','ai_md','note','comment','client_md','client_html'] };
-    const view = getCardView(String(card.id), { sectionId: sec.id, days: (daysSel.length?daysSel:(f.days||[])), types: f.types });
+    const view = isRemoteViewer()
+      ? getCardViewSnap(String(card.id), { sectionId: sec.id, days: (daysSel.length?daysSel:(f.days||[])), types: f.types })
+      : getCardView(String(card.id),     { sectionId: sec.id, days: (daysSel.length?daysSel:(f.days||[])), types: f.types });
 
     // filtrage types selon les cases
     view.groups.forEach(g=>{
@@ -308,6 +435,13 @@ export function mount(host=document.getElementById('tab-seances')){
   // structure
   host.innerHTML = htmlShell();
 
+  // Remote viewer: on ne lit pas le blob; on charge/décrypte le snapshot
+  if (isRemoteViewer()){
+    const detail = host.querySelector('#sc-detail');
+    if (detail) detail.innerHTML = '<div style="opacity:.7">Chargement…</div>';
+    loadAndRenderSnapshot(host);
+  }
+
   // rendu initial (local only)
   renderTimeline(host);
   renderDayChips(host);
@@ -318,11 +452,13 @@ export function mount(host=document.getElementById('tab-seances')){
   host.dataset.scBound='1';
 
   // refresh doux quand le blob change (écritures locales)
-  document.addEventListener('paria:blob-updated', ()=> {
-    const wrap = host; if (!wrap) return;
-    renderTimeline(wrap);
-    renderDetail(wrap);
-  }, {passive:true});
+  if (!isRemoteViewer()){
+    document.addEventListener('paria:blob-updated', ()=> {
+      const wrap = host; if (!wrap) return;
+      renderTimeline(wrap);
+      renderDetail(wrap);
+    }, {passive:true});
+  }
 
   // interactions timeline (sélection card -> assure mini)
   host.addEventListener('click', (ev)=>{
@@ -351,25 +487,44 @@ export function mount(host=document.getElementById('tab-seances')){
     if (t.dataset?.action==='sec-day'){
       const cardId = t.dataset.card;
       const secId  = t.dataset.sec;
-      const b = readClientBlob();
-      const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
-      const f = (card.ui?.filters?.[secId]) || { days:[], types:['analyse','ai_md','note','comment','client_md','client_html'] };
-      const set = new Set(f.days||[]);
-      t.checked ? set.add(t.value) : set.delete(t.value);
-      setSectionFilters(cardId, secId, {days:[...set], types:f.types});
+      
+     // viewer: persiste localStorage uniquement; local: écrit dans blob
+      if (isRemoteViewer()){
+        const key = `seances.filters.days.${cardId}`;
+        let sel=[]; try { sel = JSON.parse(localStorage.getItem(key)||'[]'); } catch {}
+        const S = new Set(sel); t.checked ? S.add(t.value) : S.delete(t.value);
+        localStorage.setItem(key, JSON.stringify([...S]));
+      }else{
+        const b = readClientBlob();
+        const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+        const f = (card.ui?.filters?.[secId]) || { days:[], types:['analyse','ai_md','note','comment','client_md','client_html'] };
+        const set = new Set(f.days||[]);
+        t.checked ? set.add(t.value) : set.delete(t.value);
+        setSectionFilters(cardId, secId, {days:[...set], types:f.types});
+      }
       renderDetail(host);
       return;
     }
+    
     // type dans section
     if (t.dataset?.action==='sec-type'){
       const cardId = t.dataset.card;
       const secId  = t.dataset.sec;
-      const b = readClientBlob();
-      const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
-      const f = (card.ui?.filters?.[secId]) || { days:[], types:['analyse','ai_md','note','comment','client_md','client_html'] };
-      const set = new Set(f.types||[]);
-      t.checked ? set.add(t.value) : set.delete(t.value);
-      setSectionFilters(cardId, secId, {days:f.days, types:[...set]});
+  
+      // viewer: persiste localStorage uniquement; local: écrit dans blob
+      if (isRemoteViewer()){
+        const key = `seances.filters.types.${cardId}.${secId}`;
+        let sel=[]; try { sel = JSON.parse(localStorage.getItem(key)||'[]'); } catch {}
+        const S = new Set(sel); t.checked ? S.add(t.value) : S.delete(t.value);
+        localStorage.setItem(key, JSON.stringify([...S]));
+      }else{
+        const b = readClientBlob();
+        const card = (b.cards||[]).find(x=>String(x.id)===String(cardId));
+        const f = (card.ui?.filters?.[secId]) || { days:[], types:['analyse','ai_md','note','comment','client_md','client_html'] };
+        const set = new Set(f.types||[]);
+        t.checked ? set.add(t.value) : set.delete(t.value);
+        setSectionFilters(cardId, secId, {days:f.days, types:[...set]});
+      }
       renderDetail(host);
       return;
     }
@@ -380,7 +535,7 @@ export function mount(host=document.getElementById('tab-seances')){
       const updId  = t.dataset.upd;
       const art = t.closest('.upd');
       if (art) art.classList.toggle('is-hidden', t.checked);
-      if (cardId && updId) hideEntry(cardId, updId, t.checked);
+      if (!isRemoteViewer() && cardId && updId) hideEntry(cardId, updId, t.checked);
       return;
     }
   });
@@ -390,6 +545,11 @@ export function mount(host=document.getElementById('tab-seances')){
     const c = ev.target.closest('.composer [data-cmd]');
     if (c) { await onComposerAction(host, c); return; }
   });
+
+  // remote: petit poll toutes 1.5s tant qu’on est viewer
+  if (isRemoteViewer()){
+    setInterval(()=> loadAndRenderSnapshot(host), 1500);
+  }
 
   // petit refresh quand l’onglet redevient visible
   document.addEventListener('visibilitychange', ()=>{
