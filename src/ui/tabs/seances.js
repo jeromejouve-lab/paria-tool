@@ -445,9 +445,11 @@ export function mount(host=document.getElementById('tab-seances')){
   }
 
   // rendu initial (local only)
-  renderTimeline(host);
-  renderDayChips(host);
-  renderDetail(host);
+  if (!isRemoteViewer()){
+    renderTimeline(host);
+    renderDayChips(host);
+    renderDetail(host);
+  }
 
   // éviter double-binding
   if (host.dataset.scBound==='1') return;
