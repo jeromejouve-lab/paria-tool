@@ -58,6 +58,7 @@ function setRemoteMode(mode){
   const ov = ensureOverlay();
   const badge = ov.querySelector('#remote-overlay-badge');
   if (mode==='off'){
+    __remoteDead = true; // OFF terminal: stoppe toute activité
     ov.style.display='flex'; ov.style.background='rgba(0,0,0,.85)'; badge.textContent='Session terminée (off)';
   } else if (mode==='pause'){
     ov.style.display='flex'; ov.style.background='rgba(0,0,0,.35)'; badge.textContent='Pause';
@@ -77,6 +78,7 @@ async function loadAndRenderSnapshot(host){
   const sid    = qs.get('sid') || '';
   const token  = (location.hash||'').replace(/^#?k=/,'');
   if (!workId){ console.warn('[seances] workId manquant'); return; }
+  if (__remoteDead) return;
 
   // 1) état tabs -> overlay
   try{
@@ -548,6 +550,8 @@ export function mount(host=document.getElementById('tab-seances')){
 
   // remote: petit poll toutes 1.5s tant qu’on est viewer
   if (isRemoteViewer()){
+    setRemoteMode('pause'); // overlay immédiat, pas de flash "off"
+
     setInterval(()=> loadAndRenderSnapshot(host), 1500);
   }
 
