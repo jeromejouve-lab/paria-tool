@@ -2,7 +2,16 @@
 // Hypothèse: reducers exposent les helpers normalisés déjà utilisés par Cards/Projector.
 
 import {
-  getSession, startSession, pauseSession, stopSession
+  readClientBlob,
+  listCardDays,
+  getCardView,
+  setSectionFilters,
+  createMiniFromSource,
+  addSectionEntry,
+  touchCard,
+  aiAnalyzeEntry,
+  hideEntry,
+  isRemoteViewer
 } from '../../domain/reducers.js';
 
 import { buildWorkId } from '../../core/settings.js';
