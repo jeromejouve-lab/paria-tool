@@ -96,9 +96,17 @@
 </main>
 
 <script>
-  window.__pariaMode   = window.__pariaMode   || 'viewer';
-  window.__pariaRemote = window.__pariaRemote || (location.pathname.includes('/projector') ? 'projector' : 'seance');
-  document.documentElement.classList.add('viewer', `viewer--${window.__pariaRemote}`);
+  const isRemote = /\/(projector|seances)\//.test(location.pathname)
+                || new URLSearchParams(location.search).has('sid');
+
+  window.__pariaMode   = isRemote ? 'viewer' : 'local';
+  window.__pariaRemote = isRemote
+    ? (location.pathname.includes('/projector') ? 'projector' : 'seance')
+    : null;
+
+  if (window.__pariaMode === 'viewer') {
+    document.documentElement.classList.add('viewer', `viewer--${window.__pariaRemote}`);
+  }
 </script>
 
 <style>
@@ -114,6 +122,7 @@
 
 </body>
 </html>
+
 
 
 
