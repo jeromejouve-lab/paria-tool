@@ -100,7 +100,7 @@
                 || new URLSearchParams(location.search).has('sid');
 
   window.__pariaMode   = isRemote ? 'viewer' : 'local';
-  window.__pariaRemote = isRemote
+  window.__pariaRemote = 'seances';
     ? (location.pathname.includes('/projector') ? 'projector' : 'seance')
     : null;
 
@@ -121,6 +121,7 @@
 <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
 
 
 
