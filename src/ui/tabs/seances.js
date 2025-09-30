@@ -83,7 +83,12 @@ async function loadAndRenderSnapshot(host){
   // 1) état tabs -> overlay
   try{
     const st = await stateGet(workId);
-    setRemoteMode((st?.tabs?.seance)||'off');
+    const mode = st?.tabs?.seance;
+    if (mode === 'off')        setRemoteMode('off');
+    else if (mode === 'pause') setRemoteMode('pause');
+    else if (mode === 'on')    setRemoteMode('on');
+    // sinon on garde 'pause' (fixé au mount viewer)
+
   }catch{}
 
   // 2) snapshot chiffré v1 / fallback legacy clair
