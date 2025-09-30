@@ -81,9 +81,6 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   const refreshModes = ()=>{
     const mp = getTabMode('projector');
     const ms = getTabMode('seance');
-    stateBox.querySelector('#mode-proj').textContent = mp || '';
-    stateBox.querySelector('#mode-sea').textContent  = ms || '';
-    // activer le bon radio (style .is-active)
     const setActive = (grp, mode)=> {
       ['on','pause','off'].forEach(m=>{
         const btn = stateBox.querySelector(`[data-act="set-${grp}-${m}"]`);
@@ -93,6 +90,9 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     setActive('proj', mp);
     setActive('sea',  ms);
   };
+
+  setTimeout(refreshModes, 0);
+
   bar.addEventListener('click', (ev)=>{
     const a = ev.target.closest('[data-act]');
     if (!a) return;
@@ -972,6 +972,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
