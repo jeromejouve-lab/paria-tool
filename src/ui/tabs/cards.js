@@ -62,18 +62,16 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   stateBox.style.cssText = 'display:flex;gap:8px;align-items:center;margin-left:auto';
   stateBox.innerHTML = `
     <span class="muted">Projecteur:</span>
-    <button class="btn btn-xxs" data-act="set-proj-on"    title="ON (activer)">▶</button>
-    <button class="btn btn-xxs" data-act="set-proj-pause" title="PAUSE (lecture seule)">⏸</button>
-    <button class="btn btn-xxs" data-act="set-proj-off"   title="OFF (fin)">⏹</button>
-    <strong id="mode-proj" class="muted" style="min-width:48px;text-align:center"></strong>
-    <button class="btn btn-xxs" data-act="copy-proj" title="Copier lien projecteur">Copier lien</button>
+    <button class="btn btn-xxs" data-act="set-proj-on"    title="ON">▶</button>
+    <button class="btn btn-xxs" data-act="set-proj-pause" title="PAUSE">⏸</button>
+    <button class="btn btn-xxs" data-act="set-proj-off"   title="OFF">⏹</button>
+    <button class="btn btn-xxs" data-act="copy-proj" title="Copier lien">Copier lien</button>
     <span style="width:12px;display:inline-block"></span>
     <span class="muted">Séances:</span>
-    <button class="btn btn-xxs" data-act="set-sea-on"    title="ON (activer)">▶</button>
-    <button class="btn btn-xxs" data-act="set-sea-pause" title="PAUSE (lecture seule)">⏸</button>
-    <button class="btn btn-xxs" data-act="set-sea-off"   title="OFF (fin)">⏹</button>
-    <strong id="mode-sea" class="muted" style="min-width:48px;text-align:center"></strong>
-    <button class="btn btn-xxs" data-act="copy-sea" title="Copier lien séance">Copier lien</button>
+    <button class="btn btn-xxs" data-act="set-sea-on"    title="ON">▶</button>
+    <button class="btn btn-xxs" data-act="set-sea-pause" title="PAUSE">⏸</button>
+    <button class="btn btn-xxs" data-act="set-sea-off"   title="OFF">⏹</button>
+    <button class="btn btn-xxs" data-act="copy-sea" title="Copier lien">Copier lien</button>
   `;
 
   bar.appendChild(stateBox);
@@ -85,6 +83,9 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       ['on','pause','off'].forEach(m=>{
         const btn = stateBox.querySelector(`[data-act="set-${grp}-${m}"]`);
         if (btn) btn.classList.toggle('is-active', m===mode);
+        const sty = document.createElement('style');
+        sty.textContent = `.cards-remote-state .btn.is-active{outline:2px solid #9ad; box-shadow:0 0 0 2px #9ad inset}`;
+        stateBox.appendChild(sty);
       });
     };
     setActive('proj', mp);
@@ -972,6 +973,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
