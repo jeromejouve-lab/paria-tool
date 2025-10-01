@@ -81,12 +81,12 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     const ms = getTabMode('seance');
     const setActive = (grp, mode)=> {
       ['on','pause','off'].forEach(m=>{
-        const btn = stateBox.querySelector(`[data-act="set-${grp}-${m}"]`);
-        if (btn) btn.classList.toggle('is-active', m===mode);
-        const sty = document.createElement('style');
-        sty.textContent = `.cards-remote-state .btn.is-active{outline:2px solid #9ad; box-shadow:0 0 0 2px #9ad inset}`;
-        stateBox.appendChild(sty);
+       const btn = stateBox.querySelector(`[data-act="set-${grp}-${m}"]`);
+       if (btn) btn.classList.toggle('is-active', m===mode);
       });
+      const sty = document.createElement('style');
+      sty.textContent = `.cards-remote-state .btn.is-active{outline:2px solid #9ad; box-shadow:0 0 0 2px #9ad inset}`;
+      stateBox.appendChild(sty);
     };
     setActive('proj', mp);
     setActive('sea',  ms);
@@ -973,6 +973,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
