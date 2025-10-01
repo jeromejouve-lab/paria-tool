@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="fr">
-  
+
 <head>
+  <base href="/paria-tool/">
   <meta charset="utf-8" />
   <title>PARIA v2 – full</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -94,9 +95,38 @@
   <section id="tab-journal" style="display:none"></section>
 </main>
 
+<script>
+  const isRemote = /\/(projector|seances)\//.test(location.pathname)
+                || new URLSearchParams(location.search).has('sid');
+
+  window.__pariaMode   = isRemote ? 'viewer' : 'local';
+  window.__pariaRemote = 'seances';
+    ? (location.pathname.includes('/projector') ? 'projector' : 'seances')
+    : null;
+
+  if (window.__pariaMode === 'viewer') {
+    document.documentElement.classList.add('viewer', `viewer--${window.__pariaRemote}`);
+  }
+</script>
+
+<style>
+  /* en mode viewer, on masque tout par défaut */
+  .viewer header nav { display:none; }
+  .viewer main > section { display:none; }
+  /* on n’affiche que la section ciblée (noms d’ID uniformisés) */
+  .viewer.viewer--projector #tab-projector { display:block; }
+  .viewer.viewer--seances    #tab-seances   { display:block; } /* ou #tab-seance selon ton id */
+</style>
+  
 <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
+
+
+
+
+
 
 
 
