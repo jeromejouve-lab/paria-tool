@@ -94,7 +94,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
   setTimeout(refreshModes, 0);
 
-  bar.addEventListener('click', (ev)=>{
+  bar.addEventListener('click', async (ev)=>{
     const a = ev.target.closest('[data-act]');
     if (!a) return;
     if (a.dataset.act==='cycle-proj'){ cycleTabMode('projector'); refreshModes(); return; }
@@ -120,7 +120,9 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
     }
     
     if (a.dataset.act==='copy-sea'){
-      if (getTabMode('seance')==='off') { setTabMode('seance','on'); }
+      if (getTabMode('seance')==='off') { 
+        await setTabMode('seance','on'); // (setTabMode est async dans tes reducers) 
+      }
       document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'seance', action:'copy' }}));
       refreshModes();
       return;
@@ -978,6 +980,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
