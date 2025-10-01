@@ -18,6 +18,12 @@ document.addEventListener('paria:remote-link', async (e) => {
   if (!tab) return;
   const kind = (tab === 'seance') ? 'seances' : 'projector';
 
+  // forcer ON si on part de OFF (pour publier le snapshot immédiatement)
+  try {
+    const r = await import('./domain/reducers.js');
+    if (r.getTabMode?.(tab) === 'off') r.setTabMode?.(tab, 'on');
+  } catch {}
+
   // s'assure qu'on a une session (sid + token de vue)
   const { ensureSessionKey } = await import('./domain/reducers.js');
   const sess = await ensureSessionKey?.(); // adapte si ensureSessionKey est ailleurs
@@ -117,30 +123,6 @@ document.addEventListener('paria:blob-updated', ()=>{
 
 // publication immédiate quand un onglet bascule (évènement dédié des reducers)
 document.addEventListener('paria:tabs-changed', ()=>{ publishState(); });
-
-// Ouvrir/Copier les liens Projecteur/Séances (demandes provenant de Cards)
-document.addEventListener('paria:remote-link', async (ev)=>{
-  try{
-    const { tab, action } = ev.detail || {};
-    if (!tab || !['projector','seance'].includes(tab)) return;
-    const m = await import('./domain/reducers.js');
-    // règle: si off/pause => on place 'pause' avant d'ouvrir/copier ; si 'on' => on laisse tel quel
-    const cur = m.getTabMode?.(tab);
-    if (cur==='off' || cur==='pause') m.setTabMode?.(tab, 'pause');
-    // session + URL
-    const sess = await ensureSessionKey(); // {sid, token, kv, kc}
-    const workId = buildWorkId();
-    const base   = getRemoteBase();
-    const path   = (tab==='projector') ? '/projector/' : '/seances/';
-    const url    = `${base}${path}?work_id=${encodeURIComponent(workId)}&sid=${encodeURIComponent(sess.sid)}#k=${sess.token}`;
-    if (action==='open'){
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } else if (action==='copy'){
-      await navigator.clipboard.writeText(url);
-      console.info('[paria] lien copié:', url);
-    }
-  }catch(e){ console.warn('[paria] remote-link error', e); }
-});
 
 async function publishEncryptedSnapshot(){
   const workId = buildWorkId();
@@ -281,6 +263,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
