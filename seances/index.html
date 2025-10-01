@@ -100,7 +100,7 @@
                 || new URLSearchParams(location.search).has('sid');
 
   window.__pariaMode   = isRemote ? 'viewer' : 'local';
-  window.__pariaRemote = 'seances';
+  window.__pariaRemote = isRemote
     ? (location.pathname.includes('/projector') ? 'projector' : 'seances')
     : null;
 
@@ -115,7 +115,7 @@
   .viewer main > section { display:none; }
   /* on n’affiche que la section ciblée (noms d’ID uniformisés) */
   .viewer.viewer--projector #tab-projector { display:block; }
-  .viewer.viewer--seances    #tab-seances   { display:block; } /* ou #tab-seance selon ton id */
+  .viewer.viewer--seances   #tab-seances   { display:block; } /* ou #tab-seance selon ton id */
 </style>
   
 <script type="module" src="./src/app.js"></script>
