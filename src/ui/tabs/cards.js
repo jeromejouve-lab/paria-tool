@@ -57,24 +57,35 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
   }
 
   // -- contrôles de session distants (état global) --
-  const stateBox = document.createElement('div');
-  stateBox.className = 'cards-remote-state';
-  stateBox.style.cssText = 'display:flex;gap:8px;align-items:center;margin-left:auto';
-  stateBox.innerHTML = `
-    <span class="muted">Projecteur:</span>
-    <button class="btn btn-xxs" data-act="set-proj-on"    title="ON">▶</button>
-    <button class="btn btn-xxs" data-act="set-proj-pause" title="PAUSE">⏸</button>
-    <button class="btn btn-xxs" data-act="set-proj-off"   title="OFF">⏹</button>
-    <button class="btn btn-xxs" data-act="copy-proj" title="Copier lien">Copier lien</button>
-    <span style="width:12px;display:inline-block"></span>
-    <span class="muted">Séances:</span>
-    <button class="btn btn-xxs" data-act="set-sea-on"    title="ON">▶</button>
-    <button class="btn btn-xxs" data-act="set-sea-pause" title="PAUSE">⏸</button>
-    <button class="btn btn-xxs" data-act="set-sea-off"   title="OFF">⏹</button>
-    <button class="btn btn-xxs" data-act="copy-sea" title="Copier lien">Copier lien</button>
-  `;
+  let stateBox = bar.querySelector('.cards-remote-state');
+  if (!stateBox) {
+    stateBox = document.createElement('div');
+    stateBox.className = 'cards-remote-state';
+    stateBox.style.cssText = 'display:flex;gap:8px;align-items:center;margin-left:auto';
+    stateBox.innerHTML = `
+      <span class="muted">Projecteur:</span>
+      <button class="btn btn-xxs" data-act="set-proj-on"    title="ON">▶</button>
+      <button class="btn btn-xxs" data-act="set-proj-pause" title="PAUSE">⏸</button>
+      <button class="btn btn-xxs" data-act="set-proj-off"   title="OFF">⏹</button>
+      <button class="btn btn-xxs" data-act="copy-proj" title="Copier lien">Copier lien</button>
+      <span style="width:12px;display:inline-block"></span>
+      <span class="muted">Séances:</span>
+      <button class="btn btn-xxs" data-act="set-sea-on"    title="ON">▶</button>
+      <button class="btn btn-xxs" data-act="set-sea-pause" title="PAUSE">⏸</button>
+      <button class="btn btn-xxs" data-act="set-sea-off"   title="OFF">⏹</button>
+      <button class="btn btn-xxs" data-act="copy-sea" title="Copier lien">Copier lien</button>
+    `;
+    
+    bar.appendChild(stateBox);
 
-  bar.appendChild(stateBox);
+    // style de halo injecté UNE SEULE FOIS
+    if (!document.getElementById('cards-remote-state-style')) {
+      const sty = document.createElement('style');
+      sty.id = 'cards-remote-state-style';
+      sty.textContent = `.cards-remote-state .btn.is-active{outline:2px solid #9ad; box-shadow:0 0 0 2px #9ad inset}`;
+      document.head.appendChild(sty);
+    }
+  }
 
   const refreshModes = ()=>{
     const mp = getTabMode('projector');
@@ -94,46 +105,50 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
   setTimeout(refreshModes, 0);
 
-  bar.addEventListener('click', async (ev)=>{
-    const a = ev.target.closest('[data-act]');
-    if (!a) return;
-    if (a.dataset.act==='cycle-proj'){ cycleTabMode('projector'); refreshModes(); return; }
-    if (a.dataset.act==='cycle-sea'){  cycleTabMode('seance');    refreshModes(); return; }
-    if (a.dataset.act==='open-proj'){
-      document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'open' }}));
-      return;
-    }
-    
-    if (a.dataset.act==='copy-proj'){
-      // Si c'était OFF → passer en ON pour forcer la publication du snapshot
-      if (getTabMode('projector')==='off') {
-        await setTabMode('projector','on'); // (setTabMode est async dans tes reducers)
+  if (!bar.dataset.remoteBound) {
+    bar.dataset.remoteBound = '1';
+    bar.addEventListener('click', async (ev)=>{
+      const a = ev.target.closest('[data-act]');
+      if (!a) return;
+      if (a.dataset.act==='cycle-proj'){ cycleTabMode('projector'); refreshModes(); return; }
+      if (a.dataset.act==='cycle-sea'){  cycleTabMode('seance');    refreshModes(); return; }
+      if (a.dataset.act==='open-proj'){
+        document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'open' }}));
+        return;
       }
-      document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'copy' }}));
-      refreshModes();
-      return;
-    }
-
-    if (a.dataset.act==='open-sea'){
-      document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'seance', action:'open' }}));
-      return;
-    }
-    
-    if (a.dataset.act==='copy-sea'){
-      if (getTabMode('seance')==='off') { 
-        await setTabMode('seance','on'); // (setTabMode est async dans tes reducers) 
+      
+      if (a.dataset.act==='copy-proj'){
+        // Si c'était OFF → passer en ON pour forcer la publication du snapshot
+        if (getTabMode('projector')==='off') {
+          await setTabMode('projector','on'); // (setTabMode est async dans tes reducers)
+        }
+        document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'copy' }}));
+        refreshModes();
+        return;
       }
-      document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'seance', action:'copy' }}));
-      refreshModes();
-      return;
-    }
-    if (a.dataset.act==='set-proj-on'){    setTabMode('projector','on');    refreshModes(); return; }
-    if (a.dataset.act==='set-proj-pause'){ setTabMode('projector','pause'); refreshModes(); return; }
-    if (a.dataset.act==='set-proj-off'){   setTabMode('projector','off');   refreshModes(); return; }
-    if (a.dataset.act==='set-sea-on'){     setTabMode('seance','on');       refreshModes(); return; }
-    if (a.dataset.act==='set-sea-pause'){  setTabMode('seance','pause');    refreshModes(); return; }
-    if (a.dataset.act==='set-sea-off'){    setTabMode('seance','off');      refreshModes(); return; }
-  });
+  
+      if (a.dataset.act==='open-sea'){
+        document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'seance', action:'open' }}));
+        return;
+      }
+      
+      if (a.dataset.act==='copy-sea'){
+        if (getTabMode('seance')==='off') { 
+          await setTabMode('seance','on'); // (setTabMode est async dans tes reducers) 
+        }
+        document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'seance', action:'copy' }}));
+        refreshModes();
+        return;
+      }
+      if (a.dataset.act==='set-proj-on'){    setTabMode('projector','on');    refreshModes(); return; }
+      if (a.dataset.act==='set-proj-pause'){ setTabMode('projector','pause'); refreshModes(); return; }
+      if (a.dataset.act==='set-proj-off'){   setTabMode('projector','off');   refreshModes(); return; }
+      if (a.dataset.act==='set-sea-on'){     setTabMode('seance','on');       refreshModes(); return; }
+      if (a.dataset.act==='set-sea-pause'){  setTabMode('seance','pause');    refreshModes(); return; }
+      if (a.dataset.act==='set-sea-off'){    setTabMode('seance','off');      refreshModes(); return; }
+    });
+  }
+  
   document.addEventListener('paria:tabs-changed', refreshModes);
   refreshModes();
   
@@ -980,6 +995,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
