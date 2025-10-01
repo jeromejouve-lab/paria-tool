@@ -235,7 +235,7 @@ import('./domain/reducers.js').then(async ({ hydrateOnEnter, startAutoBackup, is
   }
 });
 
-export function boot(){
+export async function boot(){
   
   // délégation de clic sur toute la page (boutons, liens, etc. portant data-tab)
   document.addEventListener('click', (ev)=>{
@@ -247,6 +247,33 @@ export function boot(){
     showTab(tab);
   });
 
+  // ---- Réglages toujours accessible (local) ----
+  try {
+    // on ne bloque JAMAIS l’UI : on lit juste la conf locale
+    const raw = localStorage.getItem('paria.settings') || '{}';
+    const cfg = JSON.parse(raw);
+    const needsSetup = !cfg?.endpoints?.proxy?.url; // aucune URL => config à faire
+    if (needsSetup || localStorage.getItem('paria.forceSettings') === '1') {
+      
+      // afficher le bouton Réglages s’il était masqué par du CSS
+      const tabBtn = document.querySelector('[data-tab="settings"]');
+      if (tabBtn) tabBtn.style.display = '';
+      
+      // ouvrir l’onglet
+      tabBtn?.click?.();
+      
+      // monter le module au besoin (défensif, non bloquant)
+      try {
+        const mod = await import('./ui/tabs/settings.js');
+        const pane = document.getElementById('tab-settings') || document.querySelector('#tab-settings');
+        if (pane && !pane.childElementCount) mod.mount(pane);
+      } catch (e) { console.warn('[settings] mount fallback (non-blocking):', e); }
+      localStorage.removeItem('paria.forceSettings'); // one-shot
+    }
+  } catch (e) {
+    console.warn('[settings] force at boot error (non-blocking):', e);
+  }
+  
   // onglet par défaut: hash si présent, sinon premier bouton, sinon settings
   const hash = (location.hash||'').replace('#','');
   const firstBtn = document.querySelector('[data-tab]');
@@ -263,6 +290,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
