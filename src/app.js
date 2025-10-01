@@ -12,6 +12,32 @@ import { backupFlushLocal, backupPushGit, backupsList, restoreFromGit, readClien
 import { buildWorkId } from './core/settings.js';
 import { stateSet, dataSet } from './core/net.js';
 
+// -- Handler unique : construit et copie l'URL remote sous /paria-tool/ --
+document.addEventListener('paria:remote-link', async (e) => {
+  const { tab, action } = e.detail || {};
+  if (!tab) return;
+  const kind = (tab === 'seance') ? 'seances' : 'projector';
+
+  // s'assure qu'on a une session (sid + token de vue)
+  const { ensureSessionKey } = await import('./domain/reducers.js');
+  const sess = await ensureSessionKey?.(); // adapte si ensureSessionKey est ailleurs
+  const sid  = sess?.sid || `S-${new Date().toISOString().slice(0,10)}-${Math.random().toString(36).slice(2,8)}`;
+  const tok  = sess?.token || sess?.tokenB64u || ''; // l’un des deux selon ta version
+
+  const base = `${location.origin}/paria-tool/${kind}/`;
+  const u = new URL(base);
+  u.searchParams.set('work_id', (await import('./core/settings.js')).buildWorkId());
+  u.searchParams.set('sid', sid);
+  if (tok) u.hash = 'k=' + tok;
+
+  if (action === 'open') {
+    window.open(u.toString(), '_blank', 'noopener,noreferrer');
+  } else {
+    try { await navigator.clipboard.writeText(u.toString()); } catch {}
+    console.log('[paria] lien copié:', u.toString());
+  }
+});
+
 function getRemoteBase(){
   try{
     // si tu as une conf persistée, tu peux la lire ici
@@ -255,6 +281,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
