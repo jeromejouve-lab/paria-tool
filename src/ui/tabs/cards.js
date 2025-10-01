@@ -115,7 +115,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
       return;
     }
     if (a.dataset.act==='copy-sea'){
-      if (getTabMode('seance')==='off') { setTabMode('seance','pause'); }
+      if (getTabMode('seance')==='off') { setTabMode('seance','on'); }
       document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'seance', action:'copy' }}));
       refreshModes();
       return;
@@ -973,6 +973,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
