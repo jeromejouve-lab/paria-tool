@@ -66,8 +66,9 @@ async function pollLoop(){
     // (1) état onglet -> overlay
     try{
       const st = await stateGet(workId);
-      const mode = (st?.tabs?.projector) || 'off';
-      setRemoteMode(mode);
+      const mode = st?.tabs?.projector;
+      if (mode) setRemoteMode(mode); // sinon conserver l’overlay courant (défaut = pause)
+
     }catch{}
 
     // (2) charger snapshot (chiffré v1 / legacy clair)
@@ -481,6 +482,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
