@@ -36,16 +36,23 @@ function findByAt(folder, at){
 // GitHub helpers (Content API)
 function ghRepo(){ return PROP.getProperty('GH_REPO') || 'paria-audits'; }
 function ghToken(){ return PROP.getProperty('GH_TOKEN') || ''; }
+
 function ghApi(url, method, body){
   const token=ghToken(); if(!token) return { status: 401 };
   const resp=UrlFetchApp.fetch('https://api.github.com/'+url,{ method: method||'GET', muteHttpExceptions:true,
-    headers:{ 'Accept':'application/vnd.github+json','Authorization':'token '+token }, payload: body? JSON.stringify(body): undefined, contentType:'application/json' });
+    headers: ghAuthHeaders_(), payload: body? JSON.stringify(body): undefined, contentType:'application/json' });
   return { status: resp.getResponseCode(), bytes: resp.getContent() };
 }
+
 function ghGet(url){ return ghApi(url,'GET'); }
+
 function ghPutJson(path,obj){
-  const repo=ghRepo(); const get=ghGet(`repos/${repo}/contents/${path}`); const content=Utilities.base64Encode(JSON.stringify(obj,null,2));
-  if(get.status===200){ const meta=JSON.parse(Utilities.newBlob(get.bytes).getDataAsString());
+  const repo=ghRepo();
+  const get=ghGet(`repos/${repo}/contents/${path}`);
+  const content=Utilities.base64Encode(utf8Bytes(JSON.stringify(obj,null,2))); // UTF-8 bytes
+
+  if(get.status===200){
+    const meta=JSON.parse(Utilities.newBlob(get.bytes).getDataAsString());
     const put=ghApi(`repos/${repo}/contents/${path}`,'PUT',{message:`snapshot ${new Date().toISOString()}`, content, sha: meta.sha});
     return put.status===200||put.status===201;
   }else{
@@ -53,6 +60,7 @@ function ghPutJson(path,obj){
     return put.status===201||put.status===200;
   }
 }
+
 function ghReadJson(path){
   if(/^gitblob=/.test(path)){ // blob sha
     const sha=path.split('=')[1]; const r=ghGet('git/blobs/'+sha); if(r.status!==200) return null;
@@ -66,14 +74,20 @@ function ghReadIndex(base){
   const repo=ghRepo(); const r=ghGet(`repos/${repo}/contents/${base}/index.json`); if(r.status!==200) return null;
   const o=JSON.parse(Utilities.newBlob(r.bytes).getDataAsString()); const txt=Utilities.newBlob(Utilities.base64Decode(o.content)).getDataAsString(); try{return JSON.parse(txt);}catch{return null;}
 }
+
 function ghWriteIndex(base,idx){
-  const repo=ghRepo(); const get=ghGet(`repos/${repo}/contents/${base}/index.json`); const content=Utilities.base64Encode(JSON.stringify(idx,null,2));
-  if(get.status===200){ const meta=JSON.parse(Utilities.newBlob(get.bytes).getDataAsString());
+  const repo=ghRepo();
+  const get=ghGet(`repos/${repo}/contents/${base}/index.json`);
+  const content=Utilities.base64Encode(utf8Bytes(JSON.stringify(idx,null,2))); // UTF-8 bytes
+
+  if(get.status===200){
+    const meta=JSON.parse(Utilities.newBlob(get.bytes).getDataAsString());
     ghApi(`repos/${repo}/contents/${base}/index.json`,'PUT',{message:'update index',content,sha:meta.sha});
   }else{
     ghApi(`repos/${repo}/contents/${base}/index.json`,'PUT',{message:'create index',content});
   }
 }
+
 function selectFromIndex(index, at){
   if(!Array.isArray(index)||!index.length) return null;
   index.sort((a,b)=> (a.ts<b.ts?-1:1));
@@ -234,50 +248,6 @@ function aiRoute_(data) {
   }
 }
 
-function gas_tokenPipeline() {
-  const t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
-  const norm = t.normalize('NFKC');
-
-  // UTF-8 bytes (expl. explicite du charset)
-  const bytes = Utilities.newBlob(norm, 'text/plain', 'x').getBytes();
-
-  // Utils
-  const toHex = (arr) => arr.map(b=>('0'+(b & 0xff).toString(16)).slice(-2)).join('');
-  const sha256 = (u8) => {
-    const dig = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, u8);
-    return toHex(dig);
-  };
-  const fnvChunks = (u8, size) => {
-    const out = [];
-    for (var i=0;i<u8.length;i+=size) {
-      var h = 0x811c9dc5 >>> 0;               // FNV-1a 32-bit
-      for (var j=i;j<Math.min(i+size,u8.length);j++) {
-        h ^= (u8[j] & 0xff); h = Math.imul(h, 0x01000193) >>> 0;
-      }
-      out.push( ('00000000'+h.toString(16)).slice(-8) );
-    }
-    return out;
-  };
-
-  const allHex = toHex(bytes);
-  const first16 = allHex.slice(0,32);
-  const last16  = allHex.slice(-32);
-  const sha     = sha256(bytes);
-  const segFNV16= fnvChunks(bytes, 16);
-
-  Logger.log('len_chars=%s len_norm_chars=%s len_bytes_utf8=%s', t.length, norm.length, bytes.length);
-  Logger.log('sha256=%s', sha);
-  Logger.log('first16hex=%s last16hex=%s', first16, last16);
-  Logger.log('segFNV16 (GAS)=%s', JSON.stringify(segFNV16));
-}
-
-function gas_authPreview() {
-  const t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
-  var h = 'token ' + t; // ← reflète le patch proposé
-  var mask = h.slice(0,20) + '…' + h.slice(-10);
-  Logger.log('Authorization mask=%s', mask);
-}
-
 // Code GAS
 function normNFKC(s){ return (s||'').toString().normalize('NFKC'); }
 function utf8Bytes(s){ return Utilities.newBlob(normNFKC(s), 'text/plain').getBytes(); }
@@ -292,166 +262,6 @@ function ghAuthHeaders_(){
 }
 function ghContentsURL_(repo, branch, path){
   return 'https://api.github.com/repos/'+repo+'/contents/'+path+'?ref='+branch; // path non encodé
-}
-
-function gas_tokenHash() {
-  const t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
-  const raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, t);
-  const hex = raw.map(b=>('0'+(b&0xff).toString(16)).slice(-2)).join('');
-  Logger.log('SHA256(GH_TOKEN)=%s', hex);
-  Logger.log('len=%s', t.length);
-}
-
-function gas_tokenPeek() {
-  const t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
-  const len = t.length;
-  const prefix20 = t.slice(0,20);
-  const suffix3  = t.slice(-3);
-  var hasWS=false;
-  for (var i=0;i<t.length;i++){
-    var c=t.charCodeAt(i);
-    if (c<=32 || c===127){ hasWS=true; Logger.log('whitespace at %s code=%s', i, c); }
-  }
-  Logger.log('len=%s prefix20=%s suffix3=%s hasWhitespace=%s', len, prefix20, suffix3, hasWS);
-}
-
-function gas_tokenSelfTest() {
-  const p = PropertiesService.getScriptProperties();
-  const GH_TOKEN = p.getProperty('GH_TOKEN');                   // <- lu des Script Properties
-  const res = UrlFetchApp.fetch('https://api.github.com/user', {
-    method: 'get',
-    muteHttpExceptions: true,
-    headers: {
-      Authorization: 'Bearer ' + GH_TOKEN,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'paria-probe'
-    }
-  });
-  Logger.log('GET /user status=%s', res.getResponseCode());      // <- doit être 200
-  Logger.log('X-OAuth-Scopes=%s', res.getHeaders()['X-OAuth-Scopes']); // doit contenir repo / contents:read
-  Logger.log('Body=%s', res.getContentText());
-}
-
-function gas_readIndexJson() {
-  const p = PropertiesService.getScriptProperties();
-  const GH_TOKEN  = p.getProperty('GH_TOKEN');
-  const GH_REPO   = p.getProperty('GH_REPO');        // format "owner/repo"
-  const GH_BRANCH = p.getProperty('GH_BRANCH') || 'main';
-  const PATH      = 'clients/test/rh/2025-10-02/index.json'; // <— même chemin que ton test
-
-  const url = 'https://api.github.com/repos/'+GH_REPO+'/contents/'+PATH+'?ref='+GH_BRANCH;
-  const res = UrlFetchApp.fetch(url, {
-    method: 'get',
-    muteHttpExceptions: true,
-    headers: {
-      Authorization: 'Bearer ' + GH_TOKEN,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'paria-probe'
-    }
-  });
-  Logger.log('GET contents status=%s', res.getResponseCode());    // <- doit être 200
-  Logger.log('Body=%s', res.getContentText());
-}
-
-function gas_dumpProps() {
-  const p = PropertiesService.getScriptProperties();
-  const GH_REPO   = p.getProperty('GH_REPO');
-  const GH_BRANCH = p.getProperty('GH_BRANCH');
-  const GH_TOKEN  = p.getProperty('GH_TOKEN');
-  Logger.log('GH_REPO=%s',   GH_REPO);
-  Logger.log('GH_BRANCH=%s', GH_BRANCH);
-  Logger.log('GH_TOKEN len=%s', GH_TOKEN ? GH_TOKEN.length : 0); // on ne log pas le token
-}
-
-function gas_tokenMask() {
-  const t = (PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '');
-  Logger.log('len=%s', t.length);
-  Logger.log('mask=%s', (t.slice(0,8)+'…'+t.slice(-4)));
-  for (var i=0;i<t.length;i++){
-    const c=t.charCodeAt(i);
-    if (c<=32 || c===127) Logger.log('whitespace at %s code=%s', i, c);
-  }
-}
-
-function gas_tokenSelfTest_TOKEN() {
-  const t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
-  const r = UrlFetchApp.fetch('https://api.github.com/user', {
-    method: 'get',
-    muteHttpExceptions: true,
-    headers: {
-      Authorization: 'token ' + t,             // <-- schéma PAT "token"
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'paria-probe'
-    }
-  });
-  Logger.log('GET /user (token) status=%s', r.getResponseCode());
-  Logger.log('Body=%s', r.getContentText());
-}
-
-function gas_readIndexJson_TOKEN() {
-  const p  = PropertiesService.getScriptProperties();
-  const t  = p.getProperty('GH_TOKEN') || '';
-  const rp = p.getProperty('GH_REPO');              // ex: "jeromejouve-lab/paria-audits"
-  const br = p.getProperty('GH_BRANCH') || 'main';
-  const path = 'clients/test/rh/2025-10-02/index.json';
-
-  const url = 'https://api.github.com/repos/'+rp+'/contents/'+path+'?ref='+br;
-  const r = UrlFetchApp.fetch(url, {
-    method: 'get',
-    muteHttpExceptions: true,
-    headers: {
-      Authorization: 'token ' + t,                 // <-- schéma PAT "token"
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'paria-probe'
-    }
-  });
-  Logger.log('GET contents (token) status=%s', r.getResponseCode());
-  Logger.log('Body=%s', r.getContentText());
-}
-
-function gas_tokenHash() {
-  const t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
-  const raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, t);
-  const hex = raw.map(b=>('0'+(b&0xff).toString(16)).slice(-2)).join('');
-  Logger.log('SHA256(GH_TOKEN)=%s', hex);
-  Logger.log('len=%s', t.length);
-}
-
-function gas_tokenSelfTest() {
-  const GH_TOKEN = PropertiesService.getScriptProperties().getProperty('GH_TOKEN');
-  const r = UrlFetchApp.fetch('https://api.github.com/user', {
-    method: 'get',
-    muteHttpExceptions: true,
-    headers: {
-      Authorization: 'Bearer ' + GH_TOKEN,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'paria-probe'
-    }
-  });
-  Logger.log('GET /user status=%s', r.getResponseCode());      // attendu: 200
-  Logger.log('X-OAuth-Scopes=%s', r.getHeaders()['X-OAuth-Scopes']); // classic: 'repo,…' ; fine-grained: souvent vide
-  Logger.log('Body=%s', r.getContentText());
-}
-
-function gas_readIndexJson() {
-  const p = PropertiesService.getScriptProperties();
-  const GH_TOKEN  = p.getProperty('GH_TOKEN');
-  const GH_REPO   = p.getProperty('GH_REPO');             // owner/repo
-  const GH_BRANCH = p.getProperty('GH_BRANCH') || 'main';
-  const PATH      = 'clients/test/rh/2025-10-02/index.json';
-
-  const url = 'https://api.github.com/repos/'+GH_REPO+'/contents/'+PATH+'?ref='+GH_BRANCH;
-  const r = UrlFetchApp.fetch(url, {
-    method: 'get',
-    muteHttpExceptions: true,
-    headers: {
-      Authorization: 'Bearer ' + GH_TOKEN,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'paria-probe'
-    }
-  });
-  Logger.log('GET contents status=%s', r.getResponseCode()); // attendu: 200
-  Logger.log('Body=%s', r.getContentText());
 }
 
 /**
