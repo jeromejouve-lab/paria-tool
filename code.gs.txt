@@ -1,0 +1,490 @@
+/** PARIA v2 Apps Script backend (full)
+ * Routes: diag, save, load, gdrive_find, gdrive_load, git_find, git_load, git_snapshot
+ * Front envoie Content-Type: text/plain (évite preflight CORS).
+ */
+const PROP = PropertiesService.getScriptProperties();
+const JSON_OUT = o => ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+const BAD = msg => JSON_OUT({ ok:false, error: msg });
+function assertAuth(secret){ const s = PROP.getProperty('PROXY_SECRET') || ''; if (!secret || secret !== s) throw new Error('auth'); }
+const nowTs = () => new Date().toISOString().replace(/[:]/g,'-').slice(0,16);
+function widParts(work_id){ const p=(work_id||'').split('|'); return { client:p[0]||'ACME', service:p[1]||'Compta', date:p[2]||Utilities.formatDate(new Date(), Session.getScriptTimeZone(),'yyyy-MM-dd') }; }
+
+// Drive helpers
+function rootFolderId(){ const id=PROP.getProperty('GDRIVE_ROOT_ID'); if(id) return id; const f=DriveApp.createFolder('paria-audits'); PROP.setProperty('GDRIVE_ROOT_ID',f.getId()); return f.getId(); }
+function ensureFolder(parent,name){ const it=parent.getFoldersByName(name); return it.hasNext()?it.next():parent.createFolder(name); }
+function drivePath(work_id){ const {client,service,date}=widParts(work_id); const r=DriveApp.getFolderById(rootFolderId());
+  return ensureFolder(ensureFolder(ensureFolder(ensureFolder(r,'clients'),client),service),date); }
+function listFiles(folder){ const arr=[]; const it=folder.getFiles(); while(it.hasNext()) arr.push(it.next()); return arr; }
+function writeFile(folder,name,content){ const it=folder.getFilesByName(name); if(it.hasNext()){ const f=it.next(); f.setTrashed(true); } folder.createFile(name, content, MimeType.PLAIN_TEXT); }
+function findStateJson(folder){ const it=folder.getFilesByName('state.json'); return it.hasNext()?it.next():null; }
+function latestSnapshot(folder){ const files=listFiles(folder).filter(f=>/^snapshot-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}/.test(f.getName()||'')); if(!files.length) return null; files.sort((a,b)=> (a.getName()>b.getName()?1:-1)); return files[files.length-1]; }
+function findByAt(folder, at){
+  const files=listFiles(folder).filter(f=>/^snapshot-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}/.test(f.getName()||'')); if(!files.length){ const s=findStateJson(folder); if(!s) return null; return { hit:{ ts:s.getLastUpdated().getTime(), id:s.getId() } }; }
+  files.sort((a,b)=> (a.getName()>b.getName()?1:-1));
+  const wantsDay=/^\d{4}-\d{2}-\d{2}$/.test(at||''); const wantsTime=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at||'');
+  const dayPrefix= wantsDay?at : (wantsTime? at.slice(0,10):'');
+  const day = dayPrefix ? files.filter(f=>f.getName().includes(dayPrefix)) : files.slice();
+  if(!day.length) return { hit:{ ts: files[files.length-1].getLastUpdated().getTime(), id: files[files.length-1].getId() } };
+  if(wantsDay && !wantsTime){ const f=day[day.length-1]; const i=files.indexOf(f);
+    return { hit:{ ts:f.getLastUpdated().getTime(), id:f.getId() }, prev: i>0? files[i-1].getLastUpdated().getTime():null, next: i<files.length-1? files[i+1].getLastUpdated().getTime():null }; }
+  if(wantsTime){ const cand=day.find(f=>{ const n=f.getName(); const t=n.slice('snapshot-'.length,'snapshot-'.length+16); return t >= at.replace(':','-'); });
+    const f=cand||day[day.length-1]; const i=files.indexOf(f);
+    return { hit:{ ts:f.getLastUpdated().getTime(), id:f.getId() }, prev: i>0? files[i-1].getLastUpdated().getTime():null, next: i<files.length-1? files[i+1].getLastUpdated().getTime():null }; }
+  const f=files[files.length-1]; return { hit:{ ts:f.getLastUpdated().getTime(), id:f.getId() } };
+}
+
+// GitHub helpers (Content API)
+function ghRepo(){ return PROP.getProperty('GH_REPO') || 'paria-audits'; }
+function ghToken(){ return PROP.getProperty('GH_TOKEN') || ''; }
+function ghApi(url, method, body){
+  const token=ghToken(); if(!token) return { status: 401 };
+  const resp=UrlFetchApp.fetch('https://api.github.com/'+url,{ method: method||'GET', muteHttpExceptions:true,
+    headers:{ 'Accept':'application/vnd.github+json','Authorization':'token '+token }, payload: body? JSON.stringify(body): undefined, contentType:'application/json' });
+  return { status: resp.getResponseCode(), bytes: resp.getContent() };
+}
+function ghGet(url){ return ghApi(url,'GET'); }
+function ghPutJson(path,obj){
+  const repo=ghRepo(); const get=ghGet(`repos/${repo}/contents/${path}`); const content=Utilities.base64Encode(JSON.stringify(obj,null,2));
+  if(get.status===200){ const meta=JSON.parse(Utilities.newBlob(get.bytes).getDataAsString());
+    const put=ghApi(`repos/${repo}/contents/${path}`,'PUT',{message:`snapshot ${new Date().toISOString()}`, content, sha: meta.sha});
+    return put.status===200||put.status===201;
+  }else{
+    const put=ghApi(`repos/${repo}/contents/${path}`,'PUT',{message:`snapshot ${new Date().toISOString()}`, content});
+    return put.status===201||put.status===200;
+  }
+}
+function ghReadJson(path){
+  if(/^gitblob=/.test(path)){ // blob sha
+    const sha=path.split('=')[1]; const r=ghGet('git/blobs/'+sha); if(r.status!==200) return null;
+    const o=JSON.parse(Utilities.newBlob(r.bytes).getDataAsString()); const txt=Utilities.newBlob(Utilities.base64Decode(o.content)).getDataAsString(); return txt;
+  }else{ // content path
+    const repo=ghRepo(); const r=ghGet(`repos/${repo}/contents/${path}`); if(r.status!==200) return null;
+    const o=JSON.parse(Utilities.newBlob(r.bytes).getDataAsString()); const txt=Utilities.newBlob(Utilities.base64Decode(o.content)).getDataAsString(); return txt;
+  }
+}
+function ghReadIndex(base){
+  const repo=ghRepo(); const r=ghGet(`repos/${repo}/contents/${base}/index.json`); if(r.status!==200) return null;
+  const o=JSON.parse(Utilities.newBlob(r.bytes).getDataAsString()); const txt=Utilities.newBlob(Utilities.base64Decode(o.content)).getDataAsString(); try{return JSON.parse(txt);}catch{return null;}
+}
+function ghWriteIndex(base,idx){
+  const repo=ghRepo(); const get=ghGet(`repos/${repo}/contents/${base}/index.json`); const content=Utilities.base64Encode(JSON.stringify(idx,null,2));
+  if(get.status===200){ const meta=JSON.parse(Utilities.newBlob(get.bytes).getDataAsString());
+    ghApi(`repos/${repo}/contents/${base}/index.json`,'PUT',{message:'update index',content,sha:meta.sha});
+  }else{
+    ghApi(`repos/${repo}/contents/${base}/index.json`,'PUT',{message:'create index',content});
+  }
+}
+function selectFromIndex(index, at){
+  if(!Array.isArray(index)||!index.length) return null;
+  index.sort((a,b)=> (a.ts<b.ts?-1:1));
+  if(!at) return { hit: index[index.length-1] };
+  const wantsDay=/^\d{4}-\d{2}-\d{2}$/.test(at||''); const wantsTime=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at||'');
+  const dayPrefix= wantsDay? at : (wantsTime ? at.slice(0,10):'');
+  const day= dayPrefix ? index.filter(x=>(x.ts||'').slice(0,10)===dayPrefix) : index.slice();
+  if(!day.length) return { hit: index[index.length-1] };
+  if(wantsDay && !wantsTime) return { hit: day[day.length-1] };
+  if(wantsTime){ const cand=day.find(x=>(x.ts||'').slice(11,16)>=at.slice(11,16)); return { hit: cand || day[day.length-1] }; }
+  return { hit: index[index.length-1] };
+}
+
+// GET
+function doGet(e){
+  try{
+    const q=e.parameter||{}; const route=q.route||''; assertAuth(q.secret);
+    if(route==='diag'){ return JSON_OUT({ ok:true, hasSecret:true, repo: ghRepo() }); }
+    if(route==='load'){ const wid=q.work_id; if(!wid) return BAD('no_workid'); const folder=drivePath(wid);
+      const state=findStateJson(folder)||latestSnapshot(folder); if(!state) return BAD('no_state');
+      const txt=state.getBlob().getDataAsString('utf-8'); return JSON_OUT({ ok:true, data: JSON.parse(txt) }); }
+    if(route==='gdrive_find'){ const wid=q.work_id; if(!wid) return BAD('no_workid'); const at=q.at||''; const folder=drivePath(wid);
+      const hit=findByAt(folder,at); if(!hit) return BAD('no_hit'); return JSON_OUT({ ok:true, hit: hit.hit, prev_ts: hit.prev, next_ts: hit.next }); }
+    if(route==='gdrive_load'){ const wid=q.work_id, id=q.id; if(!wid||!id) return BAD('args'); const f=DriveApp.getFileById(id);
+      const txt=f.getBlob().getDataAsString('utf-8'); return JSON_OUT({ ok:true, state: JSON.parse(txt) }); }
+    if(route==='git_find'){ const wid=q.work_id; if(!wid) return BAD('no_workid'); const at=q.at||''; const {client,service,date}=widParts(wid);
+      const pathBase=`clients/${client}/${service}/${date}`; const idx = ghGet(`repos/${ghRepo()}/contents/${pathBase}/index.json`); if(idx.status!==200) return BAD('no_hit');
+      const index=JSON.parse(Utilities.newBlob(idx.bytes).getDataAsString()); const list=JSON.parse(Utilities.newBlob(Utilities.base64Decode(index.content)).getDataAsString());
+      const res=selectFromIndex(list,at); if(!res) return BAD('no_hit'); return JSON_OUT({ ok:true, hit: res.hit, prev_ts: res.prev, next_ts: res.next }); }
+    if(route==='git_load'){ const wid=q.work_id; const sha=q.sha||''; const json_path=q.json_path||''; const path=json_path||(`gitblob=${sha}`);
+      const txt=ghReadJson(path); if(!txt) return BAD('no_blob'); return JSON_OUT({ ok:true, state: JSON.parse(txt) }); }
+    return BAD('unknown_route');
+  }catch(err){ return JSON_OUT({ ok:false, error:String(err) }); }
+}
+
+// POST
+function doPost(e){
+  
+  try{
+    const body=JSON.parse(e.postData.contents||'{}'); const route=body.route||''; assertAuth(body.secret);
+    if(route==='save'){ const wid=body.work_id, state=body.state; if(!wid||!state) return BAD('args'); const folder=drivePath(wid);
+      writeFile(folder,'state.json', JSON.stringify(state)); const name='snapshot-'+nowTs()+'.json'; folder.createFile(name, JSON.stringify(state), MimeType.PLAIN_TEXT); return JSON_OUT({ ok:true }); }
+    if(route==='git_snapshot'){ const wid=body.work_id, state=body.state; if(!wid||!state) return BAD('args'); const {client,service,date}=widParts(wid);
+      const ts=nowTs(); const base=`clients/${client}/${service}/${date}`; const json_path=`${base}/snapshot-${ts}.json`;
+      const ok=ghPutJson(json_path,state); if(!ok) return BAD('gh_write'); const cur = ghReadIndex(base) || []; cur.push({ ts: new Date().toISOString(), json_path }); ghWriteIndex(base, cur);
+      return JSON_OUT({ ok:true, ts: ts, json_path }); }
+    if(route==='ai'){ return aiRoute_(body); }
+    return BAD('unknown_route');
+  }catch(err){ return JSON_OUT({ ok:false, error:String(err) }); }
+}
+
+function handleAI(data) {
+  // TODO: brancher ton appel LLM ici (OpenAI/Anthropic via UrlFetchApp).
+  // Pour valider le pipeline, on renvoie un texte à puces (l’UI segmente en propositions).
+  var content = [
+    "• Diagnostiquer les points bloquants du service",
+    "• Proposer 3 quick wins outillés",
+    "• Plan de déploiement sur 2 semaines"
+  ].join("\n");
+
+  return respond({ ok:true, text: content });
+}
+
+function respond(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON)
+}
+
+// === AI ROUTE (centralisée) ==================================================
+
+function aiRoute_(data) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const task = data.task || {};
+    const subject = task.subject || {};
+    const payload = task.payload || {};
+
+    // 1) Si tu as un proxy LLM (recommandé si déjà en place)
+    const LLM_URL  = props.getProperty('LLM_URL');   // ex: https://…/ai  (optionnel)
+    const LLM_AUTH = props.getProperty('LLM_AUTH');  // ex: "Bearer xxx" (optionnel)
+    if (LLM_URL) {
+      const headers = { 'Content-Type':'application/json' };
+      if (LLM_AUTH) headers['Authorization'] = LLM_AUTH;
+
+      const resp = UrlFetchApp.fetch(LLM_URL, {
+        method: 'post',
+        contentType: 'application/json',
+        headers,
+        payload: JSON.stringify({ task, work_id: data.work_id }),
+        muteHttpExceptions: true
+      });
+      const status = resp.getResponseCode();
+      const txt = resp.getContentText() || '';
+      var body; try { body = JSON.parse(txt); } catch(e) { body = { text: txt }; }
+
+      const results = normalizeAIResults_(body);
+      if (status >= 200 && status < 300 && results.length) {
+        return respond({ ok:true, results });
+      }
+      return respond({ ok:false, error:'llm_proxy_error', status, body });
+    }
+
+    // 2) Sinon: OpenAI direct (si clé présente)
+    const OPENAI_KEY   = props.getProperty('OPENAI_API_KEY');   // <-- à renseigner si pas de proxy
+    const OPENAI_MODEL = props.getProperty('OPENAI_MODEL') || 'gpt-4o-mini';
+    if (!OPENAI_KEY) return respond({ ok:false, error:'no_model_config' });
+
+    // Prompt simple (tu peux adapter)
+    const title   = payload.title   || '';
+    const content = payload.content || '';
+    const tagsStr = (payload.tags || []).join(', ');
+    const userText =
+      "Analyse PARIA d'un charter.\n" +
+      "Titre: " + title + "\n" +
+      "Tags: " + tagsStr + "\n" +
+      "Contenu:\n" + content + "\n" +
+      "Renvoie 4 propositions structurées (title, content, tags[]).";
+
+    const req = {
+      model: OPENAI_MODEL,
+      messages: [
+        { role: 'system', content: 'Tu es un assistant métier. Réponds en français.' },
+        { role: 'user', content: userText }
+      ],
+      temperature: 0.7
+    };
+
+    const resp = UrlFetchApp.fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'Authorization': 'Bearer ' + OPENAI_KEY },
+      payload: JSON.stringify(req),
+      muteHttpExceptions: true
+    });
+    const status = resp.getResponseCode();
+    const txt = resp.getContentText() || '';
+    var body; try { body = JSON.parse(txt); } catch(e) { body = { text: txt }; }
+    if (status < 200 || status >= 300) return respond({ ok:false, error:'openai_http_'+status, body });
+
+    // Récupère le texte, essaie de parser en JSON structuré, sinon 1 bloc de texte
+    var text = '';
+    if (body && body.choices && body.choices.length) {
+      text = (body.choices[0].message && body.choices[0].message.content) || body.choices[0].text || '';
+    }
+    var results;
+    try {
+      const maybe = JSON.parse(text);
+      results = normalizeAIResults_(maybe);
+      if (!results.length) throw new Error('no_struct');
+    } catch(_e) {
+      results = normalizeAIResults_({ text });
+    }
+    return respond({ ok:true, results });
+
+  } catch (e) {
+    return respond({ ok:false, error:String(e) });
+  }
+}
+
+function gas_tokenPipeline() {
+  const t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
+  const norm = t.normalize('NFKC');
+
+  // UTF-8 bytes (expl. explicite du charset)
+  const bytes = Utilities.newBlob(norm, 'text/plain', 'x').getBytes();
+
+  // Utils
+  const toHex = (arr) => arr.map(b=>('0'+(b & 0xff).toString(16)).slice(-2)).join('');
+  const sha256 = (u8) => {
+    const dig = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, u8);
+    return toHex(dig);
+  };
+  const fnvChunks = (u8, size) => {
+    const out = [];
+    for (var i=0;i<u8.length;i+=size) {
+      var h = 0x811c9dc5 >>> 0;               // FNV-1a 32-bit
+      for (var j=i;j<Math.min(i+size,u8.length);j++) {
+        h ^= (u8[j] & 0xff); h = Math.imul(h, 0x01000193) >>> 0;
+      }
+      out.push( ('00000000'+h.toString(16)).slice(-8) );
+    }
+    return out;
+  };
+
+  const allHex = toHex(bytes);
+  const first16 = allHex.slice(0,32);
+  const last16  = allHex.slice(-32);
+  const sha     = sha256(bytes);
+  const segFNV16= fnvChunks(bytes, 16);
+
+  Logger.log('len_chars=%s len_norm_chars=%s len_bytes_utf8=%s', t.length, norm.length, bytes.length);
+  Logger.log('sha256=%s', sha);
+  Logger.log('first16hex=%s last16hex=%s', first16, last16);
+  Logger.log('segFNV16 (GAS)=%s', JSON.stringify(segFNV16));
+}
+
+function gas_authPreview() {
+  const t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
+  var h = 'token ' + t; // ← reflète le patch proposé
+  var mask = h.slice(0,20) + '…' + h.slice(-10);
+  Logger.log('Authorization mask=%s', mask);
+}
+
+// Code GAS
+function normNFKC(s){ return (s||'').toString().normalize('NFKC'); }
+function utf8Bytes(s){ return Utilities.newBlob(normNFKC(s), 'text/plain').getBytes(); }
+function sha256HexBytes(bytes){
+  var dig = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes);
+  return dig.map(function(b){ return ('0'+(b & 0xff).toString(16)).slice(-2); }).join('');
+}
+function b64Utf8(s){ return Utilities.base64Encode(utf8Bytes(s)); }
+function ghAuthHeaders_(){
+  var t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
+  return { 'Authorization':'token '+t, 'Accept':'application/vnd.github+json', 'User-Agent':'paria-proxy' };
+}
+function ghContentsURL_(repo, branch, path){
+  return 'https://api.github.com/repos/'+repo+'/contents/'+path+'?ref='+branch; // path non encodé
+}
+
+function gas_tokenHash() {
+  const t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
+  const raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, t);
+  const hex = raw.map(b=>('0'+(b&0xff).toString(16)).slice(-2)).join('');
+  Logger.log('SHA256(GH_TOKEN)=%s', hex);
+  Logger.log('len=%s', t.length);
+}
+
+function gas_tokenPeek() {
+  const t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
+  const len = t.length;
+  const prefix20 = t.slice(0,20);
+  const suffix3  = t.slice(-3);
+  var hasWS=false;
+  for (var i=0;i<t.length;i++){
+    var c=t.charCodeAt(i);
+    if (c<=32 || c===127){ hasWS=true; Logger.log('whitespace at %s code=%s', i, c); }
+  }
+  Logger.log('len=%s prefix20=%s suffix3=%s hasWhitespace=%s', len, prefix20, suffix3, hasWS);
+}
+
+function gas_tokenSelfTest() {
+  const p = PropertiesService.getScriptProperties();
+  const GH_TOKEN = p.getProperty('GH_TOKEN');                   // <- lu des Script Properties
+  const res = UrlFetchApp.fetch('https://api.github.com/user', {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: {
+      Authorization: 'Bearer ' + GH_TOKEN,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'paria-probe'
+    }
+  });
+  Logger.log('GET /user status=%s', res.getResponseCode());      // <- doit être 200
+  Logger.log('X-OAuth-Scopes=%s', res.getHeaders()['X-OAuth-Scopes']); // doit contenir repo / contents:read
+  Logger.log('Body=%s', res.getContentText());
+}
+
+function gas_readIndexJson() {
+  const p = PropertiesService.getScriptProperties();
+  const GH_TOKEN  = p.getProperty('GH_TOKEN');
+  const GH_REPO   = p.getProperty('GH_REPO');        // format "owner/repo"
+  const GH_BRANCH = p.getProperty('GH_BRANCH') || 'main';
+  const PATH      = 'clients/test/rh/2025-10-02/index.json'; // <— même chemin que ton test
+
+  const url = 'https://api.github.com/repos/'+GH_REPO+'/contents/'+PATH+'?ref='+GH_BRANCH;
+  const res = UrlFetchApp.fetch(url, {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: {
+      Authorization: 'Bearer ' + GH_TOKEN,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'paria-probe'
+    }
+  });
+  Logger.log('GET contents status=%s', res.getResponseCode());    // <- doit être 200
+  Logger.log('Body=%s', res.getContentText());
+}
+
+function gas_dumpProps() {
+  const p = PropertiesService.getScriptProperties();
+  const GH_REPO   = p.getProperty('GH_REPO');
+  const GH_BRANCH = p.getProperty('GH_BRANCH');
+  const GH_TOKEN  = p.getProperty('GH_TOKEN');
+  Logger.log('GH_REPO=%s',   GH_REPO);
+  Logger.log('GH_BRANCH=%s', GH_BRANCH);
+  Logger.log('GH_TOKEN len=%s', GH_TOKEN ? GH_TOKEN.length : 0); // on ne log pas le token
+}
+
+function gas_tokenMask() {
+  const t = (PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '');
+  Logger.log('len=%s', t.length);
+  Logger.log('mask=%s', (t.slice(0,8)+'…'+t.slice(-4)));
+  for (var i=0;i<t.length;i++){
+    const c=t.charCodeAt(i);
+    if (c<=32 || c===127) Logger.log('whitespace at %s code=%s', i, c);
+  }
+}
+
+function gas_tokenSelfTest_TOKEN() {
+  const t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
+  const r = UrlFetchApp.fetch('https://api.github.com/user', {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: {
+      Authorization: 'token ' + t,             // <-- schéma PAT "token"
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'paria-probe'
+    }
+  });
+  Logger.log('GET /user (token) status=%s', r.getResponseCode());
+  Logger.log('Body=%s', r.getContentText());
+}
+
+function gas_readIndexJson_TOKEN() {
+  const p  = PropertiesService.getScriptProperties();
+  const t  = p.getProperty('GH_TOKEN') || '';
+  const rp = p.getProperty('GH_REPO');              // ex: "jeromejouve-lab/paria-audits"
+  const br = p.getProperty('GH_BRANCH') || 'main';
+  const path = 'clients/test/rh/2025-10-02/index.json';
+
+  const url = 'https://api.github.com/repos/'+rp+'/contents/'+path+'?ref='+br;
+  const r = UrlFetchApp.fetch(url, {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: {
+      Authorization: 'token ' + t,                 // <-- schéma PAT "token"
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'paria-probe'
+    }
+  });
+  Logger.log('GET contents (token) status=%s', r.getResponseCode());
+  Logger.log('Body=%s', r.getContentText());
+}
+
+function gas_tokenHash() {
+  const t = PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || '';
+  const raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, t);
+  const hex = raw.map(b=>('0'+(b&0xff).toString(16)).slice(-2)).join('');
+  Logger.log('SHA256(GH_TOKEN)=%s', hex);
+  Logger.log('len=%s', t.length);
+}
+
+function gas_tokenSelfTest() {
+  const GH_TOKEN = PropertiesService.getScriptProperties().getProperty('GH_TOKEN');
+  const r = UrlFetchApp.fetch('https://api.github.com/user', {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: {
+      Authorization: 'Bearer ' + GH_TOKEN,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'paria-probe'
+    }
+  });
+  Logger.log('GET /user status=%s', r.getResponseCode());      // attendu: 200
+  Logger.log('X-OAuth-Scopes=%s', r.getHeaders()['X-OAuth-Scopes']); // classic: 'repo,…' ; fine-grained: souvent vide
+  Logger.log('Body=%s', r.getContentText());
+}
+
+function gas_readIndexJson() {
+  const p = PropertiesService.getScriptProperties();
+  const GH_TOKEN  = p.getProperty('GH_TOKEN');
+  const GH_REPO   = p.getProperty('GH_REPO');             // owner/repo
+  const GH_BRANCH = p.getProperty('GH_BRANCH') || 'main';
+  const PATH      = 'clients/test/rh/2025-10-02/index.json';
+
+  const url = 'https://api.github.com/repos/'+GH_REPO+'/contents/'+PATH+'?ref='+GH_BRANCH;
+  const r = UrlFetchApp.fetch(url, {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: {
+      Authorization: 'Bearer ' + GH_TOKEN,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'paria-probe'
+    }
+  });
+  Logger.log('GET contents status=%s', r.getResponseCode()); // attendu: 200
+  Logger.log('Body=%s', r.getContentText());
+}
+
+/**
+ * Normalise divers formats (array direct, {results}, {data}, {items}, {proposals}, {choices}, {text}…)
+ * en tableau [{id,title,content,tags[],meta,state{…}}]
+ */
+function normalizeAIResults_(raw) {
+  function uid(){ return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+
+  var arr = [];
+  if (Array.isArray(raw)) arr = raw;
+  else if (Array.isArray(raw && raw.results)) arr = raw.results;
+  else if (Array.isArray(raw && raw.data)) arr = raw.data;
+  else if (Array.isArray(raw && raw.items)) arr = raw.items;
+  else if (Array.isArray(raw && raw.proposals)) arr = raw.proposals;
+  else if (Array.isArray(raw && raw.suggestions)) arr = raw.suggestions;
+  else if (Array.isArray(raw && raw.choices)) {
+    arr = raw.choices.map(function(c){
+      return { title: 'Proposition', content: (c.message && c.message.content) || c.text || '' };
+    });
+  } else if (raw && (raw.text || raw.content || raw.message)) {
+    arr = [{ title:'Proposition', content: raw.text || raw.content || raw.message }];
+  }
+
+  return arr.map(function(x, i){
+    return {
+      id: x && x.id || uid(),
+      title: x && x.title || ('Proposition ' + (i+1)),
+      content: x && x.content || '',
+      tags: (x && Array.isArray(x.tags)) ? x.tags : [],
+      meta: (x && x.meta) || {},
+      state: { selected:false, think:false, deleted:false, created_ts:Date.now(), updated_ts:Date.now() }
+    };
+  }).filter(function(x){ return (x.content && String(x.content).trim().length); });
+}
+
