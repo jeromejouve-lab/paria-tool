@@ -1,0 +1,85 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>PARIA · Blob reader (isolation)</title>
+<button id="run">Run blob test</button>
+<pre id="log" style="white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace"></pre>
+<script>
+const PROXY   = 'https://script.google.com/macros/s/AKfycbwioajzTAKB0xiseMUE75QMD_zDYrBALhOlKjoX3tNO-QS3WwsJPYYMLsZp4Ahnm2RWLg/exec'; // ← ton /exec
+const SECRET  = 'TON_PROXY_SECRET';   // ← colle-le localement (ne commit pas)
+const WORK_ID = 'test|rh|2025-10-02'; // ← ton work_id
+
+const originExpected = location.origin; // ex: https://jeromejouve-lab.github.io
+const $ = s => document.querySelector(s);
+const log = (...a)=> { $('#log').textContent += a.join(' ')+'\n'; };
+
+async function getJSON(u){
+  const r = await fetch(u, { method:'GET' });
+  // si CORS absent → fetch lève (TypeError), on catch plus bas
+  const ct = r.headers.get('content-type')||'';
+  if (!ct.includes('application/json')) throw new Error('not-json '+r.status);
+  return r.json();
+}
+
+async function run(){
+  $('#log').textContent='';
+  log('Origin=', originExpected);
+
+  // 1) DIAG (GET simple) — doit marcher si CORS est ok côté Apps Script
+  const urlDiag = `${PROXY}?route=diag&secret=${encodeURIComponent(SECRET)}`;
+  log('\n[1] GET diag →', urlDiag);
+  let diag;
+  try {
+    diag = await getJSON(urlDiag);
+    log('diag:', JSON.stringify(diag));
+    if (!diag.ok) throw new Error('diag not ok');
+  } catch(e){
+    log('❌ DIAG failed:', e.message, '\n→ PROBLÈME CORS (header Access-Control-Allow-Origin manquant) ou URL /exec invalide.');
+    return;
+  }
+
+  // 2) ÉTAT (GET git_find) — c’est ici que “tabs.projector” doit sortir
+  const urlFind = `${PROXY}?route=git_find&work_id=${encodeURIComponent(WORK_ID)}&secret=${encodeURIComponent(SECRET)}`;
+  log('\n[2] GET git_find →', urlFind);
+  let found;
+  try{
+    found = await getJSON(urlFind);
+    log('git_find:', JSON.stringify(found));
+  } catch(e){
+    log('❌ git_find failed:', e.message, '\n→ CORS/URL/secret. Si diag passe mais pas git_find, route non exposée côté GAS.');
+    return;
+  }
+
+  // lecture de l’état (si présent)
+  const tabs = found?.state?.tabs;
+  if (tabs) {
+    log('✅ tabs =', JSON.stringify(tabs));
+  } else {
+    log('⚠️  tabs ABSENT dans le state → la remote restera en Pause.\n   Cause probable: aucun snapshot d’état publié (git_snapshot) pour ce WORK_ID.');
+  }
+
+  // 3) SNAPSHOT (GET git_load via json_path renvoyé)
+  const path = found?.snapshot?.json_path || found?.json_path;
+  if (!path) {
+    log('\n[3] snapshot: pas de json_path dans git_find → rien à charger (ou pas encore publié).');
+    return;
+  }
+  const urlLoad = `${PROXY}?route=git_load&json_path=${encodeURIComponent(path)}&secret=${encodeURIComponent(SECRET)}`;
+  log('\n[3] GET git_load →', urlLoad);
+  try{
+    const snap = await getJSON(urlLoad);
+    log('snapshot keys:', Object.keys(snap));
+    log('✅ snapshot OK (même si chiffré, on a le contenu).');
+  } catch(e){
+    log('❌ git_load failed:', e.message, '\n→ path invalide ou CORS.');
+  }
+
+  // verdict
+  if (tabs && tabs.projector === 'on') {
+    log('\n✅ VERDICT: chemin + autorisation OK pour l’état. Une remote devrait sortir de Pause.');
+  } else {
+    log('\n🚩 VERDICT: snapshot lisible mais état absent → publier l’état via POST git_snapshot (tabs.projector:"on").');
+  }
+}
+
+$('#run').addEventListener('click', run);
+</script>
