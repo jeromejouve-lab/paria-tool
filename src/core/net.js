@@ -9,32 +9,36 @@ const b64d = (s)=> Uint8Array.from(atob(s), c => c.charCodeAt(0));
 export async function stateGet(workId){
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain'},
-    body: JSON.stringify({ route:'state.get', work_id: workId, secret })});
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain', 'token': secret},
+    body: JSON.stringify({ route:'state.get', work_id: workId, token: secret })});
+
   return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
 export async function stateSet(workId, payload){ // {tabs, rev, K_sess?, exp_s?}
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain'},
-    body: JSON.stringify({ route:'state.set', work_id: workId, payload, secret })});
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain', 'token': secret},
+    body: JSON.stringify({ route:'state.set', work_id: workId, payload, token: secret })});
+
   return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
 export async function dataSet(workId, snapshot){ // {iv, ct, ver, ts}
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain'},
-    body: JSON.stringify({ route:'data.set', work_id: workId, payload:snapshot, secret })});
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain', 'token': secret},
+    body: JSON.stringify({ route:'data.set', work_id: workId, payload:snapshot, token: secret })});
+
   return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
 export async function dataGet(workId){
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain'},
-    body: JSON.stringify({ route:'data.get', work_id: workId, secret })});
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain', 'token': secret},
+    body: JSON.stringify({ route:'data.get', work_id: workId, token: secret })});
+
   return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
@@ -90,8 +94,8 @@ export async function diag() {
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete', data:null };
   try {
-    const u = new URL(url); u.searchParams.set('route', 'diag'); u.searchParams.set('secret', secret);
-    const r = await fetch(u.toString(), { method: 'GET' });
+    const u = new URL(url); u.searchParams.set('route', 'diag'); u.searchParams.set('token', secret);
+    const r = await fetch(u.toString(), { method: 'GET', headers: { 'token': secret } });
     const txt = await r.text();
     let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
     return { ok: r.ok && (data?.ok !== false), status: r.status, detail: r.ok ? 'pong' : 'http_'+r.status, data };
@@ -163,9 +167,10 @@ export async function callGAS(route, payload = {}) {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain', 'X-Proxy-Secret': secret },
-      body: JSON.stringify({ route, ...payload })
+      headers: { 'Content-Type': 'text/plain', 'token': secret },
+      body: JSON.stringify({ route, token: secret, ...payload })
     });
+
     const txt = await res.text();
     let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
     return { ok: res.ok && (data?.ok !== false), status: res.status, data };
@@ -286,6 +291,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
