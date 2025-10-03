@@ -54,6 +54,26 @@ function setRemoteMode(mode){
   }
 }
 
+async function fetchSnapshotFromGit(workId, sid) {
+  // base publique du repo d’audits (lecture seule)
+  const RAW = 'https://raw.githubusercontent.com/jeromejouve-lab/paria-audits/main';
+  const base = `${RAW}/snapshots/${encodeURIComponent(workId)}`;
+
+  // 1) lire l’index pour connaître le dernier snapshot (ou par sid)
+  const idxRes = await fetch(`${base}/index.json`);
+  const idx = await idxRes.json().catch(() => null);
+
+  let path = null;
+  if (sid && idx && idx.by_sid && idx.by_sid[sid]) path = idx.by_sid[sid];
+  else if (idx && (idx.latest_path || idx.latest)) path = idx.latest_path || idx.latest;
+  else path = `${base}/snapshot.json`; // fallback de compat
+
+  // 2) lire le snapshot chiffré
+  const snapUrl = path.startsWith('http') ? path : `${RAW}/${path.replace(/^\/+/, '')}`;
+  const snapRes = await fetch(snapUrl);
+  return await snapRes.json();
+}
+
 async function pollLoop(){
   if (__remoteDead) return;
   if (window.__pariaMode !== 'viewer' || window.__pariaRemote !== 'projector') return;
@@ -482,6 +502,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
