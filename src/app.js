@@ -28,8 +28,7 @@ document.addEventListener('paria:remote-link', async (e) => {
   try { await publishEncryptedSnapshot(); } catch (err) { console.warn('[remote-link] publish error', err); }
 
   // s'assure qu'on a une session (sid + token de vue)
-  const { ensureSessionKey } = await import('./domain/reducers.js');
-  const sess = await ensureSessionKey?.(); // adapte si ensureSessionKey est ailleurs
+  const sess = await ensureSessionKey?.(); 
   const sid  = sess?.sid || `S-${new Date().toISOString().slice(0,10)}-${Math.random().toString(36).slice(2,8)}`;
   const tok  = sess?.token || sess?.tokenB64u || ''; // l’un des deux selon ta version
 
@@ -40,18 +39,6 @@ document.addEventListener('paria:remote-link', async (e) => {
   
   if (tok) u.hash = 'k=' + tok;
   
-  // assure la présence de #k dans le hash
-  const k = (await import('./core/settings.js')).then(m => m.getSessionKey?.()).catch(() => null);
-  const kk = (await k) || (window.__pariaK); // selon ton stockage actuel
-  if (kk) {
-    
-    // si tu utilises un objet URL :
-    if (url instanceof URL) url.hash = `k=${kk}`;
-      
-    // sinon sur une string :
-    else if (typeof url === 'string') url += (url.includes('#') ? '&' : '#') + `k=${kk}`;
-  }
-
   if (action === 'open') {
     window.open(u.toString(), '_blank', 'noopener,noreferrer');
   } else {
@@ -179,7 +166,7 @@ async function publishEncryptedSnapshot(){
     ct: b64u(ctBuf)
   };
 
-  await dataSet(workId, 'snapshot', encSnapshot);
+  await dataSet(workId, encSnapshot);
 }
 
 await stateSet(buildWorkId(), { K_sess:null }); // clé retirée => clients ne peuvent plus déchiffrer
@@ -306,6 +293,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
