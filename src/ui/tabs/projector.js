@@ -454,17 +454,12 @@ export function mount(host=document.getElementById('tab-projector')){
       $('#proj-state', host).textContent = (getSession()?.status||'idle');
       return;
     }
+    
     if (b.dataset.action==='session-copy'){
-      try {
-        const id = currentCardId();
-        const u = new URL(location.href);
-        u.searchParams.set('mode','projecteur');
-        if (id) u.searchParams.set('card', String(id)); // pas de session, pas de PUT
-        await navigator.clipboard.writeText(u.toString());
-        alert('Lien copié.');
-      } catch {}
+      document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'copy' }}));
       return;
     }
+
   });
 
   // filtres types
@@ -482,6 +477,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
