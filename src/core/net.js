@@ -9,32 +9,48 @@ const b64d = (s)=> Uint8Array.from(atob(s), c => c.charCodeAt(0));
 export async function stateGet(workId){
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain'},
-    body: JSON.stringify({ route:'state.get', work_id: workId, secret })});
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ route: 'load', work_id: workId, secret })
+  });
+
   return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
 export async function stateSet(workId, payload){ // {tabs, rev, K_sess?, exp_s?}
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain'},
-    body: JSON.stringify({ route:'state.set', work_id: workId, payload, secret })});
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ route: 'save', work_id: workId, payload: state, secret })
+  });
+
   return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
 export async function dataSet(workId, snapshot){ // {iv, ct, ver, ts}
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain'},
-    body: JSON.stringify({ route:'data.set', work_id: workId, payload:snapshot, secret })});
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ route: 'save', work_id: workId, payload: snapshot, secret })
+  });
+
   return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
 export async function dataGet(workId){
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain'},
-    body: JSON.stringify({ route:'data.get', work_id: workId, secret })});
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' }, // aucun header custom → pas de preflight
+    body: JSON.stringify({ route: 'load', work_id: workId, secret })
+  });
+
   return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
@@ -286,6 +302,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
