@@ -113,30 +113,46 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
         document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'open' }}));
         return;
       }
-      
+            
       if (a.dataset.act==='copy-proj'){
-        // Si c'était OFF → passer en ON pour forcer la publication du snapshot
-        if (getTabMode('projector')==='off') {
-          setTabMode('projector','on'); // (setTabMode est async dans tes reducers)
-        }
-        document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'copy' }}));
-        refreshModes();
-        return;
+        if (getTabMode('projector')==='off'){ setTabMode('projector','on'); }
+      
+        // 1) construire l’URL de base existante (ton code actuel la génère déjà)
+        const base = buildRemoteUrl?.('projector') || (
+    
+          // fallback très conservateur si buildRemoteUrl n’existe pas
+          `${location.origin}/paria-tool/projector/?work_id=${encodeURIComponent(stateGet('work_id')||getWorkId())}&sid=${encodeURIComponent(stateGet('session_id')||getSession()?.sid||'')}`
+        );
+         
+        // 2) récupérer la clé *déjà* gérée par l’app (une seule source)
+        const k = stateGet('remote.key') || stateGet('crypto.k') || localStorage.getItem('paria.remote.k');
+        if (!k){ console.warn('[copy-proj] clé absente → on garde l’URL sans #k'); navigator.clipboard.writeText(base); refreshModes(); return; }
+         
+        // 3) copier avec fragment #k
+        const url = `${base}#k=${encodeURIComponent(k)}`;
+        navigator.clipboard.writeText(url);
+        console.log('[paria] lien copié:', url.replace(/(#k=).+$/,'$1•••'));
+        refreshModes(); return;
       }
-  
+      
+      if (a.dataset.act==='copy-sea'){
+        if (getTabMode('seance')==='off'){ setTabMode('seance','on'); }
+        const base = buildRemoteUrl?.('seances') || (
+           `${location.origin}/paria-tool/seances/?work_id=${encodeURIComponent(stateGet('work_id')||getWorkId())}&sid=${encodeURIComponent(stateGet('session_id')||getSession()?.sid||'')}`
+        );
+        const k = stateGet('remote.key') || stateGet('crypto.k') || localStorage.getItem('paria.remote.k');
+        if (!k){ console.warn('[copy-sea] clé absente → URL sans #k'); navigator.clipboard.writeText(base); refreshModes(); return; }
+        const url = `${base}#k=${encodeURIComponent(k)}`;
+        navigator.clipboard.writeText(url);
+        console.log('[paria] lien copié:', url.replace(/(#k=).+$/,'$1•••'));
+        refreshModes(); return;
+      }
+        
       if (a.dataset.act==='open-sea'){
         document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'seance', action:'open' }}));
         return;
       }
       
-      if (a.dataset.act==='copy-sea'){
-        if (getTabMode('seance')==='off') { 
-          setTabMode('seance','on'); // (setTabMode est async dans tes reducers) 
-        }
-        document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'seance', action:'copy' }}));
-        refreshModes();
-        return;
-      }
       if (a.dataset.act==='set-proj-on'){    setTabMode('projector','on');    refreshModes(); return; }
       if (a.dataset.act==='set-proj-pause'){ setTabMode('projector','pause'); refreshModes(); return; }
       if (a.dataset.act==='set-proj-off'){   setTabMode('projector','off');   refreshModes(); return; }
@@ -992,6 +1008,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
