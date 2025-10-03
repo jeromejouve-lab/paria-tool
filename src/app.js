@@ -23,6 +23,9 @@ document.addEventListener('paria:remote-link', async (e) => {
     const r = await import('./domain/reducers.js');
     if (r.getTabMode?.(tab) === 'off') r.setTabMode?.(tab, 'on');
   } catch {}
+  
+  // publication immédiate du snapshot (on/pause) avant la copie du lien
+  try { await publishEncryptedSnapshot(); } catch (err) { console.warn('[remote-link] publish error', err); }
 
   // s'assure qu'on a une session (sid + token de vue)
   const { ensureSessionKey } = await import('./domain/reducers.js');
@@ -34,7 +37,20 @@ document.addEventListener('paria:remote-link', async (e) => {
   const u = new URL(base);
   u.searchParams.set('work_id', (await import('./core/settings.js')).buildWorkId());
   u.searchParams.set('sid', sid);
+  
   if (tok) u.hash = 'k=' + tok;
+  
+  // assure la présence de #k dans le hash
+  const k = (await import('./core/settings.js')).then(m => m.getSessionKey?.()).catch(() => null);
+  const kk = (await k) || (window.__pariaK); // selon ton stockage actuel
+  if (kk) {
+    
+    // si tu utilises un objet URL :
+    if (url instanceof URL) url.hash = `k=${kk}`;
+      
+    // sinon sur une string :
+    else if (typeof url === 'string') url += (url.includes('#') ? '&' : '#') + `k=${kk}`;
+  }
 
   if (action === 'open') {
     window.open(u.toString(), '_blank', 'noopener,noreferrer');
@@ -290,6 +306,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
