@@ -61,7 +61,7 @@ async function pollLoop(){
     const qs   = new URLSearchParams(location.search);
     const workId = qs.get('work_id') || buildWorkId();
     const sid    = qs.get('sid') || '';
-    const token  = (location.hash||'').replace(/^#?k=/,''); // base64url (ikm)
+    const token = ((location.hash||'').match(/[#&]k=([^&]+)/)||[])[1]||'';
 
     // (1) état onglet -> overlay
     try{
@@ -482,6 +482,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
