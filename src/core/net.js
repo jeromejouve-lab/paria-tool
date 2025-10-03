@@ -40,7 +40,7 @@ export async function dataSet(workId, snapshot){ // {iv, ct, ver, ts}
   return r.ok ? r.json() : { ok:false, status:r.status };
 }
 
-export async function dataGet(workId){
+export async function dataGet(workId, key = 'snapshot'){
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
   // GET, pas de header custom → évite CORS + compat code.gs (route=load)
@@ -48,6 +48,7 @@ export async function dataGet(workId){
   u.searchParams.set('route', 'load');
   u.searchParams.set('work_id', workId);
   u.searchParams.set('secret', secret);
+  u.searchParams.set('key', key);   
   const r = await fetch(u.toString(), { method: 'GET' });
   return r.ok ? await r.json() : { ok:false, status:r.status };
 }
@@ -300,6 +301,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
