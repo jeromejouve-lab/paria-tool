@@ -43,13 +43,13 @@ export async function dataSet(workId, snapshot){ // {iv, ct, ver, ts}
 export async function dataGet(workId){
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' }, // aucun header custom → pas de preflight
-    body: JSON.stringify({ route: 'load', work_id: workId, secret })
-  });
-
-  return r.ok ? r.json() : { ok:false, status:r.status };
+  // GET, pas de header custom → évite CORS + compat code.gs (route=load)
+  const u = new URL(url);
+  u.searchParams.set('route', 'load');
+  u.searchParams.set('work_id', workId);
+  u.searchParams.set('secret', secret);
+  const r = await fetch(u.toString(), { method: 'GET' });
+  return r.ok ? await r.json() : { ok:false, status:r.status };
 }
 
 // --- AES-GCM
@@ -300,6 +300,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
