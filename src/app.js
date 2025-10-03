@@ -24,6 +24,9 @@ document.addEventListener('paria:remote-link', async (e) => {
     if (r.getTabMode?.(tab) === 'off') r.setTabMode?.(tab, 'on');
   } catch {}
 
+  // publication immédiate du snapshot (quel que soit l'état : on | pause)
+  await publishEncryptedSnapshot();
+
   // s'assure qu'on a une session (sid + token de vue)
   const sess = await ensureSessionKey();
   const sid  = sess?.sid || `S-${new Date().toISOString().slice(0,10)}-${Math.random().toString(36).slice(2,8)}`;
@@ -133,8 +136,8 @@ async function publishEncryptedSnapshot(){
   // on décide depuis le blob local (source de vérité)
   const { readClientBlob } = await import('./domain/reducers.js');
   const blob = readClientBlob();
-  const on = (blob?.tabs?.seance === 'on') || (blob?.tabs?.projector === 'on');
-  if (!on) return;
+  const active = ['on','pause'].includes(blob?.tabs?.seance) || ['on','pause'].includes(blob?.tabs?.projector);
+  if (!active) return;
 
   // on pousse aussi l’état des tabs côté "state" (meilleure synchro remote)
   await stateSet(workId, { tabs: blob.tabs || {} });
@@ -290,6 +293,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
