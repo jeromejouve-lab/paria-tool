@@ -9,25 +9,23 @@ const b64d = (s)=> Uint8Array.from(atob(s), c => c.charCodeAt(0));
 export async function stateGet(workId){
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
-  fetch(url, {
+  const r = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
     body: JSON.stringify({ route: 'load', work_id: workId, secret })
   });
-
-  return r.ok ? r.json() : { ok:false, status:r.status };
+  return r.ok ? await r.json() : { ok:false, status:r.status };
 }
 
 export async function stateSet(workId, payload){ // {tabs, rev, K_sess?, exp_s?}
   const { url, secret } = getGAS();
   if (!url || !secret) return { ok:false, status:0, detail:'incomplete' };
-  fetch(url, {
+  const r = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ route: 'save', work_id: workId, payload: state, secret })
+    body: JSON.stringify({ route: 'save', work_id: workId, payload, secret })
   });
-
-  return r.ok ? r.json() : { ok:false, status:r.status };
+  return r.ok ? await r.json() : { ok:false, status:r.status };
 }
 
 export async function dataSet(workId, snapshot){ // {iv, ct, ver, ts}
@@ -302,6 +300,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
