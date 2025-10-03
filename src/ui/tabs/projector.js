@@ -92,7 +92,7 @@ async function pollLoop(){
     }catch{}
 
     // (2) charger snapshot (chiffré v1 / legacy clair)
-    let snap = await dataGet(workId, 'snapshot');
+    let snap = await dataGet(workId);
     if (snap && snap.v===1 && snap.alg==='A256GCM'){
       if (!token || !sid) return; // paramètres insuffisants
       try{
@@ -502,6 +502,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
