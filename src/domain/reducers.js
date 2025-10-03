@@ -5,15 +5,15 @@ import { buildWorkId } from '../core/settings.js';
 import { ghContentsUrl, ghHeaders } from '../core/net.js';
 
 // --- Origin gating -----------------------------------------------------------
-export function isRemoteViewer(){
-  try{
-    const h = location.hostname || '';
-    // auteur local = localhost, 127.*, ::1, file://, ou hôte LAN
-    const isLocal = h === 'localhost' || h === '127.0.0.1' || h === '::1' || location.protocol === 'file:';
-    // remote “affichage” typique via GitHub Pages (ou autre domaine)
-    const isGh    = /\.github\.io$/i.test(h);
-    return !isLocal && isGh; // à élargir si tu as d’autres domaines de diffusion
-  }catch{ return false; }
+export function isRemoteViewer() {
+  try {
+    if (window.__pariaMode === 'viewer') return true;
+    const h = String(location.hash || '');
+    // viewer ⇔ présence de #k
+    return /(^|[&#])k=/.test(h);
+  } catch {
+    return false;
+  }
 }
 
 // ====== WRITE GATE ======
@@ -1103,6 +1103,7 @@ export async function ensureCardAvailable(cardId){
 - Session ops (write on active card)
 - bootstrapWorkspaceIfNeeded()
 */
+
 
 
 
