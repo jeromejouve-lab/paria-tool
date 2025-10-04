@@ -86,7 +86,7 @@ export async function aesDecryptJSON(key, ctB64, ivB64){
 // --- net.js ---
 export const ghHeaders = (token)=>({
   'Accept':'application/vnd.github+json',
-  ...(token?{Authorization:`Bearer ${token}`}:{})
+  ...(token?{Authorization:`token ${token}`}:{})
 });
 export const ghPath = (...xs)=> xs.map(s=>encodeURIComponent(String(s))).join('/');
 export const ghContentsUrl = (owner,repo,branch,...segs)=>
@@ -239,7 +239,7 @@ export async function saveToGit(payload) {
     method: 'PUT',
     headers: {
       'Accept': 'application/vnd.github+json',
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `token ${token}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({ message: `backup ${payload.workId} ${stamp}`, content: contentB64, branch })
@@ -354,6 +354,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
