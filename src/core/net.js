@@ -248,7 +248,7 @@ export async function saveSnapshotToGit(workId, encSnapshot){
   if (!owner || !repo || !token || !workId || !encSnapshot) return { ok:false, status:0, detail:'incomplete' };
   
   const path   = `snapshots/${encodeURIComponent(workId)}/snapshot.json`;
-  const url    = `https://api.github.com/repos/${owner}/${repo}/contents/$(path)}`;
+  const url    = `https://api.github.com/repos/${owner}/${repo}/contents/$(path)`;
   const headers = {
     'Accept': 'application/vnd.github+json',
     'Authorization': `token ${token}`,   // même schéma que saveToGit (identique à Settings chez toi)
@@ -342,6 +342,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
