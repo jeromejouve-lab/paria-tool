@@ -7,7 +7,7 @@ import { stateGet, dataGet, aesImportKeyRawB64, aesDecryptJSON } from '../../cor
 import { buildWorkId } from '../../core/settings.js';
 
 let __cliKey = null; // CryptoKey en RAM, jamais en localStorage
-let __remoteDead = false;
+let __remoteDead = false;f
 let __lastSnapFetch = { url: '', tries: 0, ok: false }; // diag lecture snapshot
 
 // --- auto-gate: bascule en mode viewer/projector si l'URL l'indique ---
@@ -69,28 +69,30 @@ function setRemoteMode(mode){
 
 async function fetchSnapshotFromGit(workId, sid) {
   // base publique du repo d’audits (lecture seule)
-  const RAW = 'https://raw.githubusercontent.com/jeromejouve-lab/paria-audits/main';
-  const safeWid = decodeURIComponent(workId || '').replace(/\|/g,'/');
-  const base = `${RAW}/clients/${safeWid}`;
-  const snapUrl = `${base}/snapshot.json?t=${Date.now()}`;
+    const safeWid = decodeURIComponent(workId || '').replace(/\|/g,'/');
+  const snapPath = `clients/${safeWid}/snapshot.json`;
 
-  // log immédiat du chemin
-  console.log('[VIEWER] snapshot path =', snapUrl);
+  // log immédiat du chemin attendu (côté Git)
+  console.log('[VIEWER] snapshot path =', snapPath, '(via GAS:load)');
 
-  // lecture directe du fichier unique, avec retry 10×3s (max 30s)
+  // lecture via Apps Script (route=load), retry 10×3s
   for (let i = 0; i < 10; i++) {
     try {
-      const res = await fetch(snapUrl, { cache: 'no-store' });
-      if (res.ok) {
-        __lastSnapFetch = { url: snapUrl, tries: i + 1, ok: true };
-        return await res.json();
+      // dataGet(workId, key='snapshot') → route 'load' côté GAS
+      const r = await dataGet(workId, 'snapshot');
+      // code.gs peut renvoyer directement le snapshot, ou {ok:true,data:{…}}
+      const payload = (r && r.ok && r.data) ? r.data : r;
+
+      if (payload && (payload.ct || payload.v)) {
+        __lastSnapFetch = { url: `GAS:load ${snapPath}`, tries: i + 1, ok: true };
+        return payload; // objet chiffré (v1) ou legacy (ct/iv)
       }
     } catch {}
-    __lastSnapFetch = { url: snapUrl, tries: i + 1, ok: false };
+    __lastSnapFetch = { url: `GAS:load ${snapPath}`, tries: i + 1, ok: false };
     await new Promise(r => setTimeout(r, 3000));
   }
 
-  // timeout → message + arrêt du poll
+  // timeout → message + arrêt
   try {
     const ov = ensureOverlay();
     ov.style.display = 'flex';
@@ -98,9 +100,9 @@ async function fetchSnapshotFromGit(workId, sid) {
     ov.querySelector('#remote-overlay-badge').textContent = 'Aucun snapshot (timeout)';
   } catch {}
   __remoteDead = true;
-
-  console.warn('[VIEWER] snapshot introuvable après', (__lastSnapFetch.tries||10), 'essais → arrêt.');
+  console.warn('[VIEWER] snapshot introuvable après', (__lastSnapFetch.tries || 10), 'essais → arrêt.');
   return null;
+
 }
 
 async function pollLoop(){
@@ -542,6 +544,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
