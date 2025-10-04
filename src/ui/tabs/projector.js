@@ -576,11 +576,34 @@ export function mount(host=document.getElementById('tab-projector')){
     }
     if (b.dataset.action==='session-copy'){
       try {
+        
+        // 1) work_id / sid / #k
+        const workId = await buildWorkId();
+        const sid = (getSession()?.sid)
+          || ('S-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8));
+        const bytes = new Uint8Array(32); crypto.getRandomValues(bytes);
+        const b64 = btoa(String.fromCharCode(...bytes));
+        const k   = b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); // base64url
+
+        // 2) mémoriser localement (pour le viewer si l’URL est réécrite très tôt)
+        localStorage.setItem('__paria_workId', workId);
+        localStorage.setItem('__paria_sid', sid);
+        localStorage.setItem('__paria_k', k);
+
+        // 3) construire l’URL projector propre (PAS “settings”)
+        const viewer = new URL(`${location.origin}/paria-tool/projector/`);
+        viewer.searchParams.set('work_id', workId);
+        viewer.searchParams.set('sid', sid);
         const id = currentCardId();
-        const u = new URL(location.href);
-        u.searchParams.set('mode','projecteur');
-        if (id) u.searchParams.set('card', String(id)); // pas de session, pas de PUT
-        await navigator.clipboard.writeText(u.toString());
+        if (id) viewer.searchParams.set('card', String(id));
+        viewer.hash = `#k=${k}`;
+
+        // 4) publier (laisse ton code existant écouter cet event pour snapshot/state)
+        document.dispatchEvent(new CustomEvent('paria:remote-link', {
+          detail: { tab:'projector', action:'copy', workId, sid, k }
+        }));
+
+        await navigator.clipboard.writeText(viewer.toString());
         alert('Lien copié.');
       } catch {}
       return;
@@ -602,6 +625,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
