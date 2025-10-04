@@ -4,7 +4,22 @@ import { settingsLoad } from './settings.js';
 
 // --- base64 helpers
 const b64e = (u8)=> btoa(String.fromCharCode(...u8));
-const b64d = (s)=> Uint8Array.from(atob(s), c => c.charCodeAt(0));
+//const b64d = (s)=> Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+// décode base64 (standard ou URL-safe), avec padding automatique
+export function b64d(b64) {
+  let s = String(b64 || '').trim();
+  // base64url -> base64 standard
+  s = s.replace(/-/g, '+').replace(/_/g, '/').replace(/\s+/g, '');
+  // padding
+  const pad = s.length % 4;
+  if (pad) s += '===='.slice(pad);
+  // to bytes
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
 
 export async function stateGet(workId){
   const { url, secret } = getGAS();
@@ -343,6 +358,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
