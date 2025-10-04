@@ -9,6 +9,18 @@ import { buildWorkId } from '../../core/settings.js';
 let __cliKey = null; // CryptoKey en RAM, jamais en localStorage
 let __remoteDead = false;
 
+// --- auto-gate: bascule en mode viewer/projector si l'URL l'indique ---
+if (!window.__pariaMode) {
+  const isProj = /\/projector\/?/.test(location.pathname);
+  const hasK   = /[#&]k=/.test(location.hash);
+  window.__pariaMode   = (isProj || hasK) ? 'viewer' : 'local';
+}
+if (!window.__pariaRemote && window.__pariaMode === 'viewer') {
+  window.__pariaRemote = /\/projector\/?/.test(location.pathname) ? 'projector'
+                      : /\/seances\/?/.test(location.pathname)   ? 'seances'
+                      : '';
+}
+
 // --- Remote crypto (HKDF + AES-GCM) ------------------------------------------
 const td = new TextDecoder(); const te = new TextEncoder();
 const b64uToBytes = (s)=>{ s=s.replace(/-/g,'+').replace(/_/g,'/'); const pad=s.length%4? '='.repeat(4-(s.length%4)) : ''; const bin=atob(s+pad); const out=new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; };
@@ -501,6 +513,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
