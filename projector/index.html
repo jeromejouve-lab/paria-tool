@@ -6,6 +6,31 @@
   <meta charset="utf-8" />
   <title>PARIA v2 – full</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  
+  <script>
+  
+  // Signaler qu’on est un viewer (pas l’app locale)
+  window.__pariaMode   = 'viewer';
+  window.__pariaRemote = 'projector';
+
+  // Capturer immédiatement work_id, sid, #k AVANT toute réécriture d’URL
+  (function captureBoot(){
+    try {
+      const url  = new URL(location.href);
+      const qs   = url.searchParams;
+      const wid  = qs.get('work_id') || '';
+      const sid  = qs.get('sid')     || '';
+      const k    = ((url.hash||'').match(/[#&]k=([^&]+)/)||[])[1] || '';
+
+      // Stockage RAM par onglet (zéro collision multi-onglets)
+      window.__pariaBoot = { workId: wid, sid, k, t: Date.now() };
+
+      // (Optionnel) nettoyer l’URL après capture, sans rediriger
+      // if (k) history.replaceState(null, '', url.pathname + '?' + qs.toString());
+    } catch {}
+  })();
+  </script>
+
   <style>
 
     :root{--bg:#0b0c10;--panel:#111418;--muted:#9aa;--line:#2b2f36;--brand:#1f6feb}
@@ -121,6 +146,7 @@
 <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
 
 
 
