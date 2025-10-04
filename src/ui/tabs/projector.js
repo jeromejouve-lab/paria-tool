@@ -55,23 +55,21 @@ function setRemoteMode(mode){
 }
 
 async function fetchSnapshotFromGit(workId, sid) {
+  
   // base publique du repo d’audits (lecture seule)
   const RAW = 'https://raw.githubusercontent.com/jeromejouve-lab/paria-audits/main';
   const base = `${RAW}/snapshots/${encodeURIComponent(workId)}`;
-
-  // 1) lire l’index pour connaître le dernier snapshot (ou par sid)
-  const idxRes = await fetch(`${base}/index.json`);
-  const idx = await idxRes.json().catch(() => null);
-
-  let path = null;
-  if (sid && idx && idx.by_sid && idx.by_sid[sid]) path = idx.by_sid[sid];
-  else if (idx && (idx.latest_path || idx.latest)) path = idx.latest_path || idx.latest;
-  else path = `${base}/snapshot.json`; // fallback de compat
-
-  // 2) lire le snapshot chiffré
-  const snapUrl = path.startsWith('http') ? path : `${RAW}/${path.replace(/^\/+/, '')}`;
-  const snapRes = await fetch(snapUrl);
-  return await snapRes.json();
+  
+  // lecture directe du fichier unique, avec retry 10×3s (max 30s)
+  const snapUrl = `${base}/snapshot.json?t=${Date.now()}`;
+  for (let i=0; i<10; i++){
+    try{
+      const res = await fetch(snapUrl, { cache:'no-store' });
+      if (res.ok) return await res.json();
+    }catch{}
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  return null; // introuvable après 30s
 }
 
 async function pollLoop(){
@@ -92,7 +90,7 @@ async function pollLoop(){
     }catch{}
 
     // (2) charger snapshot (chiffré v1 / legacy clair)
-    let snap = await dataGet(workId);
+    let snap = await fetchSnapshotFromGit(workId);
     if (snap && snap.v===1 && snap.alg==='A256GCM'){
       if (!token || !sid) return; // paramètres insuffisants
       try{
@@ -502,6 +500,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
