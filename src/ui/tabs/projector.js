@@ -125,11 +125,8 @@ async function fetchSnapshotFromGit(workId, sid) {
 
 async function pollLoop(){
 
-  if (!__remoteDead) {
-    __pollTimer = setTimeout(pollLoop, 3000);
-  }
-  
   if (window.__pariaMode !== 'viewer' || window.__pariaRemote !== 'projector') return;
+  
   try{
     const qs   = new URLSearchParams(location.search);
     const workId = qs.get('work_id') || sessionStorage.getItem('__paria_workId') || buildWorkId();
@@ -188,6 +185,11 @@ async function pollLoop(){
     }
 
     if (snap){
+      
+      // overlay depuis le snapshot (source de vérité côté viewer)
+      const mode2 = snap?.tabs?.projector;
+      if (mode2) setRemoteMode(mode2);
+      
       // Publier en RAM + re-render (read-only)
       window.__remoteSnapshot = snap;
       const host = document.getElementById('tab-projector');
@@ -197,6 +199,10 @@ async function pollLoop(){
         renderDetail(host);
       }
     }
+    
+    if (!__remoteDead) {
+      __pollTimer = setTimeout(pollLoop, 1500);
+    }
   }catch{}
 }
 
@@ -204,7 +210,6 @@ async function pollLoop(){
 if (window.__pariaMode === 'viewer' && window.__pariaRemote === 'projector') {
   setRemoteMode('pause'); // overlay immédiat, pas de flash "off"
   pollLoop();                  // kick immédiat
-  setInterval(pollLoop, 1500); // suivi périodique
 }
 
 const $ = (s,r=document)=>r.querySelector(s);
@@ -576,6 +581,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
