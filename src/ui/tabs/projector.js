@@ -7,7 +7,7 @@ import { stateGet, dataGet, aesImportKeyRawB64, aesDecryptJSON } from '../../cor
 import { buildWorkId } from '../../core/settings.js';
 
 let __cliKey = null; // CryptoKey en RAM, jamais en localStorage
-let __remoteDead = false;f
+let __remoteDead = false;
 let __lastSnapFetch = { url: '', tries: 0, ok: false }; // diag lecture snapshot
 
 // --- auto-gate: bascule en mode viewer/projector si l'URL l'indique ---
@@ -544,6 +544,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
