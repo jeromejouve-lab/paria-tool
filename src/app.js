@@ -10,7 +10,7 @@ import './core/compat-exports.js';
 // --- app.js ---
 import { backupFlushLocal, backupPushGit, backupsList, restoreFromGit, readClientBlob } from './domain/reducers.js';
 import { buildWorkId } from './core/settings.js';
-import { stateSet, dataSet } from './core/net.js';
+import { stateSet, saveSnapshotToGit } from './core/net.js';
 
 // -- Handler unique : construit et copie l'URL remote sous /paria-tool/ --
 document.addEventListener('paria:remote-link', async (e) => {
@@ -166,7 +166,7 @@ async function publishEncryptedSnapshot(){
     ct: b64u(ctBuf)
   };
 
-  await dataSet(workId, encSnapshot);
+  await saveSnapshotToGit(workId, encSnapshot);
 }
 
 await stateSet(buildWorkId(), { K_sess:null }); // clé retirée => clients ne peuvent plus déchiffrer
@@ -293,6 +293,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
