@@ -58,7 +58,8 @@ async function fetchSnapshotFromGit(workId, sid) {
   
   // base publique du repo d’audits (lecture seule)
   const RAW = 'https://raw.githubusercontent.com/jeromejouve-lab/paria-audits/main';
-  const base = `${RAW}/snapshots/${encodeURIComponent(workId)}`;
+  const safeWid = decodeURIComponent(workId || '').replace(/\|/g,'/');
+  const base = `${RAW}/clients/${safeWid}`;
   
   // lecture directe du fichier unique, avec retry 10×3s (max 30s)
   const snapUrl = `${base}/snapshot.json?t=${Date.now()}`;
@@ -500,6 +501,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
