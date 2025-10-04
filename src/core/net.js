@@ -235,48 +235,47 @@ export async function saveToGit(payload) {
   });
   const data = await res.json();
   return { ok: res.status===201 || res.status===200, status: res.status, data, path };
+} 
 
-  export async function saveSnapshotToGit(workId, encSnapshot){
+export async function saveSnapshotToGit(workId, encSnapshot){
   
-    // reprend le même canal que saveToGit (GitHub REST, PAT des réglages)
-    const s = settingsLoad() || {};
-    const owner  = (s.git_owner  || s.endpoints?.git?.owner  || '').trim();
-    const repo   = (s.git_repo   || s.endpoints?.git?.repo   || '').trim();
-    const branch = (s.git_branch || s.endpoints?.git?.branch || 'main').trim();
-    const token  = (s.git_token  || s.endpoints?.git?.token  || '').trim();
-    if (!owner || !repo || !token || !workId || !encSnapshot) return { ok:false, status:0, detail:'incomplete' };
+  // reprend le même canal que saveToGit (GitHub REST, PAT des réglages)
+  const s = settingsLoad() || {};
+  const owner  = (s.git_owner  || s.endpoints?.git?.owner  || '').trim();
+  const repo   = (s.git_repo   || s.endpoints?.git?.repo   || '').trim();
+  const branch = (s.git_branch || s.endpoints?.git?.branch || 'main').trim();
+  const token  = (s.git_token  || s.endpoints?.git?.token  || '').trim();
+  if (!owner || !repo || !token || !workId || !encSnapshot) return { ok:false, status:0, detail:'incomplete' };
   
-    const path   = `snapshots/${encodeURIComponent(workId)}/snapshot.json`;
-    const url    = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
-    const headers = {
-      'Accept': 'application/vnd.github+json',
-      'Authorization': `Bearer ${token}`,   // même schéma que saveToGit (identique à Settings chez toi)
-      'Content-Type': 'application/json'
-    };
+  const path   = `snapshots/${encodeURIComponent(workId)}/snapshot.json`;
+  const url    = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+  const headers = {
+    'Accept': 'application/vnd.github+json',
+    'Authorization': `Bearer ${token}`,   // même schéma que saveToGit (identique à Settings chez toi)
+    'Content-Type': 'application/json'
+  };
   
-    // 1) récupérer le sha si le fichier existe (pour pouvoir l’écraser proprement)
-    let sha = null;
-    try {
-      const headRes = await fetch(url, { method: 'GET', headers });
-      if (headRes.status === 200) {
-        const j = await headRes.json();
-        sha = j?.sha || null;
-      }
-    } catch {}
+  // 1) récupérer le sha si le fichier existe (pour pouvoir l’écraser proprement)
+  let sha = null;
+  try {
+    const headRes = await fetch(url, { method: 'GET', headers });
+    if (headRes.status === 200) {
+      const j = await headRes.json();
+      sha = j?.sha || null;
+    }
+  } catch {}
   
-    // 2) encoder le contenu (UTF-8 → base64)
-    const jsonStr   = JSON.stringify(encSnapshot);
-    const contentB64= btoa(unescape(encodeURIComponent(jsonStr)));
+  // 2) encoder le contenu (UTF-8 → base64)
+  const jsonStr   = JSON.stringify(encSnapshot);
+  const contentB64= btoa(unescape(encodeURIComponent(jsonStr)));
+
+  // 3) PUT GitHub
+  const body = { message: `snapshot ${workId}`, content: contentB64, branch };
+  if (sha) body.sha = sha;  // écrase si déjà présent
   
-    // 3) PUT GitHub
-    const body = { message: `snapshot ${workId}`, content: contentB64, branch };
-    if (sha) body.sha = sha;  // écrase si déjà présent
-  
-    const res  = await fetch(url, { method: 'PUT', headers, body: JSON.stringify(body) });
-    const data = await res.json().catch(()=>null);
-    return { ok: res.status===201 || res.status===200, status: res.status, data, path };
-  }
-  
+  const res  = await fetch(url, { method: 'PUT', headers, body: JSON.stringify(body) });
+  const data = await res.json().catch(()=>null);
+  return { ok: res.status===201 || res.status===200, status: res.status, data, path };
 }
 
 /** Session manifest (publish/load) */
@@ -343,6 +342,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
