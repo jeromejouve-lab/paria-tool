@@ -128,21 +128,14 @@ async function fetchSnapshotFromGit(workId, sid) {
 async function pollLoop(){
 
   if (window.__pariaMode !== 'viewer' || window.__pariaRemote !== 'projector') return;
-  
+
+  const boot = (k) => (window.__pariaBoot && window.__pariaBoot[k]) || '';
+
   try{
     const qs   = new URLSearchParams(location.search);
-    const workId = qs.get('work_id')
-      || sessionStorage.getItem('__paria_workId')
-      || localStorage.getItem('__paria_workId')
-      || buildWorkId();
-    const sid    = qs.get('sid')
-      || sessionStorage.getItem('__paria_sid')
-      || localStorage.getItem('__paria_sid')
-      || '';
-    const token  = (((location.hash||'').match(/[#&]k=([^&]+)/)||[])[1])
-      || sessionStorage.getItem('__paria_k')
-      || localStorage.getItem('__paria_k')
-      || '';
+    const workId = boot('workId') || qs.get('work_id') || sessionStorage.getItem('__paria_workId') || localStorage.getItem('__paria_workId') || buildWorkId();
+    const sid    = boot('sid')    || qs.get('sid')     || sessionStorage.getItem('__paria_sid')     || localStorage.getItem('__paria_sid')     || '';
+    const token  = boot('k')      || (((location.hash||'').match(/[#&]k=([^&]+)/)||[])[1]) || sessionStorage.getItem('__paria_k') || localStorage.getItem('__paria_k') || '';
 
     // (1) état onglet -> overlay
     try{
@@ -625,6 +618,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
