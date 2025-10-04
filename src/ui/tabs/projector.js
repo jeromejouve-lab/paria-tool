@@ -8,6 +8,7 @@ import { buildWorkId } from '../../core/settings.js';
 
 let __cliKey = null; // CryptoKey en RAM, jamais en localStorage
 let __remoteDead = false;
+let __pollTimer = null;
 let __lastSnapFetch = { url: '', tries: 0, ok: false }; // diag lecture snapshot
 
 // --- auto-gate: bascule en mode viewer/projector si l'URL l'indique ---
@@ -92,23 +93,23 @@ async function fetchSnapshotFromGit(workId, sid) {
   // lecture via Apps Script (route=git_load) en GET, retry 10×3s (max 30s)
   const { url, secret } = getGAS() || {};
   const exec = String(url||'').replace(/\/+$/,'').replace(/\/exec(?:\/exec)?$/,'/exec');
+
   for (let i = 0; i < 10; i++) {
     try {
       const u = `${exec}?route=git_load&work_id=${encodeURIComponent(workId)}&json_path=${encodeURIComponent(keyPath)}&secret=${encodeURIComponent(secret||'')}`;
       const res = await fetch(u, { method:'GET', cache:'no-store' });
-      if (res.ok){
-        const j = await res.json().catch(()=> ({}));
+      __lastSnapFetch = { url: u, tries: i + 1, ok: res.ok };
+      if (res.ok) {
+        const j   = await res.json().catch(()=> ({}));
         const enc = j && j.ok && (j.state || j.data) ? (j.state || j.data) : null;
-        if (enc){
-          __lastSnapFetch = { url: u, tries: i + 1, ok: true };
-          return enc;
-        }
+        if (enc) return enc; // succès → on sort sans relancer le poll ici
       }
-    } catch {}
-    __lastSnapFetch = { url: keyPath, tries: i + 1, ok: false };
+    } catch {
+      __lastSnapFetch = { url: keyPath, tries: i + 1, ok: false };
+    }
     await new Promise(r => setTimeout(r, 3000));
   }
-
+  
   // timeout → message + arrêt
   try {
     const ov = ensureOverlay();
@@ -123,7 +124,15 @@ async function fetchSnapshotFromGit(workId, sid) {
 }
 
 async function pollLoop(){
-  if (__remoteDead) return;
+  if (__remoteDead || snap === null) {
+    console.warn('[VIEWER] arrêt du poll (timeout). retries=', Math.max(0, (__lastSnapFetch.tries||0)-1));
+    return;
+  }
+
+  if (!__remoteDead) {
+    __pollTimer = setTimeout(pollLoop, 3000);
+  }
+  
   if (window.__pariaMode !== 'viewer' || window.__pariaRemote !== 'projector') return;
   try{
     const qs   = new URLSearchParams(location.search);
@@ -566,6 +575,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
