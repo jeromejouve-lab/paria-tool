@@ -68,27 +68,23 @@ function setRemoteMode(mode){
 }
 
 async function fetchSnapshotFromGit(workId, sid) {
-  // base publique du repo d’audits (lecture seule)
-    const safeWid = decodeURIComponent(workId || '').replace(/\|/g,'/');
-  const snapPath = `clients/${safeWid}/snapshot.json`;
+  // chemin du snapshot (côté Git)
+  const safeWid = decodeURIComponent(workId || '').replace(/\|/g,'/');
+  const keyPath = `clients/${safeWid}/snapshot.json`;
+  console.log('[VIEWER] snapshot path =', keyPath, '(via GAS:load)');
 
-  // log immédiat du chemin attendu (côté Git)
-  console.log('[VIEWER] snapshot path =', snapPath, '(via GAS:load)');
-
-  // lecture via Apps Script (route=load), retry 10×3s
+  // lecture via Apps Script (route=load), retry 10×3s (max 30s)
   for (let i = 0; i < 10; i++) {
     try {
-      // dataGet(workId, key='snapshot') → route 'load' côté GAS
-      const r = await dataGet(workId, 'snapshot');
-      // code.gs peut renvoyer directement le snapshot, ou {ok:true,data:{…}}
-      const payload = (r && r.ok && r.data) ? r.data : r;
-
+      // dataGet(workId, keyPath) → code.gs route 'load' => renvoie le contenu du fichier
+      const r = await dataGet(workId, keyPath);
+      const payload = (r && r.ok && r.data) ? r.data : r; // tolère {ok:true,data:{…}} et {…} direct
       if (payload && (payload.ct || payload.v)) {
-        __lastSnapFetch = { url: `GAS:load ${snapPath}`, tries: i + 1, ok: true };
-        return payload; // objet chiffré (v1) ou legacy (ct/iv)
+        __lastSnapFetch = { url: `GAS:load ${keyPath}`, tries: i + 1, ok: true };
+        return payload; // chiffré (v1) ou legacy (ct/iv)
       }
     } catch {}
-    __lastSnapFetch = { url: `GAS:load ${snapPath}`, tries: i + 1, ok: false };
+    __lastSnapFetch = { url: `GAS:load ${keyPath}`, tries: i + 1, ok: false };
     await new Promise(r => setTimeout(r, 3000));
   }
 
@@ -125,7 +121,11 @@ async function pollLoop(){
 
     // (2) charger snapshot (chiffré v1 / legacy clair)
     let snap = await fetchSnapshotFromGit(workId);
-    
+    if (__lastSnapFetch && __lastSnapFetch.url) {
+      const retries = Math.max(0, (__lastSnapFetch.tries || 0) - 1);
+      console.log('[VIEWER] retries =', retries);
+    }
+
     // log retries (essais - 1)
     {
       const info = (typeof __lastSnapFetch !== 'undefined') ? __lastSnapFetch : {};
@@ -544,6 +544,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
