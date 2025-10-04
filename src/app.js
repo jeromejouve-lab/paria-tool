@@ -38,6 +38,7 @@ document.addEventListener('paria:remote-link', async (e) => {
   u.searchParams.set('sid', sid);
   
   if (tok) u.hash = 'k=' + tok;
+  try { sessionStorage.setItem('__paria_k', tok); } catch {}
   
   if (action === 'open') {
     window.open(u.toString(), '_blank', 'noopener,noreferrer');
@@ -293,6 +294,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
