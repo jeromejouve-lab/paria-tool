@@ -3,7 +3,7 @@ import {
   getSession, startSession, pauseSession, stopSession
 } from '../../domain/reducers.js';
 
-import { stateGet, dataGet, aesImportKeyRawB64, aesDecryptJSON } from '../../core/net.js';
+import { stateGet, dataGet, aesImportKeyRawB64, aesDecryptJSON, getGAS } from '../../core/net.js';
 import { buildWorkId } from '../../core/settings.js';
 
 let __cliKey = null; // CryptoKey en RAM, jamais en localStorage
@@ -21,6 +21,21 @@ if (!window.__pariaRemote && window.__pariaMode === 'viewer') {
                       : /\/seances\/?/.test(location.pathname)   ? 'seances'
                       : '';
 }
+
+// --- bootstrap secrets: capture immédiate workId/sid/#k avant réécriture URL ---
+(function bootstrapViewerSecrets(){
+  try{
+    const qs = new URLSearchParams(location.search);
+    const wid = qs.get('work_id');
+    const sid = qs.get('sid');
+    const m   = (location.hash||'').match(/[#&]k=([^&]+)/);
+    const k   = m ? m[1] : null;
+
+    if (wid) sessionStorage.setItem('__paria_workId', decodeURIComponent(wid));
+    if (sid) sessionStorage.setItem('__paria_sid', sid);
+    if (k)   sessionStorage.setItem('__paria_k', k);
+  }catch(e){ console.warn('[VIEWER] bootstrap secrets error', e); }
+})();
 
 // --- Remote crypto (HKDF + AES-GCM) ------------------------------------------
 const td = new TextDecoder(); const te = new TextEncoder();
@@ -68,23 +83,29 @@ function setRemoteMode(mode){
 }
 
 async function fetchSnapshotFromGit(workId, sid) {
+
   // chemin du snapshot (côté Git)
   const safeWid = decodeURIComponent(workId || '').replace(/\|/g,'/');
   const keyPath = `clients/${safeWid}/snapshot.json`;
-  console.log('[VIEWER] snapshot path =', keyPath, '(via GAS:load)');
+  console.log('[VIEWER] snapshot path =', keyPath, '(via GAS:git_load)');
 
-  // lecture via Apps Script (route=load), retry 10×3s (max 30s)
+  // lecture via Apps Script (route=git_load) en GET, retry 10×3s (max 30s)
+  const { url, secret } = getGAS() || {};
+  const exec = String(url||'').replace(/\/+$/,'').replace(/\/exec(?:\/exec)?$/,'/exec');
   for (let i = 0; i < 10; i++) {
     try {
-      // dataGet(workId, keyPath) → code.gs route 'load' => renvoie le contenu du fichier
-      const r = await dataGet(workId, keyPath);
-      const payload = (r && r.ok && r.data) ? r.data : r; // tolère {ok:true,data:{…}} et {…} direct
-      if (payload && (payload.ct || payload.v)) {
-        __lastSnapFetch = { url: `GAS:load ${keyPath}`, tries: i + 1, ok: true };
-        return payload; // chiffré (v1) ou legacy (ct/iv)
+      const u = `${exec}?route=git_load&work_id=${encodeURIComponent(workId)}&json_path=${encodeURIComponent(keyPath)}&secret=${encodeURIComponent(secret||'')}`;
+      const res = await fetch(u, { method:'GET', cache:'no-store' });
+      if (res.ok){
+        const j = await res.json().catch(()=> ({}));
+        const enc = j && j.ok && (j.state || j.data) ? (j.state || j.data) : null;
+        if (enc){
+          __lastSnapFetch = { url: u, tries: i + 1, ok: true };
+          return enc;
+        }
       }
     } catch {}
-    __lastSnapFetch = { url: `GAS:load ${keyPath}`, tries: i + 1, ok: false };
+    __lastSnapFetch = { url: keyPath, tries: i + 1, ok: false };
     await new Promise(r => setTimeout(r, 3000));
   }
 
@@ -106,9 +127,9 @@ async function pollLoop(){
   if (window.__pariaMode !== 'viewer' || window.__pariaRemote !== 'projector') return;
   try{
     const qs   = new URLSearchParams(location.search);
-    const workId = qs.get('work_id') || buildWorkId();
-    const sid    = qs.get('sid') || '';
-    const token = ((location.hash||'').match(/[#&]k=([^&]+)/)||[])[1]||'';
+    const workId = qs.get('work_id') || sessionStorage.getItem('__paria_workId') || buildWorkId();
+    const sid    = qs.get('sid')     || sessionStorage.getItem('__paria_sid')   || '';
+    const token  = (((location.hash||'').match(/[#&]k=([^&]+)/)||[])[1]) || sessionStorage.getItem('__paria_k') || '';
 
     // (1) état onglet -> overlay
     try{
@@ -544,6 +565,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
