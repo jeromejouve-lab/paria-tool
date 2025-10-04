@@ -157,9 +157,10 @@ async function pollLoop(){
     }
 
     if (snap && snap.v===1 && snap.alg==='A256GCM'){
-      if (!token || !sid) return; // paramètres insuffisants
+      const sidEff = sid || snap.sid || '';
+      if (!token || !sidEff) return; // paramètres insuffisants
       try{
-        const k  = await deriveViewKey(token, workId, sid);
+        const k  = await deriveViewKey(token, workId, sidEff);
         const iv = b64uToBytes(snap.n);
         const ct = b64uToBytes(snap.ct);
         const plain = await crypto.subtle.decrypt({name:'AES-GCM', iv}, k, ct);
@@ -565,6 +566,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
