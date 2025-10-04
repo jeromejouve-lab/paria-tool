@@ -140,7 +140,7 @@ export async function testGit() {
     const owner = m[1], repo = m[2];
     const api = `https://api.github.com/repos/${owner}/${repo}`;
     const headers = { 'Accept': 'application/vnd.github+json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (token) headers['Authorization'] = `token ${token}`;
     const r = await fetch(api, { headers });
     const ok = r.ok;
     return { ok, status: r.status, detail: ok ? 'repo_ok' : 'http_'+r.status };
@@ -310,7 +310,7 @@ export async function publishSession({ workId, sessionId, data }) {
     method: 'PUT',
     headers: {
       'Accept': 'application/vnd.github+json',
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `token ${token}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({ message: `session ${sessionId} @ ${workId}`, content: contentB64, branch })
@@ -334,7 +334,7 @@ export async function loadSession({ workId, sessionId }) {
     method: 'GET',
     headers: {
       'Accept': 'application/vnd.github+json',
-      'Authorization': `Bearer ${token}`
+      'Authorization': `token ${token}`
     }
   });
   if (res.status===404) return { ok:false, status:404 };
@@ -354,6 +354,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
