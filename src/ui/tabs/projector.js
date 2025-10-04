@@ -38,6 +38,8 @@ if (!window.__pariaRemote && window.__pariaMode === 'viewer') {
   }catch(e){ console.warn('[VIEWER] bootstrap secrets error', e); }
 })();
 
+
+
 // --- Remote crypto (HKDF + AES-GCM) ------------------------------------------
 const td = new TextDecoder(); const te = new TextEncoder();
 const b64uToBytes = (s)=>{ s=s.replace(/-/g,'+').replace(/_/g,'/'); const pad=s.length%4? '='.repeat(4-(s.length%4)) : ''; const bin=atob(s+pad); const out=new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; };
@@ -129,9 +131,18 @@ async function pollLoop(){
   
   try{
     const qs   = new URLSearchParams(location.search);
-    const workId = qs.get('work_id') || sessionStorage.getItem('__paria_workId') || buildWorkId();
-    const sid    = qs.get('sid')     || sessionStorage.getItem('__paria_sid')   || '';
-    const token  = (((location.hash||'').match(/[#&]k=([^&]+)/)||[])[1]) || sessionStorage.getItem('__paria_k') || '';
+    const workId = qs.get('work_id')
+      || sessionStorage.getItem('__paria_workId')
+      || localStorage.getItem('__paria_workId')
+      || buildWorkId();
+    const sid    = qs.get('sid')
+      || sessionStorage.getItem('__paria_sid')
+      || localStorage.getItem('__paria_sid')
+      || '';
+    const token  = (((location.hash||'').match(/[#&]k=([^&]+)/)||[])[1])
+      || sessionStorage.getItem('__paria_k')
+      || localStorage.getItem('__paria_k')
+      || '';
 
     // (1) état onglet -> overlay
     try{
@@ -165,14 +176,24 @@ async function pollLoop(){
 
     if (snap && snap.v===1 && snap.alg==='A256GCM'){
       const sidEff = sid || snap.sid || '';
-      if (!token || !sidEff) return; // paramètres insuffisants
+      if (!token || !sidEff) {
+        console.warn('[VIEWER] #k ou sid manquant → arrêt du poll');
+        __remoteDead = true;
+        setRemoteMode('pause');
+        return;
+      }
       try{
         const k  = await deriveViewKey(token, workId, sidEff);
         const iv = b64uToBytes(snap.n);
         const ct = b64uToBytes(snap.ct);
         const plain = await crypto.subtle.decrypt({name:'AES-GCM', iv}, k, ct);
         snap = JSON.parse(new TextDecoder().decode(plain));
-      }catch{ return; }
+      }catch{ 
+        console.warn('[VIEWER] déchiffrement impossible → arrêt du poll');
+        __remoteDead = true;
+        setRemoteMode('pause');
+        return; 
+      }
     } else if (snap && snap.ct && snap.iv){
       // Fallback legacy (K_sess côté state + aesDecryptJSON)
       try{
@@ -581,6 +602,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
