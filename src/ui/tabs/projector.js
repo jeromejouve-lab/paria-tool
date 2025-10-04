@@ -8,6 +8,7 @@ import { buildWorkId } from '../../core/settings.js';
 
 let __cliKey = null; // CryptoKey en RAM, jamais en localStorage
 let __remoteDead = false;
+let __lastSnapFetch = { url: '', tries: 0, ok: false }; // diag lecture snapshot
 
 // --- auto-gate: bascule en mode viewer/projector si l'URL l'indique ---
 if (!window.__pariaMode) {
@@ -67,22 +68,39 @@ function setRemoteMode(mode){
 }
 
 async function fetchSnapshotFromGit(workId, sid) {
-  
   // base publique du repo d’audits (lecture seule)
   const RAW = 'https://raw.githubusercontent.com/jeromejouve-lab/paria-audits/main';
   const safeWid = decodeURIComponent(workId || '').replace(/\|/g,'/');
   const base = `${RAW}/clients/${safeWid}`;
-  
-  // lecture directe du fichier unique, avec retry 10×3s (max 30s)
   const snapUrl = `${base}/snapshot.json?t=${Date.now()}`;
-  for (let i=0; i<10; i++){
-    try{
-      const res = await fetch(snapUrl, { cache:'no-store' });
-      if (res.ok) return await res.json();
-    }catch{}
+
+  // log immédiat du chemin
+  console.log('[VIEWER] snapshot path =', snapUrl);
+
+  // lecture directe du fichier unique, avec retry 10×3s (max 30s)
+  for (let i = 0; i < 10; i++) {
+    try {
+      const res = await fetch(snapUrl, { cache: 'no-store' });
+      if (res.ok) {
+        __lastSnapFetch = { url: snapUrl, tries: i + 1, ok: true };
+        return await res.json();
+      }
+    } catch {}
+    __lastSnapFetch = { url: snapUrl, tries: i + 1, ok: false };
     await new Promise(r => setTimeout(r, 3000));
   }
-  return null; // introuvable après 30s
+
+  // timeout → message + arrêt du poll
+  try {
+    const ov = ensureOverlay();
+    ov.style.display = 'flex';
+    ov.style.background = 'rgba(0,0,0,.85)';
+    ov.querySelector('#remote-overlay-badge').textContent = 'Aucun snapshot (timeout)';
+  } catch {}
+  __remoteDead = true;
+
+  console.warn('[VIEWER] snapshot introuvable après', (__lastSnapFetch.tries||10), 'essais → arrêt.');
+  return null;
 }
 
 async function pollLoop(){
@@ -99,11 +117,22 @@ async function pollLoop(){
       const st = await stateGet(workId);
       const mode = st?.tabs?.projector;
       if (mode) setRemoteMode(mode); // sinon conserver l’overlay courant (défaut = pause)
+      console.log('[VIEWER] état lu (tabs.projector) =', mode ?? '(absent)');
 
     }catch{}
 
     // (2) charger snapshot (chiffré v1 / legacy clair)
     let snap = await fetchSnapshotFromGit(workId);
+    
+    // log retries (essais - 1)
+    {
+      const info = (typeof __lastSnapFetch !== 'undefined') ? __lastSnapFetch : {};
+      if (info.url) {
+        const retries = Math.max(0, (info.tries || 0) - 1);
+        console.log('[VIEWER] retries =', retries);
+      }
+    }
+
     if (snap && snap.v===1 && snap.alg==='A256GCM'){
       if (!token || !sid) return; // paramètres insuffisants
       try{
@@ -513,6 +542,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
