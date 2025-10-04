@@ -124,10 +124,6 @@ async function fetchSnapshotFromGit(workId, sid) {
 }
 
 async function pollLoop(){
-  if (__remoteDead || snap === null) {
-    console.warn('[VIEWER] arrêt du poll (timeout). retries=', Math.max(0, (__lastSnapFetch.tries||0)-1));
-    return;
-  }
 
   if (!__remoteDead) {
     __pollTimer = setTimeout(pollLoop, 3000);
@@ -154,6 +150,11 @@ async function pollLoop(){
     if (__lastSnapFetch && __lastSnapFetch.url) {
       const retries = Math.max(0, (__lastSnapFetch.tries || 0) - 1);
       console.log('[VIEWER] retries =', retries);
+    }
+
+    if (__remoteDead || snap === null) {
+      console.warn('[VIEWER] arrêt du poll (timeout). retries=', Math.max(0, (__lastSnapFetch.tries||0)-1));
+      return;
     }
 
     // log retries (essais - 1)
@@ -575,6 +576,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
