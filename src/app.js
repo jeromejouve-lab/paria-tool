@@ -70,7 +70,7 @@ async function hkdf(ikm, salt, info, len=32){
   return T1.slice(0,len);
 }
 
-async function ensureSessionKey(){
+export async function ensureSessionKey(){
   // Génère ou réutilise une session {sid, token} et dérive K_view/K_cmd
   if (window.__pariaSess && window.__pariaSess.sid && window.__pariaSess.kv) return window.__pariaSess;
   const workId = buildWorkId();
@@ -294,6 +294,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
