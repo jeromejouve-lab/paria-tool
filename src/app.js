@@ -18,36 +18,44 @@ document.addEventListener('paria:remote-link', async (e) => {
   if (!tab) return;
   const kind = (tab === 'seance') ? 'seances' : 'projector';
 
-  // forcer ON si on part de OFF (pour publier le snapshot immédiatement)
+  // si tab 'off' => forcer 'on' pour publier
   try {
     const r = await import('./domain/reducers.js');
     if (r.getTabMode?.(tab) === 'off') r.setTabMode?.(tab, 'on');
   } catch {}
-  
-  // publication immédiate du snapshot (on/pause) avant la copie du lien
-  try { await publishEncryptedSnapshot(); } catch (err) { console.warn('[remote-link] publish error', err); }
 
-  const sess = await ensureSessionKey(); // (définie plus bas dans app.js)
-  const sid  = sess?.sid || `S-${new Date().toISOString().slice(0,10)}-${Math.random().toString(36).slice(2,8)}`;
-  const tok = sess?.token 
-           || sessionStorage.getItem('__paria_k') 
-           || localStorage.getItem('__paria_k') 
+  // 1) Préparer wid/sid/k en PRIORITÉ depuis e.detail (centralisation)
+  const wid = e?.detail?.workId || (await import('./core/settings.js')).buildWorkId();
+  const sid = e?.detail?.sid
+           || (await ensureSessionKey()).sid
+           || ('S-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8));
+  const tok = e?.detail?.k
+           || (await ensureSessionKey()).token
+           || sessionStorage.getItem('__paria_k')
+           || localStorage.getItem('__paria_k')
            || '';
 
+  // 2) Publier avec ces secrets (clé 100% alignée avec #k qu’on mettra dans l’URL)
+  try { await publishEncryptedSnapshot({ workId: wid, sid, k: tok }); } catch (err) { console.warn('[remote-link] publish error', err); }
+
+  // 3) Construire l’URL viewer et copier
   const base = `${location.origin}/paria-tool/${kind}/`;
   const u = new URL(base);
-  u.searchParams.set('work_id', (await import('./core/settings.js')).buildWorkId());
-  u.searchParams.set('sid', sess.sid);
-  
+  u.searchParams.set('work_id', wid);
+  u.searchParams.set('sid', sid);
   if (tok) u.hash = 'k=' + tok;
+
   try { sessionStorage.setItem('__paria_k', tok); } catch {}
-  
+  try { sessionStorage.setItem('__paria_workId', wid); } catch {}
+  try { sessionStorage.setItem('__paria_sid', sid); } catch {}
+
   if (action === 'open') {
     window.open(u.toString(), '_blank', 'noopener,noreferrer');
   } else {
     try { await navigator.clipboard.writeText(u.toString()); } catch {}
     console.log('[paria] lien copié:', u.toString());
   }
+
 });
 
 function getRemoteBase(){
@@ -65,6 +73,16 @@ window.__pariaHydrating = true;
 // --- Crypto helpers (HKDF + AES-GCM) -----------------------------------------
 function b64u(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
 function strBytes(s){ return new TextEncoder().encode(s); }
+
+function b64uToBytes(s){
+  s = String(s||'').replace(/-/g,'+').replace(/_/g,'/');
+  const pad = s.length % 4 ? '='.repeat(4 - (s.length % 4)) : '';
+  const bin = atob(s + pad);
+  const out = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
 async function hkdf(ikm, salt, info, len=32){
   const key = await crypto.subtle.importKey('raw', ikm, {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
   const prk = await crypto.subtle.sign('HMAC', key, salt);
@@ -130,22 +148,32 @@ document.addEventListener('paria:blob-updated', ()=>{
 // publication immédiate quand un onglet bascule (évènement dédié des reducers)
 document.addEventListener('paria:tabs-changed', ()=>{ publishState(); });
 
-async function publishEncryptedSnapshot(){
-  const workId = buildWorkId();
-  const { isRemoteViewer } = await import('./domain/reducers.js');
-  if (isRemoteViewer()) return; // remote = lecture seule, pas de publication
+async function publishEncryptedSnapshot(opts = {}){
+  const workId = opts.workId || buildWorkId();
+  const { isRemoteViewer, readClientBlob } = await import('./domain/reducers.js');
+  if (isRemoteViewer()) return;
 
-  // si l’onglet séance/projecteur n’est pas "on", on ne publie pas
-  // on décide depuis le blob local (source de vérité)
-  const { readClientBlob } = await import('./domain/reducers.js');
-  const blob = readClientBlob();
+  const blob = readClientBlob() || {};
   const on = (blob?.tabs?.seance === 'on') || (blob?.tabs?.projector === 'on');
   if (!on) return;
 
-  // on pousse aussi l’état des tabs côté "state" (meilleure synchro remote)
+  // publier aussi l’état des tabs (léger)
   await stateSet(workId, { tabs: blob.tabs || {} });
 
-  const sess = await ensureSessionKey();
+  // ——— DÉRIVATION DE CLÉ ———
+  // Si on nous a donné workId/sid/k → on DÉRIVE avec ça (source unique).
+  // Sinon, on retombe sur la session locale existante.
+  let sess = null;
+  if (opts.k && opts.sid) {
+    const ikm  = b64uToBytes(opts.k);
+    const salt = strBytes(workId);
+    const info = strBytes('view:' + opts.sid);
+    const kvRaw = await hkdf(ikm, salt, info, 32);
+    const kv    = await crypto.subtle.importKey('raw', kvRaw, { name:'AES-GCM' }, false, ['encrypt']);
+    sess = { sid: opts.sid, token: opts.k, kv };
+  } else {
+    sess = await ensureSessionKey();
+  }
    
   // extrait seulement ce qui doit être partagé (mini-cards, etc.)
   const view = {
@@ -296,6 +324,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
