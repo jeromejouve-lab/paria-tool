@@ -47,8 +47,15 @@ async function hkdf(ikm, salt, info, len=32){
   const key = await crypto.subtle.importKey('raw', ikm, {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
   const prk = await crypto.subtle.sign('HMAC', key, salt);
   const k2  = await crypto.subtle.importKey('raw', prk, {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
-  const t1  = await crypto.subtle.sign('HMAC', k2, new Uint8Array([...info,1]));
-  return new Uint8Array(t1).slice(0,len);
+  
+  // HKDF (simplifié) : T1 = HMAC(PRK, info || 0x01)
+  const infoBuf = (info && info.buffer) ? new Uint8Array(info) : new Uint8Array(0);
+  const inBuf   = new Uint8Array(infoBuf.length + 1);
+  inBuf.set(infoBuf, 0);
+  inBuf[inBuf.length - 1] = 0x01;
+
+  const t1  = await crypto.subtle.sign('HMAC', k2, inBuf);
+  return new Uint8Array(t1).slice(0, len);
 }
 
 async function deriveViewKey(tokenB64u, workId, sid){
@@ -167,28 +174,71 @@ async function pollLoop(){
       }
     }
 
-    if (snap && snap.v===1 && snap.alg==='A256GCM'){
-      // déchiffrage v1 strictement symétrique à l’écriture (HKDF(#k, workId, sid) + AES-GCM)
-      const sidEff = sid || snap.sid || '';
-      if (!token || !sidEff) {
-        console.warn('[VIEWER] #k ou sid manquant → arrêt du poll');
-        __remoteDead = true;
-        setRemoteMode('pause');
-        return;
+    if (snap && snap.v === 1 && snap.alg === 'A256GCM') {
+      // récupérer les secrets saisis très tôt (bootstrapViewerSecrets)
+      const kHash = sessionStorage.getItem('__paria_k') || ((location.hash||'').match(/[#&]k=([^&]+)/)||[])[1] || '';
+      const wid   = sessionStorage.getItem('__paria_workId') || workId;
+      const sid0  = sessionStorage.getItem('__paria_sid')    || sid;
+    
+      if (!kHash || !sid0 || !wid) {
+        console.warn('[VIEWER] secrets incomplets (k|sid|workId manquants) → retry');
+        return; // on laisse la boucle poll/retry continuer
       }
-      try{
-        const k  = await deriveViewKey(token, workId, sidEff); // dérive la même clé qu’en écriture
-        const iv = b64uToBytes(snap.n);
-        const ct = b64uToBytes(snap.ct);
-        const plain = await crypto.subtle.decrypt({name:'AES-GCM', iv}, k, ct);
-        snap = JSON.parse(new TextDecoder().decode(plain));
-      }catch{
-        console.warn('[VIEWER] déchiffrement impossible → arrêt du poll');
-        __remoteDead = true;
-        setRemoteMode('pause');
-        return;
+    
+      // pipeline identique Cards : HKDF(key = base64url(#k), salt = workId, info = "view:"+sid)
+      const ikm  = (()=>{
+        // base64url => bytes
+        const s = String(kHash).replace(/-/g,'+').replace(/_/g,'/');
+        const pad = s.length % 4 ? '='.repeat(4-(s.length%4)) : '';
+        const bin = atob(s+pad);
+        const out = new Uint8Array(bin.length);
+        for (let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i);
+        return out;
+      })();
+      const salt = new TextEncoder().encode(wid);
+      const info = new TextEncoder().encode('view:'+sid0);
+    
+      const prkKey = await crypto.subtle.importKey('raw', ikm, {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
+      const prk    = await crypto.subtle.sign('HMAC', prkKey, salt);
+      const macKey = await crypto.subtle.importKey('raw', prk, {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
+      const infoBuf= new Uint8Array(info.length+1); infoBuf.set(info); infoBuf[infoBuf.length-1]=1;
+      const t1     = await crypto.subtle.sign('HMAC', macKey, infoBuf);
+      const kvRaw  = new Uint8Array(t1).slice(0,32);
+      const kDec   = await crypto.subtle.importKey('raw', kvRaw, {name:'AES-GCM'}, false, ['decrypt']);
+    
+      const iv  = (()=>{ // snap.n = IV en base64url (12 octets)
+        const s = String(snap.n||'').replace(/-/g,'+').replace(/_/g,'/');
+        const pad = s.length % 4 ? '='.repeat(4-(s.length%4)) : '';
+        const bin = atob(s+pad);
+        const out = new Uint8Array(bin.length);
+        for (let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i);
+        return out;
+      })();
+    
+      const ct  = (()=>{ // snap.ct = ciphertext+tag (base64url)
+        const s = String(snap.ct||'').replace(/-/g,'+').replace(/_/g,'/');
+        const pad = s.length % 4 ? '='.repeat(4-(s.length%4)) : '';
+        const bin = atob(s+pad);
+        const out = new Uint8Array(bin.length);
+        for (let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i);
+        return out;
+      })();
+    
+      try {
+        const pt   = await crypto.subtle.decrypt({name:'AES-GCM', iv}, kDec, ct);
+        const text = new TextDecoder().decode(pt);
+        const obj  = JSON.parse(text);
+    
+        // on a le snapshot en clair → appliquer l’état
+        const mode = obj?.tabs?.projector;
+        if (mode) setRemoteMode(mode);
+        console.log('[VIEWER] snapshot OK (tabs.projector) =', mode ?? '(absent)');
+        // … si tu as un rendu à déclencher ici, fais-le …
+        return; // on sort du tour de poll (boucle continuera plus tard)
+      } catch(e){
+        console.warn('[VIEWER] déchiffrement v1 KO → retry', e?.name||e);
+        return; // on laisse le retry tourner
       }
-
     } else if (snap && snap.ct && snap.iv){
       // Fallback legacy (K_sess côté state + aesDecryptJSON)
       try{
@@ -624,6 +674,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
