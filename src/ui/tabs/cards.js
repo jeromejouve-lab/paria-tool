@@ -134,6 +134,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
           workId,
           sid:    sess.sid,
           tabs,
+          cards:  blob.cards || [],
           rev:    blob.rev|0 || 0,
           kTokenB64u: sess.token, // c’est bien le #k en base64url
         });
@@ -1011,6 +1012,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
