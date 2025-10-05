@@ -39,6 +39,15 @@ if (!window.__pariaRemote && window.__pariaMode === 'viewer') {
 })();
 
 
+// --- Boot/poll guards (persistés entre itérations)
+window.__proj = window.__proj || {};
+const PROJ = window.__proj;
+PROJ.startTs  ??= Date.now();
+PROJ.deadline ??= PROJ.startTs + 30_000; // 30s
+PROJ.okCount  ??= 0;                     // nb de lectures OK
+PROJ.retries  ??= 0;                     // compteur de retries
+PROJ.stopped  ??= false;                 // flag arrêt
+
 
 // --- Remote crypto (HKDF + AES-GCM) ------------------------------------------
 const td = new TextDecoder(); const te = new TextEncoder();
@@ -137,6 +146,24 @@ async function pollLoop(){
   if (window.__pariaMode !== 'viewer' || window.__pariaRemote !== 'projector') return;
 
   const boot = (k) => (window.__pariaBoot && window.__pariaBoot[k]) || '';
+
+  // deadline 30s
+  if (Date.now() > PROJ.deadline) {
+    if (PROJ.okCount === 0) {
+      console.warn('[VIEWER] arrêt: impossible de lire le snapshot (30s).');
+      try { setRemoteMode('pause'); } catch {}
+      PROJ.stopped = true;
+      return;
+    }
+    if (PROJ.okCount > 1) {
+      console.warn('[VIEWER] arrêt: instabilité snapshot (>1 lectures OK dans 30s).');
+      try { setRemoteMode('pause'); } catch {}
+      PROJ.stopped = true;
+      return;
+    }
+  }
+  // si déjà arrêté (première lecture OK), on ne fait plus rien
+  if (PROJ.stopped) return;
 
   try{
     const qs   = new URLSearchParams(location.search);
@@ -266,7 +293,7 @@ async function pollLoop(){
         renderDetail(host);
       }
     }
-    
+
     if (!__remoteDead) {
       __pollTimer = setTimeout(pollLoop, 1500);
     }
@@ -671,6 +698,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
