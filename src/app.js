@@ -7,6 +7,8 @@ import * as Projector from './ui/tabs/projector.js';
 import * as Journal   from './ui/tabs/journal.js';
 import './core/compat-exports.js';
 
+import { ensureSessionKey } from './app.js';
+
 // --- app.js ---
 import { backupFlushLocal, backupPushGit, backupsList, restoreFromGit, readClientBlob } from './domain/reducers.js';
 import { buildWorkId } from './core/settings.js';
@@ -324,6 +326,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
