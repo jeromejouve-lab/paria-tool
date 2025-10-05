@@ -27,9 +27,6 @@ document.addEventListener('paria:remote-link', async (e) => {
   // publication immédiate du snapshot (on/pause) avant la copie du lien
   try { await publishEncryptedSnapshot(); } catch (err) { console.warn('[remote-link] publish error', err); }
 
-  // s'assure qu'on a une session (sid + token de vue)
-  const { ensureSessionKey } = await import('./domain/reducers.js');
-
   const sess = await ensureSessionKey(); // (définie plus bas dans app.js)
   const base = `${location.origin}/paria-tool/${kind}/`;
   const u = new URL(base);
