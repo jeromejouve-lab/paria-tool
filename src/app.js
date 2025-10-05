@@ -28,6 +28,7 @@ document.addEventListener('paria:remote-link', async (e) => {
   try { await publishEncryptedSnapshot(); } catch (err) { console.warn('[remote-link] publish error', err); }
 
   const sess = await ensureSessionKey(); // (définie plus bas dans app.js)
+  const sid  = sess?.sid || `S-${new Date().toISOString().slice(0,10)}-${Math.random().toString(36).slice(2,8)}`;
   const base = `${location.origin}/paria-tool/${kind}/`;
   const u = new URL(base);
   u.searchParams.set('work_id', (await import('./core/settings.js')).buildWorkId());
@@ -290,6 +291,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
