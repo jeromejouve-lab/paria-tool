@@ -88,6 +88,34 @@ export const ghHeaders = (token)=>({
   'Accept':'application/vnd.github+json',
   ...(token?{Authorization:`token ${token}`}:{})
 });
+
+// === [PARIA][CRYPTO PIPELINE] HKDF + AES-GCM (v1) ===========================
+const _te = new TextEncoder();
+const _b64uDec = (s)=>{ s=String(s||'').replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4)s+='='; const bin=atob(s); return Uint8Array.from(bin,c=>c.charCodeAt(0)); };
+const _b64uEnc = (u)=>{ const bin=Array.from(u).map(b=>String.fromCharCode(b)).join(''); return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); };
+
+export async function deriveViewKeyHKDF(kB64u, workId, sid){
+  const kBytes = _b64uDec(kB64u || '');
+  const base   = await crypto.subtle.importKey('raw', kBytes, 'HKDF', false, ['deriveKey']);
+  const salt   = await crypto.subtle.digest('SHA-256', _te.encode(String(workId)));
+  const info   = _te.encode('view:' + String(sid));
+  return crypto.subtle.deriveKey(
+    { name:'HKDF', hash:'SHA-256', salt: new Uint8Array(salt), info },
+    base,
+    { name:'AES-GCM', length: 256 },
+    false,
+    ['encrypt','decrypt']
+  );
+}
+
+export async function encryptSnapshotV1(key, payload){
+  const iv  = crypto.getRandomValues(new Uint8Array(12));
+  const pt  = _te.encode(JSON.stringify(payload));
+  const ctB = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM', iv, tagLength:128}, key, pt));
+  return { v:1, alg:'A256GCM', sid: payload?.sid || '', rev: payload?.rev|0 || 0, n: _b64uEnc(iv), ct: _b64uEnc(ctB) };
+}
+// =========================================================================== 
+
 export const ghPath = (...xs)=> xs.map(s=>encodeURIComponent(String(s))).join('/');
 export const ghContentsUrl = (owner,repo,branch,...segs)=>
   `https://api.github.com/repos/${owner}/${repo}/contents/${ghPath(...segs)}?ref=${encodeURIComponent(branch)}`;
@@ -354,6 +382,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
