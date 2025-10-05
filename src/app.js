@@ -29,10 +29,15 @@ document.addEventListener('paria:remote-link', async (e) => {
 
   const sess = await ensureSessionKey(); // (définie plus bas dans app.js)
   const sid  = sess?.sid || `S-${new Date().toISOString().slice(0,10)}-${Math.random().toString(36).slice(2,8)}`;
+  const tok = sess?.token 
+           || sessionStorage.getItem('__paria_k') 
+           || localStorage.getItem('__paria_k') 
+           || '';
+
   const base = `${location.origin}/paria-tool/${kind}/`;
   const u = new URL(base);
   u.searchParams.set('work_id', (await import('./core/settings.js')).buildWorkId());
-  u.searchParams.set('sid', sid);
+  u.searchParams.set('sid', sess.sid);
   
   if (tok) u.hash = 'k=' + tok;
   try { sessionStorage.setItem('__paria_k', tok); } catch {}
@@ -291,6 +296,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // utile au besoin depuis la console
 try { window.showTab = showTab; window.pariaBoot = boot; } catch {}
+
 
 
 
