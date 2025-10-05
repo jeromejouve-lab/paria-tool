@@ -140,6 +140,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
         });
         console.log('[PUB snapshot]', r);
         refreshModes(); 
+        document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'copy' }}));
         return;
       }
       
@@ -1010,6 +1011,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
