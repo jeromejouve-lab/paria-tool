@@ -234,7 +234,7 @@ async function pollLoop(){
         if (mode) setRemoteMode(mode);
         console.log('[VIEWER] snapshot OK (tabs.projector) =', mode ?? '(absent)');
         // … si tu as un rendu à déclencher ici, fais-le …
-        return; // on sort du tour de poll (boucle continuera plus tard)
+        snap = obj; // ← on garde le snapshot déchiffré pour la suite
       } catch(e){
         console.warn('[VIEWER] déchiffrement v1 KO → retry', e?.name||e);
         return; // on laisse le retry tourner
@@ -255,13 +255,10 @@ async function pollLoop(){
     }
 
     if (snap){
-      
-      // overlay depuis le snapshot (source de vérité côté viewer)
       const mode2 = snap?.tabs?.projector;
       if (mode2) setRemoteMode(mode2);
-      
-      // Publier en RAM + re-render (read-only)
-      window.__remoteSnapshot = snap;
+    
+      window.__remoteSnapshot = snap;   // ← C’est ICI que la timeline se nourrit
       const host = document.getElementById('tab-projector');
       if (host){
         renderTimeline(host);
@@ -674,6 +671,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
