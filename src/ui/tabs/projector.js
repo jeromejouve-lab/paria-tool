@@ -168,6 +168,7 @@ async function pollLoop(){
     }
 
     if (snap && snap.v===1 && snap.alg==='A256GCM'){
+      // déchiffrage v1 strictement symétrique à l’écriture (HKDF(#k, workId, sid) + AES-GCM)
       const sidEff = sid || snap.sid || '';
       if (!token || !sidEff) {
         console.warn('[VIEWER] #k ou sid manquant → arrêt du poll');
@@ -176,26 +177,31 @@ async function pollLoop(){
         return;
       }
       try{
-        const k  = await deriveViewKey(token, workId, sidEff);
+        const k  = await deriveViewKey(token, workId, sidEff); // dérive la même clé qu’en écriture
         const iv = b64uToBytes(snap.n);
         const ct = b64uToBytes(snap.ct);
         const plain = await crypto.subtle.decrypt({name:'AES-GCM', iv}, k, ct);
         snap = JSON.parse(new TextDecoder().decode(plain));
-      }catch{ 
+      }catch{
         console.warn('[VIEWER] déchiffrement impossible → arrêt du poll');
         __remoteDead = true;
         setRemoteMode('pause');
-        return; 
+        return;
       }
+
     } else if (snap && snap.ct && snap.iv){
       // Fallback legacy (K_sess côté state + aesDecryptJSON)
       try{
         const st2 = await stateGet(workId);
-        if (st2?.K_sess){
-          if (!__cliKey) __cliKey = await aesImportKeyRawB64(st2.K_sess);
+        if (st2 && st2.K_sess){
+          if (!__cliKey) { __cliKey = await aesImportKeyRawB64(st2.K_sess); }
           snap = await aesDecryptJSON(__cliKey, snap.ct, snap.iv);
-        } else { snap = null; }
-      }catch{ snap = null; }
+        } else {
+          snap = null;
+        }
+      }catch{
+        snap = null;
+      }
     }
 
     if (snap){
@@ -618,6 +624,7 @@ export function mount(host=document.getElementById('tab-projector')){
 
 
 export default { mount };
+
 
 
 
