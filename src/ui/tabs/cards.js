@@ -1,18 +1,17 @@
 // PARIA-V2-CLEAN v1.0.0 | ui/tabs/cards.js (injection)
 import {
-  listCards, toggleThink, softDeleteCard,
-  addNote, addComment, addAItoCard, updateCard, saveWorkset, listWorksets, addSectionEntry, hideEntry, aiAnalyzeEntry,
-  getTabMode, setTabMode
+  listCards, toggleThink, softDeleteCard, addNote, addComment, 
+  addAItoCard, updateCard, saveWorkset, listWorksets, addSectionEntry, 
+  hideEntry, aiAnalyzeEntry, getTabMode, setTabMode
 } from '../../domain/reducers.js';
-
-import { askAI } from '../../core/ai.js';
-
 import {
-  getCardView, setSectionFilters, listCardDays,
-  appendCardUpdate, touchCard, __cards_migrate_v2_once, createCard, hydrateOnEnter, startAutoBackup, createMiniFromSource
+  getCardView, setSectionFilters, listCardDays, readClientBlob, writeClientBlob,
+  appendCardUpdate, touchCard, __cards_migrate_v2_once, createCard, hydrateOnEnter, 
+  startAutoBackup, createMiniFromSource
 } from "../../domain/reducers.js";
 
-import { readClientBlob, writeClientBlob } from "../../domain/reducers.js";
+import { buildAndSaveSnapshot } from '../../core/net.js';
+import { askAI } from '../../core/ai.js';
 
 const $ = (s,r=document)=>r.querySelector(s);
 
@@ -138,6 +137,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
           rev:    blob.rev|0 || 0,
           kTokenB64u: sess.token, // c’est bien le #k en base64url
         });
+
         console.log('[PUB snapshot]', r);
         refreshModes(); 
         document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'copy' }}));
@@ -1011,6 +1011,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
