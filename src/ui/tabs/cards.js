@@ -114,44 +114,31 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
         return;
       }
             
-      if (a.dataset.act==='copy-proj'){
-        if (getTabMode('projector')==='off'){ setTabMode('projector','on'); }
-        document.dispatchEvent(new CustomEvent('paria:remote-link', { detail:{ tab:'projector', action:'copy' }}));
+      if (a.dataset.act === 'copy-proj') {
+        ev.preventDefault();
+        const st  = await import('/paria-tool/src/core/settings.js');
+        const net = await import('/paria-tool/src/core/net.js');
+        const app = await import('/paria-tool/src/app.js');
+        const m   = await import('/paria-tool/src/domain/reducers.js');
+      
+        const workId = st.buildWorkId();
+        // règle JJ : on force l’état côté blob avant publication (on/pause/off)
+        const blob = m.readClientBlob() || {};
+        const tabs = blob.tabs || {};
+        // si projector 'off' → on le remet 'on' à la copie (ta règle)
+        if (tabs.projector === 'off') tabs.projector = 'on';
+      
+        const sess = await app.ensureSessionKey(); // fournit { sid, token, ... }
         
-        // [PARIA] publication snapshot immédiate (on/pause) après "Copier le lien"
-        try {
-          const st  = await import('/paria-tool/src/core/settings.js');
-          const net = await import('/paria-tool/src/core/net.js');
-        
-          const s     = st.settingsLoad();
-          const owner = (s.git_owner  || s.endpoints?.git?.owner  || '').trim();
-          const repo  = (s.git_repo   || s.endpoints?.git?.repo   || '').trim();
-          const branch= (s.git_branch || s.endpoints?.git?.branch || 'main').trim();
-        
-          const workId = await st.buildWorkId();
-          const [client, service, dateStr] = String(workId).split('|');
-          const sid    = window.__pariaBoot?.sid || (window.__lastSid || '') || params.sid;  // garde ton origine
-          const kToken = (new URL(location.href)).hash.replace(/^.*#k=/,'');                 // #k brut base64url
-        
-          // règle d’état au clic (comme convenu)
-          const tabs = { ...(blob?.tabs||{}) };
-          if (tabs.projector === 'off') tabs.projector = 'on';
-          // si 'pause' => reste 'pause', sinon 'on'
-        
-          await net.saveToGit({
-            owner, repo, branch,
-            path: `clients/${client}/${service}/${dateStr}/snapshot.json`,
-            json: await net.encryptSnapshotV1(
-              await net.deriveViewKeyHKDF(kToken, workId, sid),
-              { sid, rev: 0, tabs }   // ajoute ce que tu avais déjà dans le snapshot
-            )
-          });
-        
-          console.log('[PUB] snapshot publié → clients/%s/%s/%s/snapshot.json', client, service, dateStr);
-        } catch (e) {
-          console.warn('[PUB] snapshot: échec publication', e);
-        }
-
+        // Publication unique et normalisée
+        const r = await net.buildAndSaveSnapshot({
+          workId,
+          sid:    sess.sid,
+          tabs,
+          rev:    blob.rev|0 || 0,
+          kTokenB64u: sess.token, // c’est bien le #k en base64url
+        });
+        console.log('[PUB snapshot]', r);
         refreshModes(); 
         return;
       }
@@ -1023,6 +1010,7 @@ export function mountCardsTab(host = document.getElementById('tab-cards')){
 
 export const mount = mountCardsTab;
 export default { mount };
+
 
 
 
