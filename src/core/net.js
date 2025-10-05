@@ -319,12 +319,19 @@ export async function saveSnapshotToGit(workId, encSnapshot){
 }
 
 // -- [PARIA] COLLE CENTRALE : dérive -> chiffre -> écrit le snapshot (enveloppe v1)
-export async function buildAndSaveSnapshot({ workId, sid, tabs, rev = 0, kTokenB64u }) {
+export async function buildAndSaveSnapshot({
+  workId,
+  sid,
+  rev = 0,
+  kTokenB64u,
+  tabs = {},
+  cards = []
+}) {
   // 1) dérivation HKDF depuis #k (base64url), avec le contrat workId/sid
   const key = await deriveViewKeyHKDF(kTokenB64u, workId, sid);
 
-  // 2) clair -> enveloppe v1
-  const enc = await encryptSnapshotV1(key, { sid, rev, tabs });
+  // 2) clair -> enveloppe v1 (on inclut maintenant cards[])
+  const enc = await encryptSnapshotV1(key, { sid, rev, tabs, cards });
 
   // 3) écriture Git (chemin canonicalisé à partir de workId)
   return await saveSnapshotToGit(workId, enc);
@@ -394,6 +401,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
