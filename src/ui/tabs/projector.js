@@ -52,6 +52,7 @@ PROJ.stopped  ??= false;                 // flag arrêt
 // --- Remote crypto (HKDF + AES-GCM) ------------------------------------------
 const td = new TextDecoder(); const te = new TextEncoder();
 const b64uToBytes = (s)=>{ s=s.replace(/-/g,'+').replace(/_/g,'/'); const pad=s.length%4? '='.repeat(4-(s.length%4)) : ''; const bin=atob(s+pad); const out=new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; };
+
 async function hkdf(ikm, salt, info, len=32){
   const key = await crypto.subtle.importKey('raw', ikm, {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
   const prk = await crypto.subtle.sign('HMAC', key, salt);
@@ -260,6 +261,12 @@ async function pollLoop(){
         const mode = obj?.tabs?.projector;
         if (mode) setRemoteMode(mode);
         console.log('[VIEWER] snapshot OK (tabs.projector) =', mode ?? '(absent)');
+        
+        // Pose le snapshot global + rend via l’API standard
+        window.__remoteSnapshot = obj;  // obj = snapshot déchiffré v1
+        try { (await import('/paria-tool/src/ui/tabs/projector.js')).update(host, obj); }
+        catch(e){ console.warn('[VIEWER] update err', e); }
+
         // … si tu as un rendu à déclencher ici, fais-le …
         snap = obj; // ← on garde le snapshot déchiffré pour la suite
       } catch(e){
@@ -294,9 +301,10 @@ async function pollLoop(){
       }
     }
 
-    if (!__remoteDead) {
-      __pollTimer = setTimeout(pollLoop, 1500);
-    }
+    if (!window.__projRenderedOnce) {
+  __pollTimer = setTimeout(pollLoop, 1500);
+  }
+
   }catch{}
 }
 
@@ -696,8 +704,66 @@ export function mount(host=document.getElementById('tab-projector')){
   });
 }
 
+// --- RENDERER STANDARD POUR PROJECTOR (ajout minimal, non intrusif)
+export function update(host, snapshot) {
+  const snap = snapshot || (window.__remoteSnapshot || {});
+  // Si l’UI expose déjà des helpers, on les utilise
+  const maybe = (name) => {
+    // cherche d’abord un export nommé, puis une méthode du default export
+    const mod = /** @type any */ (module || {});
+    const fn = (typeof exports !== 'undefined' && exports[name])
+      || (typeof module !== 'undefined' && module.exports && module.exports[name])
+      || (typeof window !== 'undefined' && window[name])
+      || null;
+    return fn && typeof fn === 'function' ? fn : null;
+  };
+
+  const hasCards = Array.isArray(snap.cards) && snap.cards.length > 0;
+
+  // Tentatives « douces » si tes helpers existent déjà
+  const renderTL  = (typeof renderTimeline  === 'function') ? renderTimeline  : null;
+  const renderDC  = (typeof renderDayChips  === 'function') ? renderDayChips  : null;
+  const renderDet = (typeof renderDetail    === 'function') ? renderDetail    : null;
+
+  if (renderTL && renderDC && renderDet && host) {
+    try { renderTL(host, snap); }  catch(e){ console.warn('[UI] renderTimeline err', e); }
+    try { renderDC(host, snap); }  catch(e){ console.warn('[UI] renderDayChips err', e); }
+    try { renderDet(host, snap); } catch(e){ console.warn('[UI] renderDetail err', e); }
+    return;
+  }
+
+  // --- Fallback léger (au cas où l’UI n’expose pas encore les helpers)
+  if (!host) return;
+  host.innerHTML = '';
+  const css = `
+    .p-wrap{font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;padding:12px}
+    .p-h{margin:0 0 10px;font-weight:700}
+    .p-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+    .p-card{border:1px solid #e5e7eb;border-radius:12px;padding:10px;background:#fff}
+    .p-ttl{font-weight:600;margin:0 0 6px}
+    .p-sub{opacity:.66;font-size:12px}
+  `;
+  if (!document.getElementById('p-proj-style')) {
+    const style = document.createElement('style'); style.id='p-proj-style'; style.textContent = css; document.head.appendChild(style);
+  }
+  const wrap = document.createElement('div'); wrap.className = 'p-wrap';
+  const h1   = document.createElement('div'); h1.className='p-h'; h1.textContent = 'Projector — Mini-cards';
+  const grid = document.createElement('div'); grid.className='p-list';
+  const daysOf = (c) => (c.updates||[]).reduce((m,u)=>{ const d=(u.date||'').slice(0,10); if(!d) return m; m[d]=(m[d]||0)+1; return m; },{});
+  (snap.cards||[]).forEach(c=>{
+    const card = document.createElement('div'); card.className='p-card';
+    const ttl  = document.createElement('div'); ttl.className='p-ttl'; ttl.textContent = c.title || c.name || '[sans titre]';
+    const sub  = document.createElement('div'); sub.className='p-sub';
+    const dmap = daysOf(c);
+    const days = Object.keys(dmap).sort().slice(-4).map(d=>`${d}: ${dmap[d]} upd`).join(' • ');
+    sub.textContent = hasCards ? (days || 'aucune update') : 'aucune card';
+    card.appendChild(ttl); card.appendChild(sub); grid.appendChild(card);
+  });
+  wrap.appendChild(h1); wrap.appendChild(grid); host.appendChild(wrap);
+}
 
 export default { mount };
+
 
 
 
