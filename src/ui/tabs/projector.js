@@ -142,7 +142,7 @@ async function fetchSnapshotFromGit(workId, sid) {
 
 }
 
-async function pollLoop(){
+async function (){
 
   if (window.__pariaMode !== 'viewer' || window.__pariaRemote !== 'projector') return;
 
@@ -262,10 +262,14 @@ async function pollLoop(){
         if (mode) setRemoteMode(mode);
         console.log('[VIEWER] snapshot OK (tabs.projector) =', mode ?? '(absent)');
         
-        // Pose le snapshot global + rend via l’API standard
-        window.__remoteSnapshot = obj;  // obj = snapshot déchiffré v1
-        try { (await import('/paria-tool/src/ui/tabs/projector.js')).update(host, obj); }
-        catch(e){ console.warn('[VIEWER] update err', e); }
+        // --- ajout : poser le snapshot en RAM + rendre via l’API standard
+        window.__remoteSnapshot = obj;
+        try {
+          const host = document.getElementById('tab-projector') || document.body;
+          update(host, obj); // update(...) est exportée par CE fichier
+        } catch(e) {
+          console.warn('[VIEWER] update err', e);
+        }
 
         // … si tu as un rendu à déclencher ici, fais-le …
         snap = obj; // ← on garde le snapshot déchiffré pour la suite
@@ -291,14 +295,9 @@ async function pollLoop(){
     if (snap){
       const mode2 = snap?.tabs?.projector;
       if (mode2) setRemoteMode(mode2);
-    
-      window.__remoteSnapshot = snap;   // ← C’est ICI que la timeline se nourrit
-      const host = document.getElementById('tab-projector');
-      if (host){
-        renderTimeline(host);
-        renderDayChips(host);
-        renderDetail(host);
-      }
+      const host = document.getElementById('tab-projector') || document.body;
+      window.__remoteSnapshot = snap;
+      try { update(host, snap); } catch(e){ console.warn('[VIEWER] update err', e); }
     }
 
     if (!window.__projRenderedOnce) {
@@ -311,6 +310,12 @@ async function pollLoop(){
 // démarrer
 if (window.__pariaMode === 'viewer' && window.__pariaRemote === 'projector') {
   setRemoteMode('pause'); // overlay immédiat, pas de flash "off"
+  
+  // -- ajout : monter l'UI tout de suite
+  const host = document.getElementById('tab-projector') || document.body;
+  try { host.style.removeProperty('display'); } catch {}
+  try { mount(host); } catch (e) { console.warn('[VIEWER] mount err', e); }
+
   pollLoop();                  // kick immédiat
 }
 
@@ -763,6 +768,7 @@ export function update(host, snapshot) {
 }
 
 export default { mount };
+
 
 
 
