@@ -142,7 +142,7 @@ async function fetchSnapshotFromGit(workId, sid) {
 
 }
 
-async function (){
+async function pollLoop(){
 
   if (window.__pariaMode !== 'viewer' || window.__pariaRemote !== 'projector') return;
 
@@ -768,6 +768,7 @@ export function update(host, snapshot) {
 }
 
 export default { mount };
+
 
 
 
