@@ -10,6 +10,7 @@ let __cliKey = null; // CryptoKey en RAM, jamais en localStorage
 let __remoteDead = false;
 let __pollTimer = null;
 let __lastSnapFetch = { url: '', tries: 0, ok: false }; // diag lecture snapshot
+let primaryId = null; // déclaré une seule fois au module
 
 // --- auto-gate: bascule en mode viewer/projector si l'URL l'indique ---
 if (!window.__pariaMode) {
@@ -768,6 +769,7 @@ export function update(host, snapshot) {
 }
 
 export default { mount };
+
 
 
 
