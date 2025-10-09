@@ -261,7 +261,7 @@ export async function saveToGit(payload) {
 
   const jsonStr = JSON.stringify(payload, null, 2);
   const contentB64 = btoa(unescape(encodeURIComponent(jsonStr)));
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
 
   const res = await fetch(url, {
     method: 'PUT',
@@ -401,6 +401,7 @@ export async function postJson(url, obj) {
   let data; try { data = JSON.parse(txt); } catch { data = { text: txt }; }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 
 
